@@ -671,51 +671,57 @@ export class MaintenanceService {
    * Obtiene estadísticas para el dashboard del admin
    */
   async getAdminStats(): Promise<any> {
-    const [
-      totalResult,
-      byStatusResult,
-      byPriorityResult,
-      newResult,
-      urgentResult,
-    ] = await Promise.all([
-      this.dataSource.query(
+    // Usar QueryRunner para mantener la misma conexión con el search_path del tenant
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const totalResult = await queryRunner.query(
         `SELECT COUNT(*) as count FROM maintenance_requests`,
-      ),
-      this.dataSource.query(
+      );
+      const byStatusResult = await queryRunner.query(
         `SELECT status, COUNT(*) as count FROM maintenance_requests GROUP BY status`,
-      ),
-      this.dataSource.query(
+      );
+      const byPriorityResult = await queryRunner.query(
         `SELECT priority, COUNT(*) as count FROM maintenance_requests GROUP BY priority`,
-      ),
-      this.dataSource.query(
+      );
+      const newResult = await queryRunner.query(
         `SELECT COUNT(*) as count FROM maintenance_requests WHERE status = 'NEW'`,
-      ),
-      this.dataSource.query(
+      );
+      const urgentResult = await queryRunner.query(
         `SELECT COUNT(*) as count FROM maintenance_requests WHERE priority = 'HIGH' AND status = 'IN_PROGRESS'`,
-      ),
-    ]);
+      );
 
-    const total = parseInt(totalResult[0].count);
-    const newRequests = parseInt(newResult[0].count);
-    const urgentRequests = parseInt(urgentResult[0].count);
+      await queryRunner.commitTransaction();
+      await queryRunner.release();
 
-    const byStatus = byStatusResult.reduce((acc, item) => {
-      acc[item.status] = parseInt(item.count);
-      return acc;
-    }, {} as any);
+      const total = parseInt(totalResult[0].count);
+      const newRequests = parseInt(newResult[0].count);
+      const urgentRequests = parseInt(urgentResult[0].count);
 
-    const byPriority = byPriorityResult.reduce((acc, item) => {
-      acc[item.priority] = parseInt(item.count);
-      return acc;
-    }, {} as any);
+      const byStatus = byStatusResult.reduce((acc, item) => {
+        acc[item.status] = parseInt(item.count);
+        return acc;
+      }, {} as any);
 
-    return {
-      total,
-      byStatus,
-      byPriority,
-      newRequests,
-      urgentRequests,
-    };
+      const byPriority = byPriorityResult.reduce((acc, item) => {
+        acc[item.priority] = parseInt(item.count);
+        return acc;
+      }, {} as any);
+
+      return {
+        total,
+        byStatus,
+        byPriority,
+        newRequests,
+        urgentRequests,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      await queryRunner.release();
+      throw error;
+    }
   }
 
   /**

@@ -277,7 +277,8 @@ export class PropertiesService {
         p.images, p.amenities, p.included_items,
         p.created_at, p.updated_at,
         pt.name as property_type_name, pt.code as property_type_code,
-        pst.name as property_subtype_name, pst.code as property_subtype_code
+        pst.name as property_subtype_name, pst.code as property_subtype_code,
+        CASE WHEN p.status = 'DISPONIBLE' THEN true ELSE false END as active
       FROM properties p
       LEFT JOIN property_types pt ON p.property_type_id = pt.id
       LEFT JOIN property_subtypes pst ON p.property_subtype_id = pst.id
@@ -290,6 +291,15 @@ export class PropertiesService {
     params.push(limit, offset);
 
     const items = await this.dataSource.query(sql, params);
+
+    // Fetch addresses for each property separately to avoid DISTINCT issues
+    for (const item of items) {
+      const addresses = await this.dataSource.query(
+        'SELECT * FROM property_addresses WHERE property_id = $1 ORDER BY id',
+        [item.id]
+      );
+      item.addresses = addresses;
+    }
 
     return {
       items,

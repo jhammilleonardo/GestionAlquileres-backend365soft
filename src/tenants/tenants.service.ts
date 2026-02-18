@@ -152,12 +152,52 @@ export class TenantsService {
       // 8. Crear tablas de Notifications
       await this.createNotificationsTables(tenant.schema_name);
 
-      // 9. Insertar datos iniciales (seed data)
+      // 9. Crear tablas de Payments
+      await this.createPaymentsTables(tenant.schema_name);
+
+      // 10. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
+
+      // 11. Otorgar permisos al usuario de la aplicación
+      await this.grantSchemaPermissions(tenant.schema_name);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       throw new BadRequestException(`Failed to create schema: ${message}`);
     }
+  }
+
+  private async grantSchemaPermissions(schemaName: string) {
+    const dbUser = process.env.DB_USERNAME || 'gestion_user';
+
+    // Otorgar permisos de uso del schema
+    await this.dataSource.query(
+      `GRANT USAGE ON SCHEMA ${schemaName} TO ${dbUser}`,
+    );
+
+    // Otorgar todos los privilegios sobre todas las tablas existentes
+    await this.dataSource.query(
+      `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ${schemaName} TO ${dbUser}`,
+    );
+
+    // Otorgar todos los privilegios sobre todas las secuencias existentes
+    await this.dataSource.query(
+      `GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ${schemaName} TO ${dbUser}`,
+    );
+
+    // Otorgar todos los privilegios sobre todos los tipos (ENUMs)
+    await this.dataSource.query(
+      `GRANT ALL PRIVILEGES ON ALL TYPES IN SCHEMA ${schemaName} TO ${dbUser}`,
+    );
+
+    // Configurar permisos por defecto para futuras tablas
+    await this.dataSource.query(
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON TABLES TO ${dbUser}`,
+    );
+
+    // Configurar permisos por defecto para futuras secuencias
+    await this.dataSource.query(
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON SEQUENCES TO ${dbUser}`,
+    );
   }
 
   private async createPropertiesTables(schemaName: string) {
@@ -611,6 +651,139 @@ export class TenantsService {
       CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_EVENT_TYPE ON ${schemaName}.notifications(event_type);
       CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_IS_READ ON ${schemaName}.notifications(is_read);
       CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_CREATED_AT ON ${schemaName}.notifications(created_at DESC);
+    `);
+  }
+
+  private async createPaymentsTables(schemaName: string) {
+    // Tabla: payments
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.payments (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL,
+        contract_id INTEGER NOT NULL,
+        property_id INTEGER NOT NULL,
+        amount DECIMAL(12, 2) NOT NULL CHECK (amount >= 0),
+        currency VARCHAR(3) NOT NULL DEFAULT 'BOB',
+        payment_type VARCHAR(50) NOT NULL,
+        payment_method VARCHAR(50) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        payment_date DATE NOT NULL,
+        due_date DATE,
+        processed_date TIMESTAMP,
+        reference_number VARCHAR(100),
+        transaction_id VARCHAR(255),
+        check_number VARCHAR(50),
+        payment_processor VARCHAR(50) DEFAULT 'manual',
+        processor_fee DECIMAL(10, 2) DEFAULT 0,
+        proof_file VARCHAR(255),
+        receipt_file VARCHAR(255),
+        notes TEXT,
+        admin_notes TEXT,
+        rejection_reason TEXT,
+        is_partial_payment BOOLEAN DEFAULT false,
+        parent_payment_id INTEGER REFERENCES ${schemaName}.payments(id) ON DELETE SET NULL,
+        is_recurring BOOLEAN DEFAULT false,
+        recurring_schedule_id INTEGER,
+        is_autopay BOOLEAN DEFAULT false,
+        created_by INTEGER,
+        approved_by INTEGER,
+        approved_at TIMESTAMP,
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_payments_contract FOREIGN KEY (contract_id)
+          REFERENCES ${schemaName}.contracts(id),
+        CONSTRAINT fk_payments_property FOREIGN KEY (property_id)
+          REFERENCES ${schemaName}.properties(id)
+      );
+    `);
+
+    // Tabla: payment_schedules
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.payment_schedules (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL,
+        contract_id INTEGER NOT NULL,
+        property_id INTEGER NOT NULL,
+        amount DECIMAL(12, 2) NOT NULL CHECK (amount >= 0),
+        currency VARCHAR(3) NOT NULL DEFAULT 'BOB',
+        payment_type VARCHAR(50) NOT NULL,
+        payment_method VARCHAR(50) NOT NULL,
+        frequency VARCHAR(20) NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE,
+        day_of_month INTEGER CHECK (day_of_month >= 1 AND day_of_month <= 31),
+        is_active BOOLEAN DEFAULT true,
+        last_payment_date DATE,
+        next_payment_date DATE,
+        autopay_enabled BOOLEAN DEFAULT false,
+        autopay_method VARCHAR(50),
+        autopay_token VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_payment_schedules_contract FOREIGN KEY (contract_id)
+          REFERENCES ${schemaName}.contracts(id),
+        CONSTRAINT fk_payment_schedules_property FOREIGN KEY (property_id)
+          REFERENCES ${schemaName}.properties(id)
+      );
+    `);
+
+    // Tabla: payment_refunds
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.payment_refunds (
+        id SERIAL PRIMARY KEY,
+        payment_id INTEGER NOT NULL REFERENCES ${schemaName}.payments(id) ON DELETE CASCADE,
+        amount DECIMAL(12, 2) NOT NULL CHECK (amount > 0),
+        reason TEXT,
+        refund_method VARCHAR(50),
+        refund_date DATE NOT NULL,
+        transaction_id VARCHAR(255),
+        processed_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Crear índices para optimizar consultas
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_TENANT ON ${schemaName}.payments(tenant_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_CONTRACT ON ${schemaName}.payments(contract_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_PROPERTY ON ${schemaName}.payments(property_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_STATUS ON ${schemaName}.payments(status);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_DATE ON ${schemaName}.payments(payment_date);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_CREATED_AT ON ${schemaName}.payments(created_at);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_TYPE ON ${schemaName}.payments(payment_type);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_METHOD ON ${schemaName}.payments(payment_method);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_TENANT ON ${schemaName}.payment_schedules(tenant_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_CONTRACT ON ${schemaName}.payment_schedules(contract_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_ACTIVE ON ${schemaName}.payment_schedules(is_active);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_REFUNDS_PAYMENT ON ${schemaName}.payment_refunds(payment_id);
+    `);
+
+    // Crear trigger para updated_at (si no existe)
+    await this.dataSource.query(`
+      CREATE OR REPLACE FUNCTION ${schemaName}.update_updated_at_column()
+      RETURNS TRIGGER AS $$
+      BEGIN
+          NEW.updated_at = CURRENT_TIMESTAMP;
+          RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+
+    await this.dataSource.query(`
+      DROP TRIGGER IF EXISTS update_payments_updated_at ON ${schemaName}.payments;
+      CREATE TRIGGER update_payments_updated_at
+          BEFORE UPDATE ON ${schemaName}.payments
+          FOR EACH ROW
+          EXECUTE FUNCTION ${schemaName}.update_updated_at_column();
+    `);
+
+    await this.dataSource.query(`
+      DROP TRIGGER IF EXISTS update_payment_schedules_updated_at ON ${schemaName}.payment_schedules;
+      CREATE TRIGGER update_payment_schedules_updated_at
+          BEFORE UPDATE ON ${schemaName}.payment_schedules
+          FOR EACH ROW
+          EXECUTE FUNCTION ${schemaName}.update_updated_at_column();
     `);
   }
 

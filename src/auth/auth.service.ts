@@ -104,13 +104,38 @@ export class AuthService {
 
     const access_token = this.jwtService.sign(payload);
 
+    // Obtener contrato activo si el usuario es INQUILINO
+    let contract = null;
+    if (user.role === 'INQUILINO') {
+      const contractResult = await this.dataSource.query(
+        `SELECT
+          c.id,
+          c.contract_number,
+          c.status,
+          p.title as property_title
+        FROM contracts c
+        LEFT JOIN properties p ON c.property_id = p.id
+        WHERE c.tenant_id = $1 AND c.status IN ('ACTIVO', 'POR_VENCER')
+        ORDER BY c.created_at DESC
+        LIMIT 1`,
+        [user.id]
+      );
+
+      if (contractResult && contractResult.length > 0) {
+        contract = contractResult[0];
+      }
+    }
+
     return {
       access_token,
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
+        phone: user.phone,
         role: user.role,
+        tenant_slug: tenantSlug,
+        contract: contract,
       },
     };
   }

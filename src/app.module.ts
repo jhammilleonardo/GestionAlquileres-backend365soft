@@ -1,5 +1,7 @@
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from './common/config';
@@ -12,11 +14,25 @@ import { PropertiesModule } from './properties/properties.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
     ConfigModule,
     HealthModule,
+    // Rate Limiting - Protección contra fuerza bruta y DoS
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000,  // 60 segundos
+        limit: 100,  // 100 requests por minuto (general)
+      },
+      {
+        name: 'strict',
+        ttl: 60000,  // 60 segundos
+        limit: 20,   // 20 requests por minuto (endpoints sensibles)
+      },
+    ]),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -52,9 +68,17 @@ import { NotificationsModule } from './notifications/notifications.module';
     ContractsModule,
     MaintenanceModule,
     NotificationsModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Guard global de Rate Limiting
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {

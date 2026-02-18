@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { ContractsService } from './contracts.service';
+import { ContractsService, ContractResult } from './contracts.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -29,7 +29,7 @@ export class AdminContractsController {
 
   @Get('dashboard')
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async getDashboard(@Param('slug') slug: string) {
+  async getDashboard() {
     return this.contractsService.getMetrics();
   }
 
@@ -40,7 +40,7 @@ export class AdminContractsController {
     @Query('status') status?: ContractStatus,
     @Query('tenant_id') tenant_id?: string,
     @Query('property_id') property_id?: string,
-  ) {
+  ): Promise<ContractResult[]> {
     const parsedTenantId = tenant_id ? parseInt(tenant_id, 10) : undefined;
     const parsedPropertyId = property_id
       ? parseInt(property_id, 10)
@@ -58,7 +58,7 @@ export class AdminContractsController {
     @Param('slug') slug: string,
     @Body() createContractDto: CreateContractDto,
     @Req() req: TenantRequest,
-  ) {
+  ): Promise<ContractResult> {
     const currentUserId = req.user?.userId || 0;
     return this.contractsService.create(createContractDto, currentUserId);
   }
@@ -95,7 +95,11 @@ export class AdminContractsController {
     const host = req.get('host');
     const baseUrl = `${protocol}://${host}`;
 
-    const result = await this.contractsService.generatePdf(id, tenantSlug, baseUrl);
+    const result = (await this.contractsService.generatePdf(
+      id,
+      tenantSlug,
+      baseUrl,
+    )) as { path: string; url: string; fullUrl: string };
     res.download(result.path);
   }
 
@@ -103,16 +107,16 @@ export class AdminContractsController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async getPdfUrl(
-    @Param() slug: string,
+    @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Req() req: TenantRequest,
   ) {
     const tenantSlug = req.tenant?.slug || 'default';
     const protocol = req.protocol;
     const host = req.get('host');
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = `${String(protocol)}://${String(host)}`;
 
-    return await this.contractsService.generatePdf(id, tenantSlug, baseUrl);
+    return this.contractsService.generatePdf(id, tenantSlug, baseUrl);
   }
 
   @Post(':id/renew')
@@ -223,7 +227,11 @@ export class TenantContractsController {
     const host = req.get('host');
     const baseUrl = `${protocol}://${host}`;
 
-    const result = await this.contractsService.generatePdf(id, tenantSlug, baseUrl);
+    const result = await this.contractsService.generatePdf(
+      id,
+      tenantSlug,
+      baseUrl,
+    );
     res.download(result.path);
   }
 

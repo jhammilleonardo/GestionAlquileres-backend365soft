@@ -19,6 +19,9 @@ export enum NotificationEventType {
   // Usuarios
   USER_REGISTERED = 'user.registered',
   USER_PASSWORD_CHANGED = 'user.password.changed',
+  // Solicitudes de Alquiler
+  APPLICATION_CREATED = 'application.created',
+  APPLICATION_STATUS_CHANGED = 'application.status.changed',
 }
 
 export class CreateNotificationDto {

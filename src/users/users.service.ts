@@ -29,4 +29,14 @@ export class UsersService {
 
     return result;
   }
+
+  async findAdmins(): Promise<UserWithoutPassword[]> {
+    // Nota: El schema se maneja por el search_path en el middleware
+    const result = await this.dataSource.query(
+      `SELECT id, email, name, role 
+       FROM "user" 
+       WHERE role = 'ADMIN' AND is_active = true`,
+    );
+    return result;
+  }
 }

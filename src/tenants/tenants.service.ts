@@ -152,6 +152,8 @@ export class TenantsService {
       // 8. Crear tablas de Notifications
       await this.createNotificationsTables(tenant.schema_name);
 
+      // 9. Crear tablas de Applications
+      await this.createApplicationsTables(tenant.schema_name);
       // 9. Crear tablas de Payments
       await this.createPaymentsTables(tenant.schema_name);
 
@@ -608,7 +610,9 @@ export class TenantsService {
           'property.status.changed',
           'property.available',
           'user.registered',
-          'user.password.changed'
+          'user.password.changed',
+          'application.created',
+          'application.status.changed'
         );
       EXCEPTION
         WHEN duplicate_object THEN null;
@@ -654,6 +658,46 @@ export class TenantsService {
     `);
   }
 
+  private async createApplicationsTables(schemaName: string) {
+    // ENUM de application_status
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        CREATE TYPE ${schemaName}.application_status_enum AS ENUM (
+          'BORRADOR', 'PENDIENTE', 'EN_REVISION', 'APROBADA', 'RECHAZADA', 'CANCELADA'
+        );
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // Tabla: rental_applications
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.rental_applications (
+        id SERIAL PRIMARY KEY,
+        property_id integer NOT NULL,
+        applicant_id integer NOT NULL,
+        status ${schemaName}.application_status_enum NOT NULL DEFAULT 'PENDIENTE',
+        personal_data jsonb,
+        employment_data jsonb,
+        rental_history jsonb,
+        "references" jsonb,
+        documents jsonb,
+        additional_notes text,
+        admin_feedback text,
+        created_at TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP NOT NULL DEFAULT now(),
+        CONSTRAINT fk_rental_applications_property FOREIGN KEY (property_id)
+          REFERENCES ${schemaName}.properties(id),
+        CONSTRAINT fk_rental_applications_applicant FOREIGN KEY (applicant_id)
+          REFERENCES ${schemaName}."user"(id)
+      );
+    `);
+
+    // Crear índices
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_PROPERTY ON ${schemaName}.rental_applications(property_id);
+      CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_APPLICANT ON ${schemaName}.rental_applications(applicant_id);
+      CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_STATUS ON ${schemaName}.rental_applications(status);
   private async createPaymentsTables(schemaName: string) {
     // Tabla: payments
     await this.dataSource.query(`

@@ -186,10 +186,8 @@ export class TenantsService {
       `GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ${schemaName} TO ${dbUser}`,
     );
 
-    // Otorgar todos los privilegios sobre todos los tipos (ENUMs)
-    await this.dataSource.query(
-      `GRANT ALL PRIVILEGES ON ALL TYPES IN SCHEMA ${schemaName} TO ${dbUser}`,
-    );
+    // NOTA: Los permisos USAGE sobre el schema son suficientes para usar los tipos (ENUMs)
+    // No es necesario otorgar permisos adicionales sobre tipos específicos
 
     // Configurar permisos por defecto para futuras tablas
     await this.dataSource.query(
@@ -698,6 +696,9 @@ export class TenantsService {
       CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_PROPERTY ON ${schemaName}.rental_applications(property_id);
       CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_APPLICANT ON ${schemaName}.rental_applications(applicant_id);
       CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_STATUS ON ${schemaName}.rental_applications(status);
+    `);
+  }
+
   private async createPaymentsTables(schemaName: string) {
     // Tabla: payments
     await this.dataSource.query(`

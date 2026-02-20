@@ -68,3 +68,5 @@ claude.md
 # Uploads directory (PDFs, images, etc.)
 /uploads/
 
+/test-payments.sh
+/update_db_password.sh

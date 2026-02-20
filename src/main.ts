@@ -26,13 +26,17 @@ async function bootstrap() {
   // Servir archivos estáticos desde la carpeta uploads/
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
-    // Cache control para PDFs (1 día)
     setHeaders: (res) => {
       if (res.req.url?.includes('.pdf')) {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Cache-Control', 'public, max-age=86400');
       }
     },
+  });
+
+  // Servir imágenes de propiedades desde storage/
+  app.useStaticAssets(join(process.cwd(), 'storage'), {
+    prefix: '/storage/',
   });
 
   await app.listen(process.env.PORT ?? 3000);

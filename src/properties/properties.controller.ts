@@ -115,7 +115,6 @@ export class AdminPropertiesController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: any,
   ) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
@@ -125,8 +124,10 @@ export class AdminPropertiesController {
     const property = await this.propertiesService.findOne(id);
 
     // Add new image URL to images array
-    const images = property.images || [];
-    const imageUrl = `/storage/properties/${file.filename}`;
+    // file.path = /abs/path/to/storage/properties/{tenant}/{id}/filename.ext
+    // We store the path relative to cwd: /storage/properties/{tenant}/{id}/filename.ext
+    const images = Array.isArray(property.images) ? [...property.images] : [];
+    const imageUrl = file.path.replace(process.cwd(), '').replace(/\\/g, '/');
     images.push(imageUrl);
 
     // Update property

@@ -6,11 +6,57 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Contract } from './entities/contract.entity';
-import { ContractHistory } from './entities/contract-history.entity';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { ContractStatus } from './enums/contract-status.enum';
 import { PdfService } from './pdf.service';
+
+export interface ContractResult {
+  id: number;
+  contract_number: string;
+  tenant_id: number;
+  property_id: number;
+  start_date: string | Date;
+  end_date: string | Date;
+  duration_months?: number;
+  monthly_rent: number;
+  currency: string;
+  payment_day: number;
+  deposit_amount: number;
+  payment_method?: string;
+  late_fee_percentage?: number;
+  grace_days?: number;
+  included_services?: any; // JSON
+  tenant_responsibilities?: string;
+  owner_responsibilities?: string;
+  prohibitions?: string;
+  coexistence_rules?: string;
+  renewal_terms?: string;
+  termination_terms?: string;
+  jurisdiction?: string;
+  auto_renew?: boolean;
+  renewal_notice_days?: number;
+  auto_increase_percentage?: number;
+  bank_account_number?: string;
+  bank_account_type?: string;
+  bank_name?: string;
+  bank_account_holder?: string;
+  status: ContractStatus;
+  terms_conditions?: string;
+  created_at: Date;
+  updated_at: Date;
+  property_title?: string;
+  property_description?: string;
+  property_status?: string;
+  street_address?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  country?: string;
+  tenant_name?: string;
+  tenant_email?: string;
+  tenant_phone?: string;
+}
 
 @Injectable()
 export class ContractsService {
@@ -108,7 +154,7 @@ export class ContractsService {
     const durationMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30.44));
 
     // 4. Insertar usando SQL directo (respeta search_path del tenant)
-    const insertResult = await this.dataSource.query(
+    const insertResult = await this.dataSource.query<Contract[]>(
       `INSERT INTO contracts
        (contract_number, tenant_id, property_id, status, start_date, end_date, duration_months,
         key_delivery_date, monthly_rent, currency, payment_day, deposit_amount, payment_method,
@@ -210,11 +256,11 @@ export class ContractsService {
 
     query += ' ORDER BY c.created_at DESC';
 
-    return await this.dataSource.query(query, params);
+    return await this.dataSource.query<ContractResult[]>(query, params);
   }
 
   async findOne(id: number) {
-    const result = await this.dataSource.query(
+    const result = await this.dataSource.query<ContractResult[]>(
       `SELECT c.*,
               p.title as property_title, p.description as property_description,
               p.status as property_status,
@@ -245,7 +291,7 @@ export class ContractsService {
 
     // Construir query de actualización dinámicamente
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | boolean | null)[] = [];
     let paramCount = 0;
 
     const fieldMapping: Record<string, string> = {
@@ -271,25 +317,27 @@ export class ContractsService {
       bank_name: 'bank_name',
       bank_account_holder: 'bank_account_holder',
       status: 'status',
+      included_services: 'included_services',
     };
 
-    Object.keys(updateContractDto).forEach((key) => {
-      if (updateContractDto[key] !== undefined && fieldMapping[key]) {
+    for (const key of Object.keys(updateContractDto)) {
+      const val = updateContractDto[key as keyof UpdateContractDto];
+      if (val !== undefined && fieldMapping[key]) {
         paramCount++;
         const field = fieldMapping[key];
 
         if (key === 'included_services') {
           updates.push(`${field} = $${paramCount}`);
-          values.push(JSON.stringify(updateContractDto[key]));
+          values.push(JSON.stringify(val));
         } else if (key === 'auto_renew') {
           updates.push(`${field} = $${paramCount}`);
-          values.push(updateContractDto[key] ? 'true' : 'false');
+          values.push(!!val);
         } else {
           updates.push(`${field} = $${paramCount}`);
-          values.push(updateContractDto[key]);
+          values.push(val as string | number | boolean | null);
         }
       }
-    });
+    }
 
     if (updates.length > 0) {
       paramCount++;
@@ -428,8 +476,8 @@ export class ContractsService {
   private async logHistory(
     contractId: number,
     field: string,
-    oldValue: any,
-    newValue: any,
+    oldValue: unknown,
+    newValue: unknown,
     userId: number,
     reason?: string,
   ) {
@@ -449,7 +497,7 @@ export class ContractsService {
   }
 
   async generatePdf(id: number, tenantSlug: string, baseUrl: string = '') {
-    const contract = await this.findOne(id);
+    const contract = (await this.findOne(id)) as Contract;
 
     // Obtener información del tenant (empresa) desde el schema public
     const tenantInfo = await this.dataSource.query<
@@ -493,23 +541,23 @@ export class ContractsService {
     }
 
     // Calcular nuevas fechas
-    const newStartDate = new Date(oldContract.end_date);
+    const newStartDate = new Date(oldContract.end_date as string);
     newStartDate.setDate(newStartDate.getDate() + 1);
 
     const newEndDate = new Date(newStartDate);
     newEndDate.setMonth(
-      newEndDate.getMonth() + (oldContract.duration_months || 12),
+      newEndDate.getMonth() + ((oldContract.duration_months as number) || 12),
     );
 
     // Aplicar aumento si existe
     const newRent =
       oldContract.monthly_rent *
-      (1 + oldContract.auto_increase_percentage / 100);
+      (1 + ((oldContract.auto_increase_percentage as number) || 0) / 100);
 
     const newContractNumber = await this.generateContractNumber();
 
     // Insertar nuevo contrato usando SQL directo
-    const insertResult = await this.dataSource.query(
+    const insertResult = await this.dataSource.query<ContractResult[]>(
       `INSERT INTO contracts
        (tenant_id, property_id, contract_number, start_date, end_date, duration_months,
         monthly_rent, currency, payment_day, deposit_amount, payment_method,
@@ -518,7 +566,7 @@ export class ContractsService {
         jurisdiction, auto_renew, renewal_notice_days, auto_increase_percentage,
         previous_contract_id, bank_account_number, bank_account_type, bank_name, bank_account_holder,
         status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, NOW(), NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, NOW(), NOW())
        RETURNING *`,
       [
         oldContract.tenant_id,

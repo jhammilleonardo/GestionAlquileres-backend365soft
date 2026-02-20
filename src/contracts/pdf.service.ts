@@ -23,17 +23,28 @@ export class PdfService {
     doc.pipe(stream);
 
     // Preparar datos de la propiedad
-    const propertyTitle = contract.property_title || contract.property?.title || 'Propiedad';
-    const propertyAddress = contract.street_address || contract.property?.addresses?.[0]?.street_address || 'Dirección no especificada';
-    const propertyCity = contract.city || contract.property?.addresses?.[0]?.city || '';
-    const propertyState = contract.state || contract.property?.addresses?.[0]?.state || '';
-    const propertyCountry = contract.country || contract.property?.addresses?.[0]?.country || '';
+    const propertyTitle =
+      contract.property_title || contract.property?.title || 'Propiedad';
+    const propertyAddress =
+      contract.street_address ||
+      contract.property?.addresses?.[0]?.street_address ||
+      'Dirección no especificada';
+    const propertyCity =
+      contract.city || contract.property?.addresses?.[0]?.city || '';
+    const propertyState =
+      contract.state || contract.property?.addresses?.[0]?.state || '';
+    const propertyCountry =
+      contract.country || contract.property?.addresses?.[0]?.country || '';
 
     // --- HEADER ---
     doc.fontSize(20).text('CONTRATO DE ARRENDAMIENTO', { align: 'center' });
     doc.moveDown();
-    doc.fontSize(10).text(`Contrato N°: ${contract.contract_number}`, { align: 'right' });
-    doc.text(`Fecha de emisión: ${new Date().toLocaleDateString()}`, { align: 'right' });
+    doc
+      .fontSize(10)
+      .text(`Contrato N°: ${contract.contract_number}`, { align: 'right' });
+    doc.text(`Fecha de emisión: ${new Date().toLocaleDateString()}`, {
+      align: 'right',
+    });
     doc.moveDown();
 
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
@@ -57,7 +68,12 @@ export class PdfService {
 
     doc.text(`LA PROPIEDAD:`, { oblique: true });
     doc.text(`Nombre: ${propertyTitle}`);
-    const fullAddress = [propertyAddress, propertyCity, propertyState, propertyCountry]
+    const fullAddress = [
+      propertyAddress,
+      propertyCity,
+      propertyState,
+      propertyCountry,
+    ]
       .filter(Boolean)
       .join(', ');
     doc.text(`Dirección: ${fullAddress || 'No especificada'}`);
@@ -130,7 +146,8 @@ export class PdfService {
     this.addClause(
       doc,
       'SEXTA. OBLIGACIONES Y PROHIBICIONES',
-      contract.prohibitions || 'El Arrendatario se compromete a mantener la propiedad en buen estado.',
+      contract.prohibitions ||
+        'El Arrendatario se compromete a mantener la propiedad en buen estado.',
     );
 
     const jurisdiction = contract.jurisdiction || 'Bolivia';
@@ -143,14 +160,25 @@ export class PdfService {
     doc.moveDown(2);
 
     // --- FIRMAS ---
-    doc.fontSize(12).text('________________________           ________________________', { align: 'center' });
-    doc.fontSize(10).text('Firma del Arrendatario              Firma del Arrendador', { align: 'center' });
+    doc
+      .fontSize(12)
+      .text('________________________           ________________________', {
+        align: 'center',
+      });
+    doc
+      .fontSize(10)
+      .text('Firma del Arrendatario              Firma del Arrendador', {
+        align: 'center',
+      });
 
     doc.moveDown(4);
-    doc.fillColor('gray').fontSize(8).text(
-      `Documento generado automáticamente el ${new Date().toLocaleString()}`,
-      { align: 'center' },
-    );
+    doc
+      .fillColor('gray')
+      .fontSize(8)
+      .text(
+        `Documento generado automáticamente el ${new Date().toLocaleString()}`,
+        { align: 'center' },
+      );
     doc.fillColor('black').text(`Página 1 de 1`, { align: 'right' });
 
     // End the document and wait for all writes to complete
@@ -161,10 +189,13 @@ export class PdfService {
         // Verify the file was created and has content
         if (fs.existsSync(filePath)) {
           const stats = fs.statSync(filePath);
-          if (stats.size > 1000) { // PDF should be at least 1KB
+          if (stats.size > 1000) {
+            // PDF should be at least 1KB
             resolve(filePath);
           } else {
-            reject(new Error(`Generated PDF is too small (${stats.size} bytes)`));
+            reject(
+              new Error(`Generated PDF is too small (${stats.size} bytes)`),
+            );
           }
         } else {
           reject(new Error('PDF file was not created'));

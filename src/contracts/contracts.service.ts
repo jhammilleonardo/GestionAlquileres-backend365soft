@@ -114,6 +114,43 @@ export class ContractsService {
       );
     }
 
+    // 2.1. Si NO viene de una solicitud, validar que el inquilino tenga una solicitud aprobada
+    if (!createContractDto.application_id) {
+      const approvedApplication = await this.dataSource.query<{ id: number }[]>(
+        `SELECT id FROM rental_applications
+         WHERE applicant_id = $1 AND status = 'APROBADA'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [createContractDto.tenant_id],
+      );
+
+      if (approvedApplication.length === 0) {
+        throw new BadRequestException(
+          'No se puede crear un contrato manual para este inquilino. ' +
+          'El inquilino debe tener al menos una solicitud de alquiler aprobada antes de poder crear un contrato. ' +
+          'Utilice el flujo de solicitudes para aprobar al inquilino primero.',
+        );
+      }
+    } else {
+      // Si viene de una solicitud, validar que la solicitud existe y pertenece al inquilino
+      const application = await this.dataSource.query<{ id: number; applicant_id: number }[]>(
+        'SELECT id, applicant_id FROM rental_applications WHERE id = $1',
+        [createContractDto.application_id],
+      );
+
+      if (application.length === 0) {
+        throw new NotFoundException(
+          `La solicitud con ID ${createContractDto.application_id} no existe`,
+        );
+      }
+
+      if (application[0].applicant_id !== createContractDto.tenant_id) {
+        throw new BadRequestException(
+          'La solicitud no pertenece al inquilino especificado',
+        );
+      }
+    }
+
     // 3. Validar que el inquilino no tenga ya un contrato activo
     const activeContract = await this.dataSource.query<{ id: number }[]>(
       'SELECT id FROM contracts WHERE tenant_id = $1 AND status = $2',
@@ -161,8 +198,8 @@ export class ContractsService {
         late_fee_percentage, grace_days, included_services, tenant_responsibilities,
         owner_responsibilities, prohibitions, coexistence_rules, renewal_terms, termination_terms,
         jurisdiction, auto_renew, renewal_notice_days, auto_increase_percentage,
-        bank_account_number, bank_account_type, bank_name, bank_account_holder, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, NOW(), NOW())
+        bank_account_number, bank_account_type, bank_name, bank_account_holder, application_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, NOW(), NOW())
        RETURNING *`,
       [
         contractNumber,
@@ -197,6 +234,7 @@ export class ContractsService {
         createContractDto.bank_account_type || null,
         createContractDto.bank_name || null,
         createContractDto.bank_account_holder || null,
+        createContractDto.application_id || null,
       ],
     );
 

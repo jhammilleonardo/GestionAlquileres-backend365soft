@@ -11,6 +11,7 @@ import {
 import { Property } from '../../properties/entities/property.entity';
 import { ContractStatus } from '../enums/contract-status.enum';
 import { MaintenanceRequest } from '../../maintenance/entities/maintenance-request.entity';
+import { RentalApplication } from '../../applications/entities/application.entity';
 
 @Entity('contracts')
 export class Contract {
@@ -150,6 +151,13 @@ export class Contract {
 
   @Column({ nullable: true })
   previous_contract_id: number;
+
+  @Column({ nullable: true })
+  application_id: number; // ID de la solicitud de alquiler que originó este contrato
+
+  @ManyToOne(() => RentalApplication, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'application_id' })
+  application: RentalApplication;
 
   // Terminación
   @Column({ nullable: true })

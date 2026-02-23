@@ -140,6 +140,58 @@ export class AuthService {
     };
   }
 
+  async getMe(user: any) {
+    // Obtener el tenant para setear el schema correcto
+    const tenant = await this.tenantsService.findBySlug(user.tenantSlug);
+
+    // Setear el schema para esta query
+    await this.dataSource.query(`SET search_path TO ${tenant.schema_name}`);
+
+    // Obtener datos completos del usuario
+    const userResult = await this.dataSource.query(
+      'SELECT id, name, email, phone, role FROM "user" WHERE id = $1',
+      [user.userId]
+    );
+
+    if (userResult.length === 0) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const fullUser = userResult[0];
+
+    // Obtener contrato activo si el usuario es INQUILINO
+    let contract = null;
+    if (fullUser.role === 'INQUILINO') {
+      const contractResult = await this.dataSource.query(
+        `SELECT
+          c.id,
+          c.contract_number,
+          c.status,
+          p.title as property_title
+        FROM contracts c
+        LEFT JOIN properties p ON c.property_id = p.id
+        WHERE c.tenant_id = $1 AND c.status IN ('ACTIVO', 'POR_VENCER', 'BORRADOR')
+        ORDER BY c.created_at DESC
+        LIMIT 1`,
+        [fullUser.id]
+      );
+
+      if (contractResult && contractResult.length > 0) {
+        contract = contractResult[0];
+      }
+    }
+
+    return {
+      userId: fullUser.id,
+      name: fullUser.name,
+      email: fullUser.email,
+      phone: fullUser.phone,
+      role: fullUser.role,
+      tenantSlug: user.tenantSlug,
+      contract: contract,
+    };
+  }
+
   async register(
     name: string,
     email: string,

@@ -6,9 +6,11 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  OneToMany,
 } from 'typeorm';
 import { Property } from '../../properties/entities/property.entity';
 import { ApplicationStatus } from '../enums/application-status.enum';
+import { Contract } from '../../contracts/entities/contract.entity';
 
 @Entity('rental_applications')
 export class RentalApplication {
@@ -88,4 +90,7 @@ export class RentalApplication {
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @OneToMany(() => Contract, (contract) => contract.application)
+  contracts: Contract[];
 }

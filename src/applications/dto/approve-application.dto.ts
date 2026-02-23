@@ -1,51 +1,40 @@
 import {
-  IsNotEmpty,
   IsNumber,
-  IsDateString,
-  IsOptional,
   IsString,
-  IsArray,
+  IsOptional,
+  IsEnum,
   IsBoolean,
+  IsArray,
   Min,
+  Max,
 } from 'class-validator';
 
-export class CreateContractDto {
-  @IsNotEmpty()
-  @IsNumber()
-  tenant_id: number;
-
-  @IsNotEmpty()
-  @IsNumber()
-  property_id: number;
-
-  @IsNotEmpty()
-  @IsDateString()
-  start_date: string;
-
-  @IsNotEmpty()
-  @IsDateString()
-  end_date: string;
-
+export class ApproveApplicationDto {
+  // Feedback opcional para el inquilino
   @IsOptional()
-  @IsDateString()
-  key_delivery_date?: string;
+  @IsString()
+  admin_feedback?: string;
 
-  @IsNotEmpty()
+  // === DATOS DEL CONTRATO ===
+
   @IsNumber()
   @Min(0)
   monthly_rent: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  deposit_amount?: number; // Si no se envía, se calculará como 1 mes de renta
+
+  @IsOptional()
   @IsString()
-  currency?: string;
+  currency?: string; // Default: BOB
 
   @IsOptional()
   @IsNumber()
-  payment_day?: number;
-
-  @IsOptional()
-  @IsNumber()
-  deposit_amount?: number;
+  @Min(1)
+  @Max(31)
+  payment_day?: number; // Default: 5
 
   @IsOptional()
   @IsString()
@@ -53,16 +42,30 @@ export class CreateContractDto {
 
   @IsOptional()
   @IsNumber()
-  late_fee_percentage?: number;
+  @Min(0)
+  late_fee_percentage?: number; // Default: 0
 
   @IsOptional()
   @IsNumber()
-  grace_days?: number;
+  @Min(0)
+  grace_days?: number; // Default: 0
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   included_services?: string[];
+
+  @IsOptional()
+  @IsString()
+  start_date?: string; // Formato: YYYY-MM-DD. Default: hoy
+
+  @IsOptional()
+  @IsString()
+  end_date?: string; // Formato: YYYY-MM-DD. Default: hoy + 1 año
+
+  @IsOptional()
+  @IsString()
+  key_delivery_date?: string; // Formato: YYYY-MM-DD
 
   @IsOptional()
   @IsString()
@@ -90,20 +93,23 @@ export class CreateContractDto {
 
   @IsOptional()
   @IsString()
-  jurisdiction?: string;
+  jurisdiction?: string; // Default: Bolivia
 
   @IsOptional()
   @IsBoolean()
-  auto_renew?: boolean;
+  auto_renew?: boolean; // Default: false
 
   @IsOptional()
   @IsNumber()
-  renewal_notice_days?: number;
+  @Min(0)
+  renewal_notice_days?: number; // Default: 30
 
   @IsOptional()
   @IsNumber()
-  auto_increase_percentage?: number;
+  @Min(0)
+  auto_increase_percentage?: number; // Default: 0
 
+  // Datos bancarios opcionales
   @IsOptional()
   @IsString()
   bank_account_number?: string;
@@ -119,8 +125,4 @@ export class CreateContractDto {
   @IsOptional()
   @IsString()
   bank_account_holder?: string;
-
-  @IsOptional()
-  @IsNumber()
-  application_id?: number;
 }

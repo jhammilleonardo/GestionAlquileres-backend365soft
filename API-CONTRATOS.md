@@ -8,6 +8,41 @@ Esta documentación cubre el sistema completo de gestión de contratos de alquil
 
 ---
 
+## ⚠️ Flujo Recomendado
+
+El sistema implementa **dos formas** de crear contratos:
+
+### 1. Flujo con Solicitudes (RECOMENDADO) ✅
+```
+Inquilino → Envía Solicitud → Admin Aprueba (con datos del contrato) → Contrato Creado
+```
+
+Este es el flujo principal del sistema. Ver [API-SOLICITUDES.md](./API-SOLICITUDES.md) para más detalles.
+
+**Endpoint:** `PATCH /:slug/applications/:id/approve`
+
+**Ventajas:**
+- El inquilino completa todos sus datos personales y laborales en la solicitud
+- El admin aprueba y define el monto del alquiler al mismo tiempo
+- El contrato queda vinculado a la solicitud
+- Mejor trazabilidad y auditoría
+
+### 2. Creación Manual (CASOS ESPECIALES)
+```
+Admin → Selecciona Inquilino Aprobado → Crea Contrato Manualmente
+```
+
+Este flujo es para casos especiales donde el admin necesita crear un contrato directamente.
+
+**Endpoint:** `POST /:slug/admin/contracts`
+
+**Requisitos:**
+- El inquilino debe tener rol `INQUILINO`
+- El inquilino debe tener una solicitud `APROBADA` previa
+- El inquilino no puede tener un contrato activo
+
+---
+
 ## Índice
 
 1. [Panel de Administración - Contratos](#1-panel-de-administración---contratos)
@@ -136,7 +171,9 @@ Esta documentación cubre el sistema completo de gestión de contratos de alquil
 
 ---
 
-### 1.3 Crear Nuevo Contrato
+### 1.3 Crear Nuevo Contrato (Manual)
+
+**⚠️ IMPORTANTE:** Este endpoint es solo para creación manual de contratos. El flujo recomendado es usar el sistema de solicitudes (ver API-SOLICITUDES.md).
 
 **Endpoint:** `POST /:slug/admin/contracts`
 **Auth:** Requerida (ADMIN)
@@ -157,13 +194,14 @@ Esta documentación cubre el sistema completo de gestión de contratos de alquil
 {
   "tenant_id": 5,
   "property_id": 1,
+  "application_id": 10,
   "start_date": "2026-02-01",
   "end_date": "2027-02-01",
   "key_delivery_date": "2026-02-01",
   "monthly_rent": 1200.00,
-  "currency": "USD",
+  "currency": "BOB",
   "payment_day": 5,
-  "deposit_amount": 2400.00,
+  "deposit_amount": 1200.00,
   "payment_method": "Transferencia bancaria",
   "late_fee_percentage": 5,
   "grace_days": 3,
@@ -178,37 +216,38 @@ Esta documentación cubre el sistema completo de gestión de contratos de alquil
   "coexistence_rules": "Respetar horarios de descanso, no hacer ruido después de las 22hs",
   "renewal_terms": "El contrato se renueva automáticamente si ninguna de las partes avisa con 30 días de antelación",
   "termination_terms": "Cualquiera de las partes puede rescindir con 60 días de preaviso",
-  "jurisdiction": "Buenos Aires, Argentina",
+  "jurisdiction": "Bolivia",
   "auto_renew": true,
   "renewal_notice_days": 30,
   "auto_increase_percentage": 10,
   "bank_account_number": "123-456-789",
   "bank_account_type": "Ahorros",
-  "bank_name": "Banco Galicia",
+  "bank_name": "Banco Nacional",
   "bank_account_holder": "Carlos González"
 }
 ```
 
 **Descripción de campos:**
 
-| Campo | Tipo | Requerido | Descripción |
-|-------|------|-----------|-------------|
-| `tenant_id` | number | Sí | ID del inquilino (debe existir en el sistema) |
-| `property_id` | number | Sí | ID de la propiedad |
-| `start_date` | date | Sí | Fecha de inicio del contrato |
-| `end_date` | date | Sí | Fecha de finalización del contrato |
-| `key_delivery_date` | date | No | Fecha de entrega de llaves |
-| `monthly_rent` | number | Sí | Alquiler mensual |
-| `currency` | string | No | Moneda (default: USD) |
-| `payment_day` | number | No | Día de pago (1-31, default: 1) |
-| `deposit_amount` | number | No | Monto del depósito (default: 2 meses) |
-| `payment_method` | string | No | Método de pago |
-| `late_fee_percentage` | number | No | % de recargo por pago tardío |
-| `grace_days` | number | No | Días de gracia antes de recargo |
-| `included_services` | array | No | Servicios incluidos |
-| `auto_renew` | boolean | No | Renovación automática |
-| `renewal_notice_days` | number | No | Días de aviso para no renovar |
-| `auto_increase_percentage` | number | No | % de aumento anual automático |
+| Campo | Tipo | Requerido | Descripción | Default |
+|-------|------|-----------|-------------|---------|
+| `tenant_id` | number | Sí | ID del inquilino (debe tener rol INQUILINO) | - |
+| `property_id` | number | Sí | ID de la propiedad | - |
+| `application_id` | number | No | ID de la solicitud que originó el contrato | null |
+| `start_date` | date | Sí | Fecha de inicio del contrato | - |
+| `end_date` | date | Sí | Fecha de finalización del contrato | - |
+| `key_delivery_date` | date | No | Fecha de entrega de llaves | null |
+| `monthly_rent` | number | Sí | Alquiler mensual | - |
+| `currency` | string | No | Moneda | "BOB" |
+| `payment_day` | number | No | Día de pago (1-31) | 5 |
+| `deposit_amount` | number | No | Monto del depósito | 0 |
+| `payment_method` | string | No | Método de pago | null |
+| `late_fee_percentage` | number | No | % de recargo por pago tardío | 0 |
+| `grace_days` | number | No | Días de gracia antes de recargo | 0 |
+| `included_services` | array | No | Servicios incluidos | null |
+| `auto_renew` | boolean | No | Renovación automática | false |
+| `renewal_notice_days` | number | No | Días de aviso para no renovar | 30 |
+| `auto_increase_percentage` | number | No | % de aumento anual automático | 0 |
 
 **Response (201):**
 ```json
@@ -219,9 +258,9 @@ Esta documentación cubre el sistema completo de gestión de contratos de alquil
   "start_date": "2026-02-01",
   "end_date": "2027-02-01",
   "monthly_rent": 1200.00,
-  "currency": "USD",
+  "currency": "BOB",
   "payment_day": 5,
-  "deposit_amount": 2400.00,
+  "deposit_amount": 1200.00,
   "created_at": "2026-02-05T10:00:00.000Z",
   "tenant": {
     "id": 5,
@@ -235,11 +274,19 @@ Esta documentación cubre el sistema completo de gestión de contratos de alquil
 }
 ```
 
+**⚠️ Validaciones:**
+- El inquilino debe tener rol `INQUILINO`
+- Si NO se envía `application_id`: el inquilino debe tener al menos una solicitud aprobada
+- Si se envía `application_id`: la solicitud debe existir y pertenecer al inquilino
+- El inquilino no puede tener ya un contrato activo
+- La propiedad debe estar disponible
+
 **Importante:**
 - El contrato se crea con estado `BORRADOR`
 - Se genera automáticamente un `contract_number` único
 - La propiedad pasa a estado `RESERVADO`
 - El inquilino recibe notificación para firmar
+- **Flujo recomendado:** Usar el sistema de solicitudes (`PATCH /:slug/applications/:id/approve`)
 
 ---
 
@@ -839,7 +886,14 @@ function AdminContractsList() {
           <tbody>
             {contracts.map(contract => (
               <tr key={contract.id}>
-                <td>{contract.contract_number}</td>
+                <td>
+                  {contract.contract_number}
+                  {contract.application_id && (
+                    <span className="badge badge-info" title={`Vinculado a solicitud #${contract.application_id}`}>
+                      ✓ Solicitud
+                    </span>
+                  )}
+                </td>
                 <td>{contract.tenant.name}</td>
                 <td>{contract.property.title}</td>
                 <td>{new Date(contract.start_date).toLocaleDateString()}</td>
@@ -890,23 +944,24 @@ function CreateContractForm() {
   const [formData, setFormData] = useState({
     tenant_id: '',
     property_id: '',
+    application_id: '',
     start_date: '',
     end_date: '',
     monthly_rent: '',
     deposit_amount: '',
-    currency: 'USD',
+    currency: 'BOB',
     payment_day: 5,
     payment_method: '',
     included_services: []
   });
 
   useEffect(() => {
-    // Cargar inquilinos
-    fetch('http://localhost:3000/users', {
+    // Cargar inquilinos (solo INQUILINO, preferiblemente con solicitud aprobada)
+    fetch('http://localhost:3000/mi-inmobiliaria/users/tenants?status=approved&hasActiveContract=false', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => setTenants(data.filter(u => u.role === 'USER')));
+      .then(data => setTenants(data));
 
     // Cargar propiedades disponibles
     fetch('http://localhost:3000/mi-inmobiliaria/admin/properties?status=DISPONIBLE', {
@@ -930,7 +985,8 @@ function CreateContractForm() {
       });
 
       if (!response.ok) {
-        throw new Error('Error al crear contrato');
+        const error = await response.json();
+        throw new Error(error.message || 'Error al crear contrato');
       }
 
       const contract = await response.json();
@@ -953,7 +1009,7 @@ function CreateContractForm() {
 
   return (
     <form onSubmit={handleSubmit} className="contract-form">
-      <h1>Crear Nuevo Contrato</h1>
+      <h1>Crear Nuevo Contrato (Manual)</h1>
 
       {/* Información básica */}
       <section className="form-section">
@@ -970,9 +1026,14 @@ function CreateContractForm() {
             {tenants.map(tenant => (
               <option key={tenant.id} value={tenant.id}>
                 {tenant.name} - {tenant.email}
+                {tenant.approved_applications > 0 && ' ✓ Solicitud aprobada'}
+                {tenant.active_contracts > 0 && ' ⚠ Tiene contrato activo'}
               </option>
             ))}
           </select>
+          <small>
+            Nota: Solo se muestran inquilinos con solicitud aprobada y sin contrato activo.
+          </small>
         </div>
 
         <div className="form-group">
@@ -1031,9 +1092,9 @@ function CreateContractForm() {
               value={formData.currency}
               onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
             >
+              <option value="BOB">BOB</option>
               <option value="USD">USD</option>
               <option value="EUR">EUR</option>
-              <option value="ARS">ARS</option>
             </select>
           </div>
         </div>
@@ -1045,7 +1106,7 @@ function CreateContractForm() {
               type="number"
               value={formData.deposit_amount}
               onChange={(e) => setFormData({ ...formData, deposit_amount: e.target.value })}
-              placeholder="2400.00"
+              placeholder="1200.00 (1 mes de renta por defecto)"
             />
           </div>
 
@@ -1336,20 +1397,69 @@ export default TenantContractDetail;
 - No permitas editar contratos `ACTIVO` o `FINALIZADO`
 - Solo los contratos `BORRADOR` pueden ser firmados
 
-### 3. PDF Generation
+### 3. Flujo Recomendado
+- **Usa el sistema de solicitudes** como flujo principal
+- La creación manual de contratos debe usarse solo en casos especiales
+- Muestra un indicador cuando un contrato esté vinculado a una solicitud (`application_id`)
+
+### 4. Listado de Inquilinos
+- Usa el endpoint `GET /:slug/users/tenants` para obtener inquilinos
+- Filtra por `status=approved` para mostrar solo inquilinos con solicitud aprobada
+- Filtra por `hasActiveContract=false` para inquilinos disponibles
+- Muestra métricas como `application_count` y `active_contracts`
+
+### 5. PDF Generation
 - El PDF se genera en el servidor
 - Descarga el archivo y ábrelo en una nueva pestaña o inicia la descarga
 - Considera mostrar un preview antes de permitir la firma
 
-### 4. Notificaciones
+### 6. Notificaciones
 - Cuando se crea un contrato, el inquilino recibe notificación
 - Cuando el inquilino firma, el admin recibe notificación
 - Implementa un sistema de notificaciones en tiempo real si es posible
 
-### 5. Validaciones
+### 7. Validaciones
 - Fecha de fin debe ser posterior a fecha de inicio
 - El alquiler debe ser mayor a 0
-- El inquilino y la propiedad deben existir
+- El inquilino debe tener rol `INQUILINO`
+- Para creación manual: el inquilino debe tener una solicitud aprobada
+- Un inquilino no puede tener más de un contrato activo
+
+### 8. Campos Actualizados
+- `application_id`: ID de la solicitud que originó el contrato (null si fue creación manual)
+- `currency`: Default ahora es "BOB" en lugar de "USD"
+- `deposit_amount`: Ya no tiene default automático, debe especificarse
+
+---
+
+## Resumen de Endpoints
+
+### Para Administradores
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/:slug/admin/contracts/dashboard` | Métricas de contratos |
+| `GET` | `/:slug/admin/contracts` | Listar todos los contratos |
+| `GET` | `/:slug/admin/contracts/:id` | Ver detalle de contrato |
+| `POST` | `/:slug/admin/contracts` | Crear contrato manual (casos especiales) |
+| `PATCH` | `/:slug/admin/contracts/:id` | Actualizar contrato |
+| `PATCH` | `/:slug/admin/contracts/:id/status` | Cambiar estado |
+| `POST` | `/:slug/admin/contracts/:id/renew` | Renovar contrato |
+| `GET` | `/:slug/admin/contracts/:id/pdf` | Descargar PDF |
+
+### Para Inquilinos
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/:slug/tenant/contracts` | Listar mis contratos |
+| `GET` | `/:slug/tenant/contracts/current` | Ver mi contrato actual |
+| `GET` | `/:slug/tenant/contracts/:id` | Ver detalle de mi contrato |
+| `POST` | `/:slug/tenant/contracts/:id/sign` | Firmar contrato |
+| `GET` | `/:slug/tenant/contracts/:id/pdf` | Descargar PDF de mi contrato |
+
+### Endpoints de Usuarios Relacionados
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/:slug/users/tenants` | Listar inquilinos (con filtros) |
+| `GET` | `/:slug/users/tenants/:id` | Ver detalle de inquilino |
 
 ---
 

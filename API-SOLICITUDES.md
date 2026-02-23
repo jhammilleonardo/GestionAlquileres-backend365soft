@@ -481,10 +481,11 @@ El administrador puede ver todos los detalles de una solicitud específica.
 
 ### 2.3 Aprobar Solicitud y Auto-Generar Contrato
 
-El administrador aprueba una solicitud. El sistema:
-1. Cambia el estado a `APROBADA`
-2. Auto-genera un contrato de alquiler (borrador)
-3. Notifica al inquilino
+El administrador aprueba una solicitud y crea automáticamente un contrato. El sistema:
+1. Cambia el estado de la solicitud a `APROBADA`
+2. Crea un contrato de alquiler con los datos proporcionados
+3. Vincula el contrato con la solicitud
+4. Notifica al inquilino
 
 **Endpoint:** `PATCH /:slug/applications/:id/approve`
 **Auth:** Requerida (ADMIN)
@@ -495,12 +496,64 @@ El administrador aprueba una solicitud. El sistema:
 - `slug` - Slug de la inmobiliaria
 - `id` - ID de la solicitud
 
-**Request Body (Opcional):**
+**Request Body (Mínimo Requerido):**
 ```json
 {
-  "admin_feedback": "Aprobado. Excelente perfil. Proceder con firma de contrato."
+  "monthly_rent": 1200.00
 }
 ```
+
+**Request Body (Completo con campos opcionales):**
+```json
+{
+  "admin_feedback": "Aprobado. Excelente perfil.",
+  "monthly_rent": 1200.00,
+  "deposit_amount": 1200.00,
+  "currency": "BOB",
+  "payment_day": 5,
+  "payment_method": "Transferencia bancaria",
+  "late_fee_percentage": 5,
+  "grace_days": 3,
+  "included_services": ["Internet", "Cable TV"],
+  "start_date": "2026-02-01",
+  "end_date": "2027-02-01",
+  "key_delivery_date": "2026-02-01",
+  "tenant_responsibilities": "Mantener la propiedad en buen estado",
+  "owner_responsibilities": "Realizar reparaciones necesarias",
+  "prohibitions": "No se permiten mascotas",
+  "coexistence_rules": "Respetar horarios de descanso",
+  "renewal_terms": "Renovación automática si no se avisa con 30 días",
+  "termination_terms": "60 días de preaviso",
+  "jurisdiction": "Bolivia",
+  "auto_renew": true,
+  "renewal_notice_days": 30,
+  "auto_increase_percentage": 10,
+  "bank_account_number": "123-456-789",
+  "bank_account_type": "Ahorros",
+  "bank_name": "Banco Nacional",
+  "bank_account_holder": "Propietario"
+}
+```
+
+**Descripción de campos:**
+
+| Campo | Tipo | Requerido | Descripción | Default |
+|-------|------|-----------|-------------|---------|
+| `monthly_rent` | number | **Sí** | Alquiler mensual | - |
+| `admin_feedback` | string | No | Feedback para el inquilino | "Solicitud aprobada..." |
+| `deposit_amount` | number | No | Depósito (si no se envía, = 1 mes de renta) | = monthly_rent |
+| `currency` | string | No | Moneda | "BOB" |
+| `payment_day` | number | No | Día de pago (1-31) | 5 |
+| `payment_method` | string | No | Método de pago | null |
+| `late_fee_percentage` | number | No | % de recargo por pago tardío | 0 |
+| `grace_days` | number | No | Días de gracia | 0 |
+| `included_services` | array | No | Servicios incluidos | null |
+| `start_date` | date | No | Fecha inicio (YYYY-MM-DD) | Hoy |
+| `end_date` | date | No | Fecha fin (YYYY-MM-DD) | Hoy + 1 año |
+| `key_delivery_date` | date | No | Fecha entrega llaves | null |
+| `auto_renew` | boolean | No | Renovación automática | false |
+| `renewal_notice_days` | number | No | Días aviso para no renovar | 30 |
+| `auto_increase_percentage` | number | No | % aumento anual automático | 0 |
 
 **Response (200):**
 ```json
@@ -516,7 +569,10 @@ El administrador aprueba una solicitud. El sistema:
     "id": 10,
     "number": "CTR-2026-0010",
     "status": "BORRADOR",
-    "message": "Se ha creado un borrador de contrato automáticamente. Favor revisar y activar."
+    "monthly_rent": 1200.00,
+    "currency": "BOB",
+    "deposit_amount": 1200.00,
+    "message": "Se ha creado un borrador de contrato automáticamente. El inquilino podrá firmarlo desde su portal."
   }
 }
 ```
@@ -524,13 +580,14 @@ El administrador aprueba una solicitud. El sistema:
 **Validaciones:**
 - La solicitud debe existir
 - La solicitud no puede estar ya aprobada
-- La propiedad debe estar disponible
+- `monthly_rent` es obligatorio y debe ser mayor a 0
+- Si no se envía `deposit_amount`, se calcula como 1 mes de renta
 
 **Notas:**
-- El contrato se genera automáticamente en estado `BORRADOR`
-- El inquilino recibe notificación
-- El admin puede modificar el contrato antes de pedirle al inquilino que lo firme
-- Las fechas del contrato son automáticas (hoy + 1 año)
+- El contrato se genera en estado `BORRADOR`
+- El contrato queda vinculado a la solicitud mediante `application_id`
+- El inquilino puede firmar el contrato desde su portal
+- El admin puede editar el contrato antes de que el inquilino lo firme
 
 ---
 
@@ -769,6 +826,14 @@ PASO 6: Contrato activo
 | `GET` | `/:slug/applications/:id` | Ver detalle de solicitud |
 | `PATCH` | `/:slug/applications/:id/approve` | Aprobar y generar contrato |
 | `PATCH` | `/:slug/applications/:id/status` | Cambiar estado o rechazar |
+
+### Endpoints Adicionales
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/:slug/users/tenants` | Listar todos los inquilinos |
+| `GET` | `/:slug/users/tenants?status=approved` | Listar inquilinos con solicitud aprobada |
+| `GET` | `/:slug/users/tenants?hasActiveContract=false` | Listar inquilinos sin contrato activo |
+| `GET` | `/:slug/users/tenants/:id` | Ver detalle de un inquilino |
 
 ---
 

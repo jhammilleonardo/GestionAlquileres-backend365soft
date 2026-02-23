@@ -14,6 +14,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ApplicationsService } from './applications.service';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationStatusDto } from './dto/update-application-status.dto';
+import { ApproveApplicationDto } from './dto/approve-application.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -66,15 +67,16 @@ export class ApplicationsController {
   @Roles('ADMIN', 'SUPERADMIN')
   @ApiOperation({
     summary: 'Aprobar solicitud y crear contrato automáticamente (Admin)',
+    description: 'Aprobar una solicitud crea automáticamente un contrato con los datos proporcionados. El monthly_rent es obligatorio.',
   })
   async approveAndCreateContract(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdateApplicationStatusDto,
+    @Body() approveDto: ApproveApplicationDto,
     @CurrentUser() user: { userId: number },
   ) {
     return await this.applicationsService.approveAndCreateContract(
       id,
-      updateDto,
+      approveDto,
       user.userId,
     );
   }

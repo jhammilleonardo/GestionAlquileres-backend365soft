@@ -307,13 +307,19 @@ export class PaymentsService {
    */
   async createPaymentAsAdmin(
     dto: CreatePaymentAsAdminDto,
-    adminId: number
+    adminId: number,
+    schemaName?: string
   ): Promise<Payment> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
+      // Establecer el schema del tenant en esta conexión
+      if (schemaName) {
+        await queryRunner.query(`SET search_path TO ${schemaName}, public`);
+      }
+
       // Verificar que el contrato existe y pertenece al tenant
       const contract = await queryRunner.query(
         `SELECT id, tenant_id, property_id, status FROM contracts WHERE id = $1`,
@@ -440,16 +446,17 @@ export class PaymentsService {
   async updatePaymentStatus(
     id: number,
     dto: UpdatePaymentStatusDto,
-    adminId: number
+    adminId: number,
+    schemaName?: string
   ): Promise<Payment> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+    // Usar nombre de tabla calificado para evitar depender de search_path
+    const schema = schemaName || 'public';
+    const table = `${schema}.payments`;
 
     try {
       // Verificar que el pago existe
-      const payment = await queryRunner.query(
-        'SELECT * FROM payments WHERE id = $1',
+      const payment = await this.dataSource.query(
+        `SELECT * FROM ${table} WHERE id = $1`,
         [id]
       );
 
@@ -457,14 +464,15 @@ export class PaymentsService {
         throw new NotFoundException(`Pago #${id} no encontrado`);
       }
 
-      // Actualizar el pago
-      const updated = await queryRunner.query(
-        `UPDATE payments
+      // Actualizar el pago ($6 es boolean para evitar conflicto de tipos en $1)
+      const isApproved = dto.status === 'APPROVED';
+      const updated = await this.dataSource.query(
+        `UPDATE ${table}
          SET status = $1,
              admin_notes = $2,
              rejection_reason = $3,
              approved_by = $4,
-             approved_at = CASE WHEN $1 = 'APPROVED' THEN NOW() ELSE approved_at END,
+             approved_at = CASE WHEN $6 THEN NOW() ELSE approved_at END,
              updated_at = NOW()
          WHERE id = $5
          RETURNING *`,
@@ -473,24 +481,25 @@ export class PaymentsService {
           dto.admin_notes || payment[0].admin_notes,
           dto.rejection_reason || payment[0].rejection_reason,
           adminId,
-          id
+          id,
+          isApproved
         ]
       );
 
-      await queryRunner.commitTransaction();
       return updated[0];
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      console.error('[updatePaymentStatus] Error:', error?.message || error);
       throw error;
-    } finally {
-      await queryRunner.release();
     }
   }
 
   /**
    * Eliminar un pago (Admin)
    */
-  async deletePayment(id: number): Promise<void> {
+  async deletePayment(id: number, schemaName?: string): Promise<void> {
+    if (schemaName) {
+      await this.dataSource.query(`SET search_path TO ${schemaName}, public`);
+    }
     const result = await this.dataSource.query(
       'DELETE FROM payments WHERE id = $1',
       [id]

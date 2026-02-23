@@ -263,10 +263,12 @@ export class MaintenanceService {
       SELECT
         mr.*,
         json_build_object('id', p.id, 'title', p.title) as property,
-        json_build_object('id', c.id, 'contract_number', c.contract_number) as contract
+        json_build_object('id', c.id, 'contract_number', c.contract_number) as contract,
+        json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'phone', u.phone) as tenant
       FROM maintenance_requests mr
       LEFT JOIN properties p ON p.id = mr.property_id
       LEFT JOIN contracts c ON c.id = mr.contract_id
+      LEFT JOIN "user" u ON u.id = mr.tenant_id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -333,10 +335,12 @@ export class MaintenanceService {
       `SELECT
         mr.*,
         json_build_object('id', p.id, 'title', p.title) as property,
-        json_build_object('id', c.id, 'contract_number', c.contract_number) as contract
+        json_build_object('id', c.id, 'contract_number', c.contract_number) as contract,
+        json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'phone', u.phone) as tenant
       FROM maintenance_requests mr
       LEFT JOIN properties p ON p.id = mr.property_id
       LEFT JOIN contracts c ON c.id = mr.contract_id
+      LEFT JOIN "user" u ON u.id = mr.tenant_id
       WHERE mr.id = $1`,
       [id],
     );

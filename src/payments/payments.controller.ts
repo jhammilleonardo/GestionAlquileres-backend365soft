@@ -58,11 +58,13 @@ export class AdminPaymentsController {
    */
   @Post()
   async createPaymentAsAdmin(
+    @Param('slug') slug: string,
     @Body() dto: CreatePaymentAsAdminDto,
     @Request() req
   ) {
     const adminId = req.user.userId;
-    return this.paymentsService.createPaymentAsAdmin(dto, adminId);
+    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    return this.paymentsService.createPaymentAsAdmin(dto, adminId, schemaName);
   }
 
   /**
@@ -80,13 +82,15 @@ export class AdminPaymentsController {
    */
   @Patch(':id')
   async updatePaymentStatus(
+    @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePaymentStatusDto,
     @Request() req
   ) {
     // Obtener adminId del usuario autenticado
     const adminId = req.user.userId;
-    return this.paymentsService.updatePaymentStatus(id, dto, adminId);
+    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    return this.paymentsService.updatePaymentStatus(id, dto, adminId, schemaName);
   }
 
   /**
@@ -94,8 +98,13 @@ export class AdminPaymentsController {
    * Eliminar un pago
    */
   @Delete(':id')
-  async deletePayment(@Param('id', ParseIntPipe) id: number) {
-    await this.paymentsService.deletePayment(id);
+  async deletePayment(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req
+  ) {
+    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    await this.paymentsService.deletePayment(id, schemaName);
     return { message: 'Pago eliminado exitosamente' };
   }
 

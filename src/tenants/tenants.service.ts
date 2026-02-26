@@ -143,18 +143,19 @@ export class TenantsService {
       // 5. Crear tablas de Properties
       await this.createPropertiesTables(tenant.schema_name);
 
-      // 6. Crear tablas de Contracts
+      // 6. Crear tablas de Applications (antes de Contracts, ya que contracts referencia rental_applications)
+      await this.createApplicationsTables(tenant.schema_name);
+
+      // 7. Crear tablas de Contracts
       await this.createContractsTables(tenant.schema_name);
 
-      // 7. Crear tablas de Maintenance
+      // 8. Crear tablas de Maintenance
       await this.createMaintenanceTables(tenant.schema_name);
 
-      // 8. Crear tablas de Notifications
+      // 9. Crear tablas de Notifications
       await this.createNotificationsTables(tenant.schema_name);
 
-      // 9. Crear tablas de Applications
-      await this.createApplicationsTables(tenant.schema_name);
-      // 9. Crear tablas de Payments
+      // 10. Crear tablas de Payments
       await this.createPaymentsTables(tenant.schema_name);
 
       // 10. Insertar datos iniciales (seed data)
@@ -380,6 +381,7 @@ export class TenantsService {
         renewal_notice_days integer DEFAULT 30,
         auto_increase_percentage decimal(5,2) DEFAULT 0,
         previous_contract_id integer,
+        application_id integer,
         termination_reason text,
         applied_penalty decimal(10,2),
         returned_deposit decimal(10,2),
@@ -389,7 +391,9 @@ export class TenantsService {
         CONSTRAINT fk_contracts_property FOREIGN KEY (property_id)
           REFERENCES ${schemaName}.properties(id),
         CONSTRAINT fk_contracts_tenant FOREIGN KEY (tenant_id)
-          REFERENCES ${schemaName}."user"(id)
+          REFERENCES ${schemaName}."user"(id),
+        CONSTRAINT fk_contracts_application FOREIGN KEY (application_id)
+          REFERENCES ${schemaName}.rental_applications(id) ON DELETE SET NULL
       );
     `);
 

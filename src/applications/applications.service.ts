@@ -80,71 +80,77 @@ export class ApplicationsService {
     });
 
     // 4. Crear el contrato usando LOS DATOS DEL DTO
+    // Si falla, revertir el estado de la solicitud y propagar el error real
+    const contractData: any = {
+      property_id: Number(application.property_id),
+      tenant_id: Number(application.applicant_id),
+      start_date: startDate.toISOString(),
+      end_date: endDate.toISOString(),
+      monthly_rent: approveDto.monthly_rent,
+      currency: approveDto.currency || 'BOB',
+      payment_day: approveDto.payment_day || 5,
+      deposit_amount: depositAmount,
+      application_id: id, // Vincular contrato con la solicitud
+    };
+
+    // Campos opcionales del contrato
+    if (approveDto.payment_method) contractData.payment_method = approveDto.payment_method;
+    if (approveDto.late_fee_percentage !== undefined) contractData.late_fee_percentage = approveDto.late_fee_percentage;
+    if (approveDto.grace_days !== undefined) contractData.grace_days = approveDto.grace_days;
+    if (approveDto.included_services) contractData.included_services = approveDto.included_services;
+    if (approveDto.key_delivery_date) contractData.key_delivery_date = approveDto.key_delivery_date;
+    if (approveDto.tenant_responsibilities) contractData.tenant_responsibilities = approveDto.tenant_responsibilities;
+    if (approveDto.owner_responsibilities) contractData.owner_responsibilities = approveDto.owner_responsibilities;
+    if (approveDto.prohibitions) contractData.prohibitions = approveDto.prohibitions;
+    if (approveDto.coexistence_rules) contractData.coexistence_rules = approveDto.coexistence_rules;
+    if (approveDto.renewal_terms) contractData.renewal_terms = approveDto.renewal_terms;
+    if (approveDto.termination_terms) contractData.termination_terms = approveDto.termination_terms;
+    if (approveDto.jurisdiction) contractData.jurisdiction = approveDto.jurisdiction;
+    if (approveDto.auto_renew !== undefined) contractData.auto_renew = approveDto.auto_renew;
+    if (approveDto.renewal_notice_days !== undefined) contractData.renewal_notice_days = approveDto.renewal_notice_days;
+    if (approveDto.auto_increase_percentage !== undefined) contractData.auto_increase_percentage = approveDto.auto_increase_percentage;
+    if (approveDto.bank_account_number) contractData.bank_account_number = approveDto.bank_account_number;
+    if (approveDto.bank_account_type) contractData.bank_account_type = approveDto.bank_account_type;
+    if (approveDto.bank_name) contractData.bank_name = approveDto.bank_name;
+    if (approveDto.bank_account_holder) contractData.bank_account_holder = approveDto.bank_account_holder;
+
+    let contract: any;
     try {
-      const contractData: any = {
-        property_id: Number(application.property_id),
-        tenant_id: Number(application.applicant_id),
-        start_date: startDate.toISOString(),
-        end_date: endDate.toISOString(),
-        monthly_rent: approveDto.monthly_rent,
-        currency: approveDto.currency || 'BOB',
-        payment_day: approveDto.payment_day || 5,
-        deposit_amount: depositAmount,
-        application_id: id, // Vincular contrato con la solicitud
-      };
-
-      // Campos opcionales del contrato
-      if (approveDto.payment_method) contractData.payment_method = approveDto.payment_method;
-      if (approveDto.late_fee_percentage !== undefined) contractData.late_fee_percentage = approveDto.late_fee_percentage;
-      if (approveDto.grace_days !== undefined) contractData.grace_days = approveDto.grace_days;
-      if (approveDto.included_services) contractData.included_services = approveDto.included_services;
-      if (approveDto.key_delivery_date) contractData.key_delivery_date = approveDto.key_delivery_date;
-      if (approveDto.tenant_responsibilities) contractData.tenant_responsibilities = approveDto.tenant_responsibilities;
-      if (approveDto.owner_responsibilities) contractData.owner_responsibilities = approveDto.owner_responsibilities;
-      if (approveDto.prohibitions) contractData.prohibitions = approveDto.prohibitions;
-      if (approveDto.coexistence_rules) contractData.coexistence_rules = approveDto.coexistence_rules;
-      if (approveDto.renewal_terms) contractData.renewal_terms = approveDto.renewal_terms;
-      if (approveDto.termination_terms) contractData.termination_terms = approveDto.termination_terms;
-      if (approveDto.jurisdiction) contractData.jurisdiction = approveDto.jurisdiction;
-      if (approveDto.auto_renew !== undefined) contractData.auto_renew = approveDto.auto_renew;
-      if (approveDto.renewal_notice_days !== undefined) contractData.renewal_notice_days = approveDto.renewal_notice_days;
-      if (approveDto.auto_increase_percentage !== undefined) contractData.auto_increase_percentage = approveDto.auto_increase_percentage;
-      if (approveDto.bank_account_number) contractData.bank_account_number = approveDto.bank_account_number;
-      if (approveDto.bank_account_type) contractData.bank_account_type = approveDto.bank_account_type;
-      if (approveDto.bank_name) contractData.bank_name = approveDto.bank_name;
-      if (approveDto.bank_account_holder) contractData.bank_account_holder = approveDto.bank_account_holder;
-
-      const contract = await this.contractsService.create(
-        contractData,
-        adminId,
+      contract = await this.contractsService.create(contractData, adminId);
+    } catch (contractError: unknown) {
+      // Revertir el estado de la solicitud al estado anterior
+      await this.dataSource.query(
+        `UPDATE rental_applications SET status = $1, updated_at = NOW() WHERE id = $2`,
+        [application.status, id],
       );
-
-      return {
-        message: 'Solicitud aprobada con éxito',
-        application: {
-          id: updatedApplication.id,
-          status: updatedApplication.status,
-          property: application.property_title,
-          applicant: application.applicant_name,
-        },
-        contract_generated: {
-          id: contract.id,
-          number: contract.contract_number,
-          status: contract.status,
-          monthly_rent: contract.monthly_rent,
-          currency: contract.currency,
-          deposit_amount: contract.deposit_amount,
-          message:
-            'Se ha creado un borrador de contrato automáticamente. El inquilino podrá firmarlo desde su portal.',
-        },
-      };
-    } catch (error: any) {
-      return {
-        message: 'Solicitud aprobada, pero el contrato no se pudo auto-generar',
-        application: updatedApplication,
-        reason: (error as Error)?.message || 'Error de validación en contratos',
-      };
+      const reason =
+        contractError instanceof Error
+          ? contractError.message
+          : 'Error al crear el contrato';
+      throw new BadRequestException(
+        `No se pudo aprobar la solicitud: ${reason}`,
+      );
     }
+
+    return {
+      message: 'Solicitud aprobada y contrato creado con éxito',
+      application: {
+        id: updatedApplication.id,
+        status: updatedApplication.status,
+        property: application.property_title,
+        applicant: application.applicant_name,
+      },
+      contract_generated: {
+        id: contract.id,
+        number: contract.contract_number,
+        status: contract.status,
+        monthly_rent: contract.monthly_rent,
+        currency: contract.currency,
+        deposit_amount: contract.deposit_amount,
+        message:
+          'Se ha creado un borrador de contrato automáticamente. El inquilino podrá firmarlo desde su portal.',
+      },
+    };
   }
 
   async create(createApplicationDto: CreateApplicationDto, userId: number) {

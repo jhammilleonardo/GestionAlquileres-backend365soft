@@ -2,11 +2,12 @@ import {
   IsOptional,
   IsEnum,
   IsNumber,
+  IsBoolean,
   Min,
   Max,
   IsString,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export class FilterPropertiesDto {
   @IsOptional()
@@ -33,16 +34,49 @@ export class FilterPropertiesDto {
 
   @IsOptional()
   @IsString()
-  search?: string; // Busca en título y descripción
+  search?: string;
+
+  // Filtros de precio
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  min_rent?: number;
 
   @IsOptional()
-  @IsEnum(['created_at', 'updated_at', 'title'])
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  max_rent?: number;
+
+  // Filtros de caracteristicas
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  min_bedrooms?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  min_bathrooms?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  is_furnished?: boolean;
+
+  // Ordenamiento
+  @IsOptional()
+  @IsEnum(['created_at', 'updated_at', 'title', 'monthly_rent'])
   sort_by?: string;
 
   @IsOptional()
   @IsEnum(['ASC', 'DESC'])
   sort_order?: 'ASC' | 'DESC';
 
+  // Paginacion
   @IsOptional()
   @IsNumber()
   @Min(1)

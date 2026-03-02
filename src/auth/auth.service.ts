@@ -387,14 +387,21 @@ export class AuthService {
 
     // Buscar el email en cada tenant
     for (const tenant of tenants) {
-      await this.dataSource.query(`SET search_path TO ${tenant.schema_name}`);
-      const user = await this.findUserByEmail(email);
+      try {
+        await this.dataSource.query(`SET search_path TO ${tenant.schema_name}`);
+        const user = await this.findUserByEmail(email);
 
-      if (user && user.role === 'ADMIN') {
-        return { user, tenant };
+        if (user && user.role === 'ADMIN') {
+          return { user, tenant };
+        }
+      } catch {
+        // El schema del tenant no existe o no está inicializado, se omite
+        await this.dataSource.query('SET search_path TO public');
       }
     }
 
+    // Restablecer al schema público al finalizar
+    await this.dataSource.query('SET search_path TO public');
     return null;
   }
 
@@ -408,13 +415,21 @@ export class AuthService {
     );
 
     for (const tenant of tenants) {
-      await this.dataSource.query(`SET search_path TO ${tenant.schema_name}`);
-      const user = await this.findUserByEmail(email);
-      if (user) {
-        return true;
+      try {
+        await this.dataSource.query(`SET search_path TO ${tenant.schema_name}`);
+        const user = await this.findUserByEmail(email);
+        if (user) {
+          await this.dataSource.query('SET search_path TO public');
+          return true;
+        }
+      } catch {
+        // El schema del tenant no existe o no está inicializado, se omite
+        await this.dataSource.query('SET search_path TO public');
       }
     }
 
+    // Restablecer al schema público al finalizar
+    await this.dataSource.query('SET search_path TO public');
     return false;
   }
 }

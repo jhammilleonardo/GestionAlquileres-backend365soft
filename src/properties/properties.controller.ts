@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Req,
   UseGuards,
   ParseIntPipe,
   UseInterceptors,
@@ -22,14 +23,20 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { PropertiesService } from './properties.service';
-import { CreatePropertyDto } from './dto/create-property.dto';
+import {
+  CreatePropertyDto,
+  CreateRentalOwnerDto,
+  UpdateRentalOwnerDto,
+  AssignOwnerDto,
+} from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { UpdatePropertyDetailsDto } from './dto/update-property-details.dto';
 import { FilterPropertiesDto } from './dto/filter-properties.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { multerConfig } from '../common/utils/multer.config';
+import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 
-// Admin Controller - Gestión completa de propiedades
+// Admin Controller - Gestion completa de propiedades
 @ApiTags('Properties - Admin')
 @ApiBearerAuth()
 @Controller(':slug/admin')
@@ -37,7 +44,21 @@ import { multerConfig } from '../common/utils/multer.config';
 export class AdminPropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
 
+  // =============================================
+  // Stats / Dashboard
+  // =============================================
+
+  @Get('properties/stats')
+  @ApiOperation({ summary: 'Obtener estadisticas de propiedades' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  async getStats(@Param('slug') slug: string) {
+    return this.propertiesService.getStats();
+  }
+
+  // =============================================
   // CRUD Properties
+  // =============================================
+
   @Post('properties')
   @ApiOperation({ summary: 'Crear una nueva propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
@@ -92,7 +113,10 @@ export class AdminPropertiesController {
     return this.propertiesService.remove(id);
   }
 
-  // Property Details (edición posterior)
+  // =============================================
+  // Property Details
+  // =============================================
+
   @Patch('properties/:id/details')
   @ApiOperation({ summary: 'Actualizar detalles de una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
@@ -105,7 +129,10 @@ export class AdminPropertiesController {
     return this.propertiesService.updateDetails(id, updateDetailsDto);
   }
 
-  // Upload Images
+  // =============================================
+  // Property Images
+  // =============================================
+
   @Post('properties/:id/images')
   @ApiOperation({ summary: 'Subir imagen de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
@@ -120,17 +147,14 @@ export class AdminPropertiesController {
       throw new BadRequestException('No file uploaded');
     }
 
-    // Get current property
     const property = await this.propertiesService.findOne(id);
-
-    // Add new image URL to images array
-    // file.path = /abs/path/to/storage/properties/{tenant}/{id}/filename.ext
-    // We store the path relative to cwd: /storage/properties/{tenant}/{id}/filename.ext
     const images = Array.isArray(property.images) ? [...property.images] : [];
-    const imageUrl = file.path.replace(process.cwd(), '').replace(/\\/g, '/');
+    const imageUrl = file.path
+      .replace(process.cwd(), '')
+      .replace(/\\/g, '/')
+      .replace(/^\//, ''); // Remove leading slash
     images.push(imageUrl);
 
-    // Update property
     return this.propertiesService.updateDetails(id, { images });
   }
 
@@ -154,7 +178,39 @@ export class AdminPropertiesController {
     return this.propertiesService.updateDetails(id, { images });
   }
 
+  // =============================================
+  // Property Owners (asociacion propiedad-dueno)
+  // =============================================
+
+  @Post('properties/:id/owners')
+  @ApiOperation({ summary: 'Asignar propietario a una propiedad' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async assignOwner(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() assignDto: AssignOwnerDto,
+  ) {
+    return this.propertiesService.assignOwnerToProperty(id, assignDto);
+  }
+
+  @Delete('properties/:id/owners/:ownerRelationId')
+  @ApiOperation({ summary: 'Desasociar propietario de una propiedad' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiParam({ name: 'ownerRelationId', type: Number })
+  async removeOwner(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('ownerRelationId', ParseIntPipe) ownerRelationId: number,
+  ) {
+    return this.propertiesService.removeOwnerFromProperty(id, ownerRelationId);
+  }
+
+  // =============================================
   // Property Types and Subtypes
+  // =============================================
+
   @Get('property-types')
   @ApiOperation({ summary: 'Obtener tipos de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
@@ -175,11 +231,17 @@ export class AdminPropertiesController {
     );
   }
 
-  // Rental Owners
+  // =============================================
+  // Rental Owners CRUD
+  // =============================================
+
   @Post('rental-owners')
   @ApiOperation({ summary: 'Crear propietario' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async createRentalOwner(@Param('slug') slug: string, @Body() ownerDto: any) {
+  async createRentalOwner(
+    @Param('slug') slug: string,
+    @Body() ownerDto: CreateRentalOwnerDto,
+  ) {
     return this.propertiesService.createRentalOwner(ownerDto);
   }
 
@@ -191,7 +253,7 @@ export class AdminPropertiesController {
   }
 
   @Get('rental-owners/:id')
-  @ApiOperation({ summary: 'Obtener un propietario' })
+  @ApiOperation({ summary: 'Obtener un propietario con sus propiedades' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async getRentalOwner(
@@ -200,37 +262,60 @@ export class AdminPropertiesController {
   ) {
     return this.propertiesService.getRentalOwner(id);
   }
+
+  @Patch('rental-owners/:id')
+  @ApiOperation({ summary: 'Actualizar propietario' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async updateRentalOwner(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateDto: UpdateRentalOwnerDto,
+  ) {
+    return this.propertiesService.updateRentalOwner(id, updateDto);
+  }
+
+  @Delete('rental-owners/:id')
+  @ApiOperation({ summary: 'Eliminar propietario' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async removeRentalOwner(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.propertiesService.removeRentalOwner(id);
+  }
 }
 
-// Catálogo Público - Propiedades disponibles para todos
+// Catalogo Publico - Propiedades disponibles para todos
 @ApiTags('Properties - Public Catalog')
 @Controller(':slug/catalog')
 export class PublicPropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
 
   @Get('properties')
-  @ApiOperation({ summary: 'Obtener propiedades disponibles (público)' })
+  @ApiOperation({ summary: 'Obtener propiedades disponibles (publico)' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   async findAvailable(
     @Param('slug') slug: string,
     @Query() filters: FilterPropertiesDto,
   ) {
-    return this.propertiesService.findAvailable(filters, slug);
+    return this.propertiesService.findAvailable(filters);
   }
 
   @Get('properties/:id')
-  @ApiOperation({ summary: 'Obtener detalle de propiedad (público)' })
+  @ApiOperation({ summary: 'Obtener detalle de propiedad (publico)' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async findOne(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.propertiesService.findOne(id, slug);
+    return this.propertiesService.findOne(id);
   }
 }
 
-// Tenant Controller - Gestión de propiedades para inquilinos
+// Tenant Controller - Gestion de propiedades para inquilinos
 @ApiTags('Properties - Tenant')
 @ApiBearerAuth()
 @Controller(':slug/tenant')
@@ -244,8 +329,9 @@ export class TenantPropertiesController {
   async findAll(
     @Param('slug') slug: string,
     @Query() filters: FilterPropertiesDto,
+    @Req() req: TenantRequest,
   ) {
-    return this.propertiesService.findAll(filters);
+    return this.propertiesService.findByTenant(req.user!.userId, filters);
   }
 
   @Get('properties/:id')

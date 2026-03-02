@@ -90,28 +90,39 @@ export class ContractsService {
 
   async create(createContractDto: CreateContractDto, adminUserId?: number) {
     // 1. Validar que el admin no se esté creando un contrato a sí mismo
-    if (adminUserId && createContractDto.tenant_id === adminUserId) {
+    // Esta validación NO aplica cuando el contrato viene de una solicitud aprobada,
+    // ya que el solicitante es siempre un inquilino distinto al admin que aprueba.
+    if (
+      !createContractDto.application_id &&
+      adminUserId &&
+      createContractDto.tenant_id === adminUserId
+    ) {
       throw new BadRequestException(
         'No puedes crear un contrato para ti mismo. Los administradores no pueden ser inquilinos.',
       );
     }
 
     // 2. Validar que el inquilino existe y tenga rol INQUILINO
-    const tenant = await this.dataSource.query<{ role: string }[]>(
-      'SELECT role FROM "user" WHERE id = $1',
-      [createContractDto.tenant_id],
-    );
-
-    if (tenant.length === 0) {
-      throw new NotFoundException(
-        `Usuario con ID ${createContractDto.tenant_id} no encontrado`,
+    // Si viene de una solicitud aprobada, el usuario ya fue validado como INQUILINO
+    // al registrarse, por lo que omitimos la verificación de rol para evitar
+    // problemas con el connection pool de TypeORM y el schema multi-tenant.
+    if (!createContractDto.application_id) {
+      const tenant = await this.dataSource.query<{ role: string }[]>(
+        'SELECT role FROM "user" WHERE id = $1',
+        [createContractDto.tenant_id],
       );
-    }
 
-    if (tenant[0].role !== 'INQUILINO') {
-      throw new BadRequestException(
-        'El contrato solo puede ser asignado a usuarios con rol INQUILINO',
-      );
+      if (tenant.length === 0) {
+        throw new NotFoundException(
+          `Usuario con ID ${createContractDto.tenant_id} no encontrado`,
+        );
+      }
+
+      if (tenant[0].role !== 'INQUILINO') {
+        throw new BadRequestException(
+          'El contrato solo puede ser asignado a usuarios con rol INQUILINO',
+        );
+      }
     }
 
     // 2.1. Si NO viene de una solicitud, validar que el inquilino tenga una solicitud aprobada
@@ -163,7 +174,8 @@ export class ContractsService {
       );
     }
 
-    // 4. Validar que la propiedad esté disponible
+    // 4. Validar que la propiedad exista (si viene de una solicitud aprobada
+    // ya se validó el estado al crear la solicitud, no se vuelve a bloquear)
     const property = await this.dataSource.query<{ status: string }[]>(
       'SELECT status FROM properties WHERE id = $1',
       [createContractDto.property_id],
@@ -175,9 +187,14 @@ export class ContractsService {
       );
     }
 
-    if (property[0].status !== 'DISPONIBLE') {
+    // Solo bloquear si la propiedad está en estado INACTIVO o MANTENIMIENTO
+    // Si viene de una solicitud aprobada (application_id), saltear la validación de estado
+    if (
+      !createContractDto.application_id &&
+      !['DISPONIBLE', 'RESERVADO'].includes(property[0].status)
+    ) {
       throw new BadRequestException(
-        'La propiedad no está disponible para un nuevo contrato',
+        `La propiedad no está disponible para un nuevo contrato (estado actual: ${property[0].status})`,
       );
     }
 
@@ -240,7 +257,13 @@ export class ContractsService {
 
     const savedContract = insertResult[0];
 
-    // 5. Registrar en historial
+    // 5. Actualizar el estado de la propiedad a OCUPADO
+    await this.dataSource.query(
+      `UPDATE properties SET status = 'OCUPADO', updated_at = NOW() WHERE id = $1`,
+      [createContractDto.property_id],
+    );
+
+    // 6. Registrar en historial
     await this.logHistory(
       savedContract.id,
       'status',

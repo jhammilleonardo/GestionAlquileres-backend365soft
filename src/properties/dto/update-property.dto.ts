@@ -1,26 +1,126 @@
-import { PartialType, OmitType } from '@nestjs/mapped-types';
-import { CreatePropertyDto } from './create-property.dto';
+import {
+  IsOptional,
+  IsNumber,
+  IsString,
+  IsBoolean,
+  IsArray,
+  Min,
+  IsEnum,
+} from 'class-validator';
+import { CreatePropertyAddressDto } from './create-property.dto';
 
-export class UpdatePropertyDto extends PartialType(
-  OmitType(CreatePropertyDto, [
-    'title',
-    'property_type_id',
-    'property_subtype_id',
-    'addresses',
-  ] as const),
-) {
-  // Permite actualizar título y tipos en edición
+// DTO independiente para actualizar propiedad (sin herencia compleja)
+export class UpdatePropertyDto {
+  // Basic Info
+  @IsOptional()
+  @IsString()
   title?: string;
-  property_type_id?: number;
-  property_subtype_id?: number;
-  addresses?: CreatePropertyDto['addresses'];
 
-  // Campos de detalles (edición posterior)
+  @IsOptional()
+  @IsNumber()
+  property_type_id?: number;
+
+  @IsOptional()
+  @IsNumber()
+  property_subtype_id?: number;
+
+  @IsOptional()
+  @IsString()
   description?: string;
-  latitude?: number;
-  longitude?: number;
-  images?: string[];
-  amenities?: string[];
-  included_items?: string[];
+
+  @IsOptional()
+  @IsArray()
+  addresses?: CreatePropertyAddressDto[];
+
+  // Financial fields
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthly_rent?: number;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   security_deposit_amount?: number;
+
+  @IsOptional()
+  @IsString()
+  account_number?: string;
+
+  @IsOptional()
+  @IsString()
+  account_type?: string;
+
+  @IsOptional()
+  @IsString()
+  account_holder_name?: string;
+
+  // Property characteristics
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  square_meters?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  bedrooms?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  bathrooms?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  parking_spaces?: number;
+
+  @IsOptional()
+  @IsNumber()
+  year_built?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  is_furnished?: boolean;
+
+  // Location
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  // Arrays
+  @IsOptional()
+  @IsArray()
+  images?: string[];
+
+  @IsOptional()
+  @IsArray()
+  amenities?: string[];
+
+  @IsOptional()
+  @IsArray()
+  included_items?: string[];
+
+  // Property rules (JSONB)
+  @IsOptional()
+  property_rules?: {
+    pets_allowed?: boolean;
+    smoking_allowed?: boolean;
+    max_occupants?: number;
+    min_lease_months?: number;
+  };
+
+  // Status
+  @IsOptional()
+  @IsEnum(['DISPONIBLE', 'OCUPADO', 'MANTENIMIENTO', 'RESERVADO', 'INACTIVO'])
+  status?: string;
 }

@@ -112,8 +112,11 @@ export class PropertiesService {
     // Create property using SQL
     const insertResult = await this.dataSource.query(
       `INSERT INTO properties (title, property_type_id, property_subtype_id, description,
-        security_deposit_amount, account_number, account_type, account_holder_name, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+        security_deposit_amount, account_number, account_type, account_holder_name,
+        monthly_rent, currency, square_meters, bedrooms, bathrooms, parking_spaces,
+        year_built, is_furnished, latitude, longitude, images, amenities, included_items, property_rules,
+        created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::json, $20::json, $21::json, $22::jsonb, NOW(), NOW())
        RETURNING *`,
       [
         createPropertyDto.title,
@@ -124,6 +127,20 @@ export class PropertiesService {
         createPropertyDto.account_number || null,
         createPropertyDto.account_type || null,
         createPropertyDto.account_holder_name || null,
+        createPropertyDto.monthly_rent || null,
+        createPropertyDto.currency || 'BOB',
+        createPropertyDto.square_meters || null,
+        createPropertyDto.bedrooms || null,
+        createPropertyDto.bathrooms || null,
+        createPropertyDto.parking_spaces || null,
+        createPropertyDto.year_built || null,
+        createPropertyDto.is_furnished ?? false,
+        createPropertyDto.latitude || null,
+        createPropertyDto.longitude || null,
+        JSON.stringify([]),
+        createPropertyDto.amenities ? JSON.stringify(createPropertyDto.amenities) : null,
+        createPropertyDto.included_items ? JSON.stringify(createPropertyDto.included_items) : null,
+        createPropertyDto.property_rules ? JSON.stringify(createPropertyDto.property_rules) : null,
       ],
     );
 
@@ -275,6 +292,8 @@ export class PropertiesService {
         p.status, p.latitude, p.longitude, p.security_deposit_amount,
         p.account_number, p.account_type, p.account_holder_name,
         p.images, p.amenities, p.included_items,
+        p.monthly_rent, p.currency, p.square_meters, p.bedrooms, p.bathrooms,
+        p.parking_spaces, p.year_built, p.is_furnished, p.property_rules,
         p.created_at, p.updated_at,
         pt.name as property_type_name, pt.code as property_type_code,
         pst.name as property_subtype_name, pst.code as property_subtype_code,
@@ -348,7 +367,8 @@ export class PropertiesService {
 
     // Get owners
     const owners = await this.dataSource.query(
-      `SELECT po.*, ro.name as rental_owner_name, ro.primary_email as rental_owner_email
+      `SELECT po.*, ro.name as rental_owner_name, ro.primary_email as rental_owner_email,
+        ro.phone_number as rental_owner_phone
        FROM property_owners po
        LEFT JOIN rental_owners ro ON po.rental_owner_id = ro.id
        WHERE po.property_id = $1`,
@@ -372,6 +392,15 @@ export class PropertiesService {
       account_number: property.account_number,
       account_type: property.account_type,
       account_holder_name: property.account_holder_name,
+      monthly_rent: property.monthly_rent,
+      currency: property.currency,
+      square_meters: property.square_meters,
+      bedrooms: property.bedrooms,
+      bathrooms: property.bathrooms,
+      parking_spaces: property.parking_spaces,
+      year_built: property.year_built,
+      is_furnished: property.is_furnished,
+      property_rules: property.property_rules,
       created_at: property.created_at,
       updated_at: property.updated_at,
       property_type: {
@@ -401,16 +430,21 @@ export class PropertiesService {
         rental_owner_id: o.rental_owner_id,
         ownership_percentage: o.ownership_percentage,
         is_primary: o.is_primary,
+        name: o.rental_owner_name,
+        primary_email: o.rental_owner_email,
+        phone_number: o.rental_owner_phone || '',
         rental_owner: {
           id: o.rental_owner_id,
           name: o.rental_owner_name,
           primary_email: o.rental_owner_email,
+          phone_number: o.rental_owner_phone || '',
         },
       })),
     };
   }
 
   async update(id: number, updatePropertyDto: UpdatePropertyDto) {
+    try {
     // Verify property exists
     const properties = await this.dataSource.query(
       'SELECT * FROM properties WHERE id = $1',
@@ -451,7 +485,7 @@ export class PropertiesService {
       // Validate subtype belongs to type
       const typeId =
         updatePropertyDto.property_type_id || property.property_type_id;
-      if (propertySubtypes[0].property_type_id !== typeId) {
+      if (+propertySubtypes[0].property_type_id !== +typeId) {
         throw new BadRequestException(
           'PropertySubtype does not belong to the specified PropertyType',
         );
@@ -475,23 +509,61 @@ export class PropertiesService {
       'account_number',
       'account_type',
       'account_holder_name',
+      'monthly_rent',
+      'currency',
+      'square_meters',
+      'bedrooms',
+      'bathrooms',
+      'parking_spaces',
+      'year_built',
+      'is_furnished',
     ];
 
     for (const field of allowedFields) {
-      if (field in updatePropertyDto) {
+      const value = (updatePropertyDto as any)[field];
+      if (field in updatePropertyDto && value !== undefined && value !== null) {
         updateFields.push(`${field} = $${paramIndex++}`);
-        updateValues.push((updatePropertyDto as any)[field]);
+        updateValues.push(value);
       }
+    }
+
+    // Handle JSON fields (amenities, included_items are json type)
+    const jsonFields = ['amenities', 'included_items'];
+    for (const field of jsonFields) {
+      if (field in updatePropertyDto && (updatePropertyDto as any)[field] != null) {
+        updateFields.push(`${field} = $${paramIndex++}::json`);
+        updateValues.push(JSON.stringify((updatePropertyDto as any)[field]));
+      }
+    }
+
+    // Handle property_rules (jsonb type)
+    if ('property_rules' in updatePropertyDto && updatePropertyDto.property_rules != null) {
+      updateFields.push(`property_rules = $${paramIndex++}::jsonb`);
+      updateValues.push(JSON.stringify(updatePropertyDto.property_rules));
+    }
+
+    // Handle images (json column)
+    if ('images' in updatePropertyDto && updatePropertyDto.images != null) {
+      updateFields.push(`images = $${paramIndex++}::json`);
+      updateValues.push(JSON.stringify(updatePropertyDto.images));
     }
 
     if (updateFields.length > 0) {
       updateFields.push(`updated_at = NOW()`);
       updateValues.push(id);
 
-      await this.dataSource.query(
-        `UPDATE properties SET ${updateFields.join(', ')} WHERE id = $${paramIndex}`,
-        updateValues,
-      );
+      const sql = `UPDATE properties SET ${updateFields.join(', ')} WHERE id = $${paramIndex}`;
+      console.log('📝 UPDATE SQL:', sql);
+      console.log('📝 UPDATE VALUES:', updateValues);
+
+      try {
+        await this.dataSource.query(sql, updateValues);
+      } catch (error) {
+        console.error('❌ UPDATE ERROR:', error.message);
+        console.error('❌ SQL:', sql);
+        console.error('❌ VALUES:', updateValues);
+        throw error;
+      }
     }
 
     // Update addresses if provided
@@ -567,6 +639,12 @@ export class PropertiesService {
     }
 
     return this.findOne(id);
+    } catch (error) {
+      if (error?.status && error.status < 500) throw error; // re-throw 4xx
+      console.error('❌❌ UPDATE FULL ERROR:', error.message);
+      console.error('❌❌ STACK:', error.stack);
+      throw error;
+    }
   }
 
   async updateDetails(id: number, updateDetailsDto: UpdatePropertyDetailsDto) {
@@ -585,29 +663,52 @@ export class PropertiesService {
     const updateValues: any[] = [];
     let paramIndex = 1;
 
-    const allowedFields = [
-      'images',
-      'amenities',
-      'included_items',
+    const scalarFields = [
+      'title',
+      'description',
       'latitude',
       'longitude',
+      'security_deposit_amount',
+      'account_number',
+      'account_type',
+      'account_holder_name',
+      'status',
+      'monthly_rent',
+      'currency',
+      'square_meters',
+      'bedrooms',
+      'bathrooms',
+      'parking_spaces',
+      'year_built',
+      'is_furnished',
     ];
 
-    for (const field of allowedFields) {
+    for (const field of scalarFields) {
       if (field in updateDetailsDto) {
         updateFields.push(`${field} = $${paramIndex++}`);
-        const value = (updateDetailsDto as any)[field];
-        // Handle JSON fields
-        if (
-          field === 'images' ||
-          field === 'amenities' ||
-          field === 'included_items'
-        ) {
-          updateValues.push(JSON.stringify(value));
-        } else {
-          updateValues.push(value);
-        }
+        updateValues.push((updateDetailsDto as any)[field]);
       }
+    }
+
+    // Handle JSON fields (amenities, included_items are json type)
+    const jsonFields = ['amenities', 'included_items'];
+    for (const field of jsonFields) {
+      if (field in updateDetailsDto && (updateDetailsDto as any)[field] != null) {
+        updateFields.push(`${field} = $${paramIndex++}::json`);
+        updateValues.push(JSON.stringify((updateDetailsDto as any)[field]));
+      }
+    }
+
+    // Handle property_rules (jsonb type)
+    if ('property_rules' in updateDetailsDto && (updateDetailsDto as any)['property_rules'] != null) {
+      updateFields.push(`property_rules = $${paramIndex++}::jsonb`);
+      updateValues.push(JSON.stringify((updateDetailsDto as any)['property_rules']));
+    }
+
+    // Handle images (json column)
+    if ('images' in updateDetailsDto && updateDetailsDto.images != null) {
+      updateFields.push(`images = $${paramIndex++}::json`);
+      updateValues.push(JSON.stringify(updateDetailsDto.images));
     }
 
     if (updateFields.length > 0) {
@@ -708,4 +809,129 @@ export class PropertiesService {
 
     return owners[0];
   }
+
+  async updateRentalOwner(id: number, updateDto: any) {
+    const owners = await this.dataSource.query(
+      'SELECT id FROM rental_owners WHERE id = $1',
+      [id],
+    );
+    if (owners.length === 0) {
+      throw new NotFoundException(`RentalOwner with ID ${id} not found`);
+    }
+
+    const fields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    const allowed = [
+      'name', 'company_name', 'is_company', 'primary_email',
+      'phone_number', 'secondary_email', 'secondary_phone', 'notes', 'is_active',
+    ];
+    for (const field of allowed) {
+      if (field in updateDto) {
+        fields.push(`${field} = $${idx++}`);
+        values.push((updateDto as any)[field]);
+      }
+    }
+    if (fields.length === 0) {
+      return this.getRentalOwner(id);
+    }
+    fields.push(`updated_at = NOW()`);
+    values.push(id);
+
+    await this.dataSource.query(
+      `UPDATE rental_owners SET ${fields.join(', ')} WHERE id = $${idx}`,
+      values,
+    );
+    return this.getRentalOwner(id);
+  }
+
+  async removeRentalOwner(id: number) {
+    const owners = await this.dataSource.query(
+      'SELECT id FROM rental_owners WHERE id = $1',
+      [id],
+    );
+    if (owners.length === 0) {
+      throw new NotFoundException(`RentalOwner with ID ${id} not found`);
+    }
+    await this.dataSource.query('DELETE FROM rental_owners WHERE id = $1', [id]);
+    return { message: 'RentalOwner deleted successfully', id };
+  }
+
+  async assignOwnerToProperty(propertyId: number, assignDto: any) {
+    // Check property exists
+    const props = await this.dataSource.query(
+      'SELECT id FROM properties WHERE id = $1',
+      [propertyId],
+    );
+    if (props.length === 0) {
+      throw new NotFoundException(`Property with ID ${propertyId} not found`);
+    }
+
+    const result = await this.dataSource.query(
+      `INSERT INTO property_owners (property_id, rental_owner_id, ownership_percentage, is_primary, created_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (property_id, rental_owner_id) DO UPDATE
+         SET ownership_percentage = EXCLUDED.ownership_percentage,
+             is_primary = EXCLUDED.is_primary
+       RETURNING *`,
+      [
+        propertyId,
+        assignDto.rental_owner_id,
+        assignDto.ownership_percentage ?? null,
+        assignDto.is_primary ?? false,
+      ],
+    );
+    return result[0];
+  }
+
+  async removeOwnerFromProperty(propertyId: number, ownerRelationId: number) {
+    const rows = await this.dataSource.query(
+      'SELECT id FROM property_owners WHERE id = $1 AND property_id = $2',
+      [ownerRelationId, propertyId],
+    );
+    if (rows.length === 0) {
+      throw new NotFoundException(`Owner relation with ID ${ownerRelationId} not found for property ${propertyId}`);
+    }
+    await this.dataSource.query(
+      'DELETE FROM property_owners WHERE id = $1',
+      [ownerRelationId],
+    );
+    return { message: 'Owner removed from property successfully', id: ownerRelationId };
+  }
+
+  async getStats() {
+    const [total] = await this.dataSource.query(
+      `SELECT COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE status = 'DISPONIBLE') AS available,
+              COUNT(*) FILTER (WHERE status = 'OCUPADO') AS occupied,
+              COUNT(*) FILTER (WHERE status = 'MANTENIMIENTO') AS maintenance,
+              COUNT(*) FILTER (WHERE status = 'RESERVADO') AS reserved,
+              COUNT(*) FILTER (WHERE status = 'INACTIVO') AS inactive
+       FROM properties`,
+    );
+    return {
+      total: +total.total,
+      available: +total.available,
+      occupied: +total.occupied,
+      maintenance: +total.maintenance,
+      reserved: +total.reserved,
+      inactive: +total.inactive,
+    };
+  }
+
+  async findByTenant(userId: number, filters?: FilterPropertiesDto) {
+    // Returns properties where the tenant (user) has an active contract
+    const rows = await this.dataSource.query(
+      `SELECT DISTINCT p.*
+       FROM properties p
+       INNER JOIN contracts c ON c.property_id = p.id
+       WHERE c.tenant_id = $1
+         AND c.status IN ('ACTIVE', 'ACTIVO')
+       ORDER BY p.id ASC`,
+      [userId],
+    );
+    return rows;
+  }
 }
+

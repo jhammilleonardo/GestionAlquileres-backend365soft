@@ -55,7 +55,7 @@ export class Property {
   longitude: number;
 
   // Images
-  @Column('simple-array', { default: [] })
+  @Column({ type: 'json', default: [] })
   images: string[];
 
   // Security Deposit (Reservation)
@@ -69,6 +69,41 @@ export class Property {
   // Included Items (stored as JSON string)
   @Column({ type: 'json', default: [] })
   included_items: string[];
+
+  // Financial
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  monthly_rent: number;
+
+  @Column({ default: 'BOB' })
+  currency: string;
+
+  // Property characteristics
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  square_meters: number;
+
+  @Column({ type: 'int', nullable: true })
+  bedrooms: number;
+
+  @Column({ type: 'int', nullable: true })
+  bathrooms: number;
+
+  @Column({ type: 'int', nullable: true })
+  parking_spaces: number;
+
+  @Column({ type: 'int', nullable: true })
+  year_built: number;
+
+  @Column({ default: false })
+  is_furnished: boolean;
+
+  // Property rules
+  @Column({ type: 'jsonb', nullable: true })
+  property_rules: {
+    pets_allowed?: boolean;
+    smoking_allowed?: boolean;
+    max_occupants?: number;
+    min_lease_months?: number;
+  };
 
   // Account info (optional, for future payment implementation)
   @Column({ nullable: true })

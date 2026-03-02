@@ -2,6 +2,8 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  OnModuleInit,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -10,12 +12,122 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
 @Injectable()
-export class TenantsService {
+export class TenantsService implements OnModuleInit {
+  private readonly logger = new Logger(TenantsService.name);
+
   constructor(
     @InjectRepository(Tenant)
     private tenantRepository: Repository<Tenant>,
     private dataSource: DataSource,
   ) {}
+
+  async onModuleInit() {
+    await this.runStartupMigrations();
+  }
+
+  /**
+   * Ejecuta migraciones automáticas al arrancar la aplicación.
+   * Itera todos los schemas de tenants existentes y aplica cambios
+   * de forma idempotente (IF NOT EXISTS / ADD COLUMN IF NOT EXISTS).
+   */
+  private async runStartupMigrations() {
+    this.logger.log('Running startup migrations for all tenant schemas...');
+
+    // Obtener todos los schemas de tenants (los que tienen tabla "properties")
+    const rows: { schema_name: string }[] = await this.dataSource.query(`
+      SELECT DISTINCT table_schema AS schema_name
+      FROM information_schema.tables
+      WHERE table_name = 'properties'
+        AND table_schema NOT IN ('public', 'information_schema', 'pg_catalog')
+      ORDER BY table_schema;
+    `);
+
+    if (rows.length === 0) {
+      this.logger.log('No tenant schemas found. Skipping startup migrations.');
+      return;
+    }
+
+    for (const { schema_name } of rows) {
+      this.logger.log(`Migrating schema: ${schema_name}`);
+      try {
+        await this.migratePropertyColumns(schema_name);
+        await this.migrateImagesToJson(schema_name);
+        await this.createPaymentsTables(schema_name);
+        await this.migrateContractsApplicationId(schema_name);
+        this.logger.log(`Schema ${schema_name} migrated successfully.`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `Failed to migrate schema ${schema_name}: ${message}`,
+        );
+      }
+    }
+
+    this.logger.log('Startup migrations completed.');
+  }
+
+  /** Agrega las columnas faltantes a la tabla properties de un schema. */
+  private async migratePropertyColumns(schemaName: string) {
+    const columns: [string, string][] = [
+      ['monthly_rent', 'NUMERIC(10,2) NULL'],
+      ['currency', "VARCHAR(10) NOT NULL DEFAULT 'BOB'"],
+      ['square_meters', 'NUMERIC(10,2) NULL'],
+      ['bedrooms', 'INT NULL'],
+      ['bathrooms', 'INT NULL'],
+      ['parking_spaces', 'INT NULL'],
+      ['year_built', 'INT NULL'],
+      ['is_furnished', 'BOOLEAN NOT NULL DEFAULT FALSE'],
+      ['property_rules', 'JSONB NULL'],
+    ];
+
+    for (const [col, def] of columns) {
+      await this.dataSource.query(
+        `ALTER TABLE ${schemaName}.properties ADD COLUMN IF NOT EXISTS ${col} ${def}`,
+      );
+    }
+  }
+
+  /**
+   * Migra la columna images de text[] a json si todavía es del tipo antiguo.
+   * Es idempotente: no hace nada si ya es json.
+   */
+  private async migrateImagesToJson(schemaName: string) {
+    const result: { udt_name: string }[] = await this.dataSource.query(
+      `
+        SELECT udt_name
+        FROM information_schema.columns
+        WHERE table_schema = $1
+          AND table_name = 'properties'
+          AND column_name = 'images'
+      `,
+      [schemaName],
+    );
+
+    if (result.length === 0 || result[0].udt_name !== '_text') {
+      return; // Ya es json o la columna no existe
+    }
+
+    this.logger.log(`Migrating images column (text[] → json) in ${schemaName}`);
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.properties ADD COLUMN IF NOT EXISTS images_json json DEFAULT '[]'`,
+    );
+    await this.dataSource.query(
+      `UPDATE ${schemaName}.properties SET images_json = to_json(images) WHERE images IS NOT NULL`,
+    );
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.properties DROP COLUMN images`,
+    );
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.properties RENAME COLUMN images_json TO images`,
+    );
+  }
+
+  /** Agrega la columna application_id a la tabla contracts si no existe. */
+  private async migrateContractsApplicationId(schemaName: string) {
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.contracts ADD COLUMN IF NOT EXISTS application_id INTEGER REFERENCES ${schemaName}.rental_applications(id) ON DELETE SET NULL`,
+    );
+  }
 
   async create(createTenantDto: CreateTenantDto) {
     // Verificar si ya existe el slug
@@ -48,8 +160,14 @@ export class TenantsService {
 
     const savedTenant = await this.tenantRepository.save(tenant);
 
-    // Crear el schema en PostgreSQL
-    await this.createTenantSchema(savedTenant);
+    // Crear el schema en PostgreSQL; si falla, eliminar el registro del tenant
+    try {
+      await this.createTenantSchema(savedTenant);
+    } catch (error) {
+      // Limpiar el registro huérfano para evitar inconsistencias
+      await this.tenantRepository.delete(savedTenant.id);
+      throw error;
+    }
 
     return savedTenant;
   }
@@ -258,13 +376,22 @@ export class TenantsService {
         status character varying NOT NULL DEFAULT 'DISPONIBLE',
         latitude decimal(10,8),
         longitude decimal(11,8),
-        images text[] DEFAULT '{}',
+        images json DEFAULT '[]',
         security_deposit_amount decimal(10,2),
         amenities json DEFAULT '[]',
         included_items json DEFAULT '[]',
         account_number character varying,
         account_type character varying,
         account_holder_name character varying,
+        monthly_rent NUMERIC(10,2) NULL,
+        currency VARCHAR(10) NOT NULL DEFAULT 'BOB',
+        square_meters NUMERIC(10,2) NULL,
+        bedrooms INT NULL,
+        bathrooms INT NULL,
+        parking_spaces INT NULL,
+        year_built INT NULL,
+        is_furnished BOOLEAN NOT NULL DEFAULT FALSE,
+        property_rules JSONB NULL,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_properties_type FOREIGN KEY (property_type_id)

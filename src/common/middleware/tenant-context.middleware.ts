@@ -110,13 +110,23 @@ export class TenantContextMiddleware implements NestMiddleware {
       // VERIFICACIÓN ADICIONAL: Si hay un usuario logueado, verificar que EXISTA en este esquema
       // Esto previene el uso de tokens de un tenant en otro tenant
       if (req.user) {
-        const [userExists] = await this.dataSource.query(
-          'SELECT id FROM "user" WHERE id = $1',
-          [req.user.userId],
-        );
+        try {
+          const [userExists] = await this.dataSource.query(
+            'SELECT id FROM "user" WHERE id = $1',
+            [req.user.userId],
+          );
 
-        if (!userExists) {
-          // Si el ID de usuario no existe en este esquema, el token no es válido para este tenant
+          if (!userExists) {
+            // Si el ID de usuario no existe en este esquema, el token no es válido para este tenant
+            throw new UnauthorizedException(
+              'User not authorized for this company',
+            );
+          }
+        } catch (error) {
+          if (error instanceof UnauthorizedException) {
+            throw error;
+          }
+          // El schema no tiene tabla user (schema no inicializado), tratar como no autorizado
           throw new UnauthorizedException(
             'User not authorized for this company',
           );

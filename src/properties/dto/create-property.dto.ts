@@ -72,6 +72,45 @@ export class CreateRentalOwnerDto {
   notes?: string;
 }
 
+// DTO para actualizar dueño
+export class UpdateRentalOwnerDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  company_name?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_company?: boolean;
+
+  @IsOptional()
+  @IsEmail()
+  primary_email?: string;
+
+  @IsOptional()
+  @IsString()
+  phone_number?: string;
+
+  @IsOptional()
+  @IsEmail()
+  secondary_email?: string;
+
+  @IsOptional()
+  @IsString()
+  secondary_phone?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+}
+
 // DTO para asignar dueño existente
 export class AssignOwnerDto {
   @IsNumber()
@@ -138,4 +177,70 @@ export class CreatePropertyDto {
   @IsOptional()
   @IsString()
   account_holder_name?: string;
+
+  // Financial fields
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthly_rent?: number;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  // Property characteristics
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  square_meters?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  bedrooms?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  bathrooms?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  parking_spaces?: number;
+
+  @IsOptional()
+  @IsNumber()
+  year_built?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  is_furnished?: boolean;
+
+  // Location
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  // Amenities
+  @IsOptional()
+  @IsArray()
+  amenities?: string[];
+
+  @IsOptional()
+  @IsArray()
+  included_items?: string[];
+
+  // Property rules
+  @IsOptional()
+  property_rules?: {
+    pets_allowed?: boolean;
+    smoking_allowed?: boolean;
+    max_occupants?: number;
+    min_lease_months?: number;
+  };
 }

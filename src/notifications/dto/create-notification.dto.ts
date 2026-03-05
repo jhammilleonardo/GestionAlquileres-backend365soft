@@ -22,6 +22,14 @@ export enum NotificationEventType {
   // Solicitudes de Alquiler
   APPLICATION_CREATED = 'application.created',
   APPLICATION_STATUS_CHANGED = 'application.status.changed',
+  // Pagos
+  PAYMENT_CREATED = 'payment.created',
+  PAYMENT_APPROVED = 'payment.approved',
+  PAYMENT_REJECTED = 'payment.rejected',
+  // Contratos
+  CONTRACT_CREATED = 'contract.created',
+  CONTRACT_SIGNED = 'contract.signed',
+  CONTRACT_EXPIRING = 'contract.expiring',
 }
 
 export class CreateNotificationDto {

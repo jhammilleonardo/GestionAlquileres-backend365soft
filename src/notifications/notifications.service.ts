@@ -200,42 +200,36 @@ export class NotificationsService {
     unread: number;
     by_type: Record<string, number>;
   }> {
-    // Total de notificaciones
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const totalResult = await this.dataSource.query(
-      `SELECT COUNT(*) as count FROM notifications WHERE user_id = $1`,
-      [userId],
-    );
-
-    // No leídas
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const unreadResult = await this.dataSource.query(
-      `SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND is_read = false`,
-      [userId],
-    );
-
-    // Por tipo
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const byTypeResult = await this.dataSource.query(
-      `SELECT event_type, COUNT(*) as count
+    const result = await this.dataSource.query(
+      `SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE is_read = false) as unread,
+        (SELECT json_object_agg(event_type, cnt)
+         FROM (SELECT event_type, COUNT(*) as cnt FROM notifications n2
+               WHERE n2.user_id = $1 GROUP BY event_type) t
+        ) as by_type
        FROM notifications
-       WHERE user_id = $1
-       GROUP BY event_type`,
+       WHERE user_id = $1`,
       [userId],
     );
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const row = result[0];
     const by_type: Record<string, number> = {};
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    byTypeResult.forEach((item: any) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
-      by_type[item.event_type] = parseInt(item.count);
-    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    if (row.by_type) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      Object.entries(row.by_type as Record<string, unknown>).forEach(([k, v]) => {
+        by_type[k] = parseInt(String(v));
+      });
+    }
 
     return {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
-      total: parseInt(totalResult[0].count),
+      total: parseInt(row.total),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
-      unread: parseInt(unreadResult[0].count),
+      unread: parseInt(row.unread),
       by_type,
     };
   }
@@ -375,6 +369,50 @@ export class NotificationsService {
         title_template: 'Contraseña actualizada',
         message_template: 'Tu contraseña ha sido actualizada exitosamente',
         variables: [],
+      },
+      // Pagos
+      {
+        event_type: 'payment.created' as NotificationEventType,
+        title_template: 'Nuevo pago registrado',
+        message_template:
+          '{{tenant_name}} ha registrado un pago de {{amount}} {{currency}} para la propiedad {{property_title}}',
+        variables: ['tenant_name', 'amount', 'currency', 'property_title', 'payment_id'],
+      },
+      {
+        event_type: 'payment.approved' as NotificationEventType,
+        title_template: 'Pago aprobado',
+        message_template:
+          'Tu pago de {{amount}} {{currency}} ha sido aprobado',
+        variables: ['amount', 'currency', 'payment_id', 'property_title'],
+      },
+      {
+        event_type: 'payment.rejected' as NotificationEventType,
+        title_template: 'Pago rechazado',
+        message_template:
+          'Tu pago de {{amount}} {{currency}} ha sido rechazado. Motivo: {{rejection_reason}}',
+        variables: ['amount', 'currency', 'payment_id', 'rejection_reason'],
+      },
+      // Contratos
+      {
+        event_type: 'contract.created' as NotificationEventType,
+        title_template: 'Nuevo contrato disponible',
+        message_template:
+          'Se ha creado el contrato {{contract_number}} para la propiedad {{property_title}}. Por favor revísalo y fírmalo.',
+        variables: ['contract_number', 'property_title', 'contract_id'],
+      },
+      {
+        event_type: 'contract.signed' as NotificationEventType,
+        title_template: 'Contrato firmado',
+        message_template:
+          '{{tenant_name}} ha firmado el contrato {{contract_number}} para la propiedad {{property_title}}',
+        variables: ['tenant_name', 'contract_number', 'property_title', 'contract_id'],
+      },
+      {
+        event_type: 'contract.expiring' as NotificationEventType,
+        title_template: 'Contrato próximo a vencer',
+        message_template:
+          'El contrato {{contract_number}} para la propiedad {{property_title}} vence el {{end_date}}',
+        variables: ['contract_number', 'property_title', 'end_date', 'contract_id'],
       },
     ];
 

@@ -70,3 +70,66 @@ export const multerConfig = {
     fileSize: 5 * 1024 * 1024, // 5MB max
   },
 };
+
+// Configuración de Multer para mantenimiento
+export const maintenanceFileStorage = diskStorage({
+  destination: (req: Request, file: Express.Multer.File, cb) => {
+    const tenantSlug =
+      (req as any).tenant?.slug || (req.params as any).slug || 'temp';
+    const requestId = (req.params as any).id || 'temp';
+
+    const uploadPath = path.join(
+      process.cwd(),
+      'storage',
+      'maintenance',
+      tenantSlug,
+      requestId,
+    );
+    ensureDirExists(uploadPath);
+
+    cb(null, uploadPath);
+  },
+  filename: (req: Request, file: Express.Multer.File, cb) => {
+    const randomName = Array(32)
+      .fill(null)
+      .map(() => Math.round(Math.random() * 16).toString(16))
+      .join('');
+    const extension = extname(file.originalname);
+    cb(null, `${randomName}${extension}`);
+  },
+});
+
+// Filtro para imágenes y PDFs (mantenimiento)
+export const maintenanceFileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  cb: (error: Error | null, acceptFile: boolean) => void,
+) => {
+  const allowedMimes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+    'application/pdf',
+  ];
+
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        'Solo se permiten imágenes (JPEG, PNG, WebP) y documentos PDF',
+      ),
+      false,
+    );
+  }
+};
+
+// Configuración completa de Multer para mantenimiento
+export const maintenanceMulterConfig = {
+  storage: maintenanceFileStorage,
+  fileFilter: maintenanceFileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max
+  },
+};

@@ -539,22 +539,32 @@ export class MaintenanceService {
 
     const savedMessage = messageResult[0];
 
-    // Guardar archivos adjuntos si existen
+    // Vincular archivos adjuntos al mensaje (ya existen en DB, solo actualizamos message_id)
     if (createMessageDto.files && createMessageDto.files.length > 0) {
       for (const fileUrl of createMessageDto.files) {
-        await this.dataSource.query(
-          `INSERT INTO maintenance_attachments(
-            message_id, file_url, file_name, file_type, file_size, uploaded_by
-          ) VALUES ($1, $2, $3, $4, $5, $6)`,
-          [
-            savedMessage.id,
-            fileUrl,
-            fileUrl.split('/').pop() || 'unknown',
-            this.getFileType(fileUrl),
-            0,
-            userId,
-          ],
+        const updated = await this.dataSource.query(
+          `UPDATE maintenance_attachments SET message_id = $1
+           WHERE file_url = $2 AND maintenance_request_id = $3
+           RETURNING id`,
+          [savedMessage.id, fileUrl, requestId],
         );
+        // Fallback: si no existía el registro previo, insertarlo
+        if (!updated || updated.length === 0) {
+          await this.dataSource.query(
+            `INSERT INTO maintenance_attachments(
+              message_id, maintenance_request_id, file_url, file_name, file_type, file_size, uploaded_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              savedMessage.id,
+              requestId,
+              fileUrl,
+              fileUrl.split('/').pop() || 'unknown',
+              this.getFileType(fileUrl),
+              0,
+              userId,
+            ],
+          );
+        }
       }
     }
 
@@ -752,6 +762,42 @@ export class MaintenanceService {
       active: parseInt(activeResult[0].count),
       completed: parseInt(completedResult[0].count),
     };
+  }
+
+  /**
+   * Guarda los archivos subidos vía multer como attachments de una solicitud
+   */
+  async saveUploadedFiles(
+    requestId: number,
+    files: Express.Multer.File[],
+    userId: number,
+    tenantSlug: string,
+  ): Promise<any[]> {
+    const savedFiles: any[] = [];
+
+    for (const file of files) {
+      const fileUrl = `/storage/maintenance/${tenantSlug}/${requestId}/${file.filename}`;
+      const fileType = this.getFileType(file.originalname);
+
+      const result = await this.dataSource.query(
+        `INSERT INTO maintenance_attachments(
+          maintenance_request_id, file_url, file_name, file_type, file_size, uploaded_by
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *`,
+        [
+          requestId,
+          fileUrl,
+          file.originalname,
+          fileType,
+          file.size,
+          userId,
+        ],
+      );
+
+      savedFiles.push(result[0]);
+    }
+
+    return savedFiles;
   }
 
   /**

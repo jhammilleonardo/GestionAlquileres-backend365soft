@@ -4,12 +4,15 @@ import { CreatePaymentDto, CreatePaymentAsAdminDto, UpdatePaymentStatusDto, Paym
 import { Payment, PaymentStats } from './interfaces/payment.interface';
 import { PaymentStatus, PaymentProcessor } from './enums';
 import { TenantsService } from '../tenants/tenants.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private dataSource: DataSource,
     private tenantsService: TenantsService,
+    private notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -90,6 +93,26 @@ export class PaymentsService {
       );
 
       await queryRunner.commitTransaction();
+
+      // Notificar a los admins del nuevo pago
+      try {
+        const admins = await this.dataSource.query(
+          `SELECT id FROM users WHERE role = 'ADMIN' LIMIT 5`,
+        );
+        const adminIds = admins.map((a: any) => a.id as number);
+        if (adminIds.length > 0) {
+          await this.notificationsService.notifyAdmins(
+            adminIds,
+            NotificationEventType.PAYMENT_CREATED,
+            'Nuevo pago registrado',
+            `Un inquilino ha registrado un nuevo pago de ${dto.amount} ${dto.currency || 'USD'}`,
+            { payment_id: result[0].id, amount: dto.amount, currency: dto.currency || 'USD' },
+          );
+        }
+      } catch (notifError) {
+        // No propagar errores de notificación
+      }
+
       return result[0];
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -388,6 +411,22 @@ export class PaymentsService {
       );
 
       await queryRunner.commitTransaction();
+
+      // Si el pago fue creado como APPROVED, notificar al tenant
+      if (dto.status === PaymentStatus.APPROVED) {
+        try {
+          await this.notificationsService.createForUser(
+            dto.tenant_id,
+            NotificationEventType.PAYMENT_APPROVED,
+            'Pago aprobado',
+            `Tu pago de ${dto.amount} ${dto.currency || 'USD'} ha sido aprobado`,
+            { payment_id: result[0].id, amount: dto.amount, currency: dto.currency || 'USD' },
+          );
+        } catch (notifError) {
+          // No propagar errores de notificación
+        }
+      }
+
       return result[0];
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -395,6 +434,120 @@ export class PaymentsService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  /**
+   * Exportar pagos como CSV (Admin)
+   */
+  async exportPaymentsCsv(filters: PaymentFiltersDto): Promise<string> {
+    let whereConditions: string[] = [];
+    let params: any[] = [];
+    let paramIndex = 1;
+
+    if (filters.status) {
+      whereConditions.push(`p.status = $${paramIndex++}`);
+      params.push(filters.status);
+    }
+    if (filters.type) {
+      whereConditions.push(`p.payment_type = $${paramIndex++}`);
+      params.push(filters.type);
+    }
+    if (filters.method) {
+      whereConditions.push(`p.payment_method = $${paramIndex++}`);
+      params.push(filters.method);
+    }
+    if (filters.currency) {
+      whereConditions.push(`p.currency = $${paramIndex++}`);
+      params.push(filters.currency);
+    }
+    if (filters.tenant_id) {
+      whereConditions.push(`p.tenant_id = $${paramIndex++}`);
+      params.push(filters.tenant_id);
+    }
+    if (filters.property_id) {
+      whereConditions.push(`p.property_id = $${paramIndex++}`);
+      params.push(filters.property_id);
+    }
+    if (filters.contract_id) {
+      whereConditions.push(`p.contract_id = $${paramIndex++}`);
+      params.push(filters.contract_id);
+    }
+    if (filters.date_from) {
+      whereConditions.push(`p.payment_date >= $${paramIndex++}`);
+      params.push(filters.date_from);
+    }
+    if (filters.date_to) {
+      whereConditions.push(`p.payment_date <= $${paramIndex++}`);
+      params.push(filters.date_to);
+    }
+
+    const whereClause = whereConditions.length > 0
+      ? 'WHERE ' + whereConditions.join(' AND ')
+      : '';
+
+    const allowedSortFields = ['created_at', 'updated_at', 'payment_date', 'amount', 'status', 'tenant_id', 'property_id'];
+    const sortField = filters.sort && allowedSortFields.includes(filters.sort)
+      ? filters.sort
+      : 'created_at';
+    const sortOrder = filters.order === 'ASC' ? 'ASC' : 'DESC';
+
+    const payments = await this.dataSource.query(
+      `SELECT
+        p.id,
+        p.amount,
+        p.currency,
+        p.payment_type,
+        p.payment_method,
+        p.status,
+        p.payment_date,
+        p.due_date,
+        p.reference_number,
+        p.notes,
+        p.created_at,
+        t.name as tenant_name,
+        t.email as tenant_email,
+        prop.title as property_title,
+        c.contract_number
+      FROM payments p
+      LEFT JOIN "user" t ON p.tenant_id = t.id
+      LEFT JOIN properties prop ON p.property_id = prop.id
+      LEFT JOIN contracts c ON p.contract_id = c.id
+      ${whereClause}
+      ORDER BY p.${sortField} ${sortOrder}`,
+      params
+    );
+
+    const headers = [
+      'ID', 'Monto', 'Moneda', 'Tipo', 'Método', 'Estado',
+      'Fecha Pago', 'Fecha Vencimiento', 'Referencia', 'Notas',
+      'Creado', 'Inquilino', 'Email Inquilino', 'Propiedad', 'Contrato'
+    ];
+
+    const escape = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = payments.map((p: any) => [
+      escape(p.id),
+      escape(p.amount),
+      escape(p.currency),
+      escape(p.payment_type),
+      escape(p.payment_method),
+      escape(p.status),
+      escape(p.payment_date),
+      escape(p.due_date),
+      escape(p.reference_number),
+      escape(p.notes),
+      escape(p.created_at),
+      escape(p.tenant_name),
+      escape(p.tenant_email),
+      escape(p.property_title),
+      escape(p.contract_number),
+    ].join(','));
+
+    return [headers.join(','), ...rows].join('\n');
   }
 
   /**
@@ -485,6 +638,32 @@ export class PaymentsService {
           isApproved
         ]
       );
+
+      // Notificar al tenant según el nuevo estado
+      try {
+        const tenantId: number = payment[0].tenant_id;
+        const amount: number = payment[0].amount;
+        const currency: string = payment[0].currency;
+        if (dto.status === 'APPROVED') {
+          await this.notificationsService.createForUser(
+            tenantId,
+            NotificationEventType.PAYMENT_APPROVED,
+            'Pago aprobado',
+            `Tu pago de ${amount} ${currency} ha sido aprobado`,
+            { payment_id: id, amount, currency },
+          );
+        } else if (dto.status === 'REJECTED') {
+          await this.notificationsService.createForUser(
+            tenantId,
+            NotificationEventType.PAYMENT_REJECTED,
+            'Pago rechazado',
+            `Tu pago de ${amount} ${currency} ha sido rechazado`,
+            { payment_id: id, amount, currency, rejection_reason: dto.rejection_reason || '' },
+          );
+        }
+      } catch (notifError) {
+        // No propagar errores de notificación
+      }
 
       return updated[0];
     } catch (error) {

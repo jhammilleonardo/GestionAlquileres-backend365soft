@@ -10,6 +10,8 @@ import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { ContractStatus } from './enums/contract-status.enum';
 import { PdfService } from './pdf.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 
 export interface ContractResult {
   id: number;
@@ -64,6 +66,7 @@ export class ContractsService {
     @InjectDataSource()
     private dataSource: DataSource,
     private pdfService: PdfService,
+    private notificationsService: NotificationsService,
   ) {}
 
   private async generateContractNumber(): Promise<string> {
@@ -273,6 +276,34 @@ export class ContractsService {
       'Creación de contrato',
     );
 
+    // 7. Notificaciones: al inquilino y a los admins
+    try {
+      const tenantId: number = createContractDto.tenant_id;
+      await this.notificationsService.createForUser(
+        tenantId,
+        NotificationEventType.CONTRACT_CREATED,
+        'Nuevo contrato disponible',
+        `Se ha creado el contrato ${contractNumber}. Por favor revísalo y fírmalo.`,
+        { contract_id: savedContract.id, contract_number: contractNumber },
+      );
+
+      const admins = await this.dataSource.query(
+        `SELECT id FROM users WHERE role = 'ADMIN' LIMIT 5`,
+      );
+      const adminIds = admins.map((a: any) => a.id as number);
+      if (adminIds.length > 0) {
+        await this.notificationsService.notifyAdmins(
+          adminIds,
+          NotificationEventType.CONTRACT_CREATED,
+          'Nuevo contrato creado',
+          `Se ha creado el contrato ${contractNumber} para el inquilino ID ${tenantId}`,
+          { contract_id: savedContract.id, contract_number: contractNumber },
+        );
+      }
+    } catch (notifError) {
+      // No propagar errores de notificación
+    }
+
     return savedContract;
   }
 
@@ -444,6 +475,39 @@ export class ContractsService {
           [contract.property_id],
         );
       }
+
+      // Notificar al inquilino sobre el cambio de estado relevante
+      try {
+        const statusNotifMap: Partial<Record<ContractStatus, { type: NotificationEventType; title: string; msg: string }>> = {
+          [ContractStatus.ACTIVO]: {
+            type: NotificationEventType.CONTRACT_SIGNED,
+            title: 'Contrato activado',
+            msg: 'Tu contrato ha sido activado y está en vigencia',
+          },
+          [ContractStatus.FINALIZADO]: {
+            type: NotificationEventType.CONTRACT_EXPIRING,
+            title: 'Contrato finalizado',
+            msg: 'Tu contrato ha finalizado',
+          },
+          [ContractStatus.CANCELADO]: {
+            type: NotificationEventType.CONTRACT_EXPIRING,
+            title: 'Contrato cancelado',
+            msg: 'Tu contrato ha sido cancelado',
+          },
+        };
+        const notif = statusNotifMap[updateContractDto.status];
+        if (notif) {
+          await this.notificationsService.createForUser(
+            contract.tenant_id,
+            notif.type,
+            notif.title,
+            notif.msg,
+            { contract_id: id, new_status: updateContractDto.status },
+          );
+        }
+      } catch (notifError) {
+        // No propagar errores de notificación
+      }
     }
 
     return updatedContract;
@@ -494,6 +558,25 @@ export class ContractsService {
       "UPDATE properties SET status = 'OCUPADO' WHERE id = $1",
       [contract.property_id],
     );
+
+    // Notificar a los admins que el contrato fue firmado
+    try {
+      const admins = await this.dataSource.query(
+        `SELECT id FROM users WHERE role = 'ADMIN' LIMIT 5`,
+      );
+      const adminIds = admins.map((a: any) => a.id as number);
+      if (adminIds.length > 0) {
+        await this.notificationsService.notifyAdmins(
+          adminIds,
+          NotificationEventType.CONTRACT_SIGNED,
+          'Contrato firmado',
+          `El inquilino ID ${userId} ha firmado el contrato ID ${id}`,
+          { contract_id: id },
+        );
+      }
+    } catch (notifError) {
+      // No propagar errores de notificación
+    }
 
     return await this.findOne(id);
   }

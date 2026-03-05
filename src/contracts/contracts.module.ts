@@ -8,9 +8,10 @@ import {
 } from './contracts.controller';
 import { Contract } from './entities/contract.entity';
 import { ContractHistory } from './entities/contract-history.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Contract, ContractHistory])],
+  imports: [TypeOrmModule.forFeature([Contract, ContractHistory]), NotificationsModule],
   providers: [ContractsService, PdfService],
   controllers: [AdminContractsController, TenantContractsController],
   exports: [ContractsService, PdfService],

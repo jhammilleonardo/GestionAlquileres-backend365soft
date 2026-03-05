@@ -16,6 +16,7 @@ import { MaintenanceModule } from './maintenance/maintenance.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { PaymentsModule } from './payments/payments.module';
+import { QrPaymentModule } from './payments/qr/qr-payment.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { PaymentsModule } from './payments/payments.module';
     NotificationsModule,
     ApplicationsModule,
     PaymentsModule,
+    QrPaymentModule,
   ],
   controllers: [AppController],
   providers: [

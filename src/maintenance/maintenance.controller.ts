@@ -9,7 +9,12 @@ import {
   UseGuards,
   Request,
   Query,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { maintenanceMulterConfig } from '../common/utils/multer.config';
 import {
   ApiTags,
   ApiOperation,
@@ -153,6 +158,30 @@ export class AdminMaintenanceController {
       req.user.userId,
     );
   }
+
+  @Post(':id/upload')
+  @ApiOperation({
+    summary: 'Subir archivos adjuntos a una solicitud (máx. 3, 10MB c/u)',
+  })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @UseInterceptors(FilesInterceptor('files', 3, maintenanceMulterConfig))
+  async uploadFiles(
+    @Param('slug') slug: string,
+    @Param('id') id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Request() req,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se enviaron archivos');
+    }
+    return this.maintenanceService.saveUploadedFiles(
+      +id,
+      files,
+      req.user.userId,
+      slug,
+    );
+  }
 }
 
 @ApiTags('Maintenance - Tenant')
@@ -249,6 +278,36 @@ export class TenantMaintenanceController {
       +id,
       createMessageDto,
       req.user.userId,
+    );
+  }
+
+  @Post(':id/upload')
+  @ApiOperation({
+    summary: 'Subir archivos adjuntos a una solicitud (máx. 3, 10MB c/u)',
+  })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @UseInterceptors(FilesInterceptor('files', 3, maintenanceMulterConfig))
+  async uploadFiles(
+    @Param('slug') slug: string,
+    @Param('id') id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Request() req,
+  ) {
+    const request = await this.maintenanceService.findOne(+id);
+    if (request.tenant_id !== req.user.userId) {
+      throw new BadRequestException(
+        'No tienes permiso para subir archivos en esta solicitud',
+      );
+    }
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se enviaron archivos');
+    }
+    return this.maintenanceService.saveUploadedFiles(
+      +id,
+      files,
+      req.user.userId,
+      slug,
     );
   }
 }

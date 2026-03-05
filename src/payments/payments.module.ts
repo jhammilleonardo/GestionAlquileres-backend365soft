@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentsService } from './payments.service';
 import { AdminPaymentsController, TenantPaymentsController } from './payments.controller';
 import { TenantsModule } from '../tenants/tenants.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 /**
  * Payments Module
@@ -11,7 +12,7 @@ import { TenantsModule } from '../tenants/tenants.module';
  * Incluye soporte para procesadores de pago internacionales.
  */
 @Module({
-  imports: [TenantsModule],
+  imports: [TenantsModule, NotificationsModule],
   controllers: [AdminPaymentsController, TenantPaymentsController],
   providers: [PaymentsService],
   exports: [PaymentsService]

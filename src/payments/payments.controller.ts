@@ -9,8 +9,10 @@ import {
   Query,
   ParseIntPipe,
   UseGuards,
-  Request
+  Request,
+  Res
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto, CreatePaymentAsAdminDto, UpdatePaymentStatusDto, PaymentFiltersDto, CreateRefundDto } from './dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -65,6 +67,18 @@ export class AdminPaymentsController {
     const adminId = req.user.userId;
     const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
     return this.paymentsService.createPaymentAsAdmin(dto, adminId, schemaName);
+  }
+
+  /**
+   * GET /:slug/admin/payments/export
+   * Exportar pagos como CSV con los mismos filtros del listado
+   */
+  @Get('export')
+  async exportCsv(@Query() filters: PaymentFiltersDto, @Res() res: Response) {
+    const csv = await this.paymentsService.exportPaymentsCsv(filters);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="pagos.csv"');
+    res.send(csv);
   }
 
   /**

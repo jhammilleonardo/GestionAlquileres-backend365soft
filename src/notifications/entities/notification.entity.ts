@@ -32,6 +32,17 @@ export class Notification {
       // Usuarios
       'user.registered',
       'user.password.changed',
+      // Solicitudes de Alquiler
+      'application.created',
+      'application.status.changed',
+      // Pagos
+      'payment.created',
+      'payment.approved',
+      'payment.rejected',
+      // Contratos
+      'contract.created',
+      'contract.signed',
+      'contract.expiring',
     ],
   })
   event_type: string;

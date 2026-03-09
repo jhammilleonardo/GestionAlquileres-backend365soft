@@ -154,6 +154,23 @@ export class ApplicationsService {
   }
 
   async create(createApplicationDto: CreateApplicationDto, userId: number) {
+    // 0. Validar que el solicitante sea INQUILINO (nunca un ADMIN)
+    const userResult = await this.dataSource.query<{ role: string }[]>(
+      'SELECT role FROM "user" WHERE id = $1',
+      [userId],
+    );
+
+    if (userResult.length === 0) {
+      throw new NotFoundException(`Usuario con ID ${userId} no encontrado`);
+    }
+
+    if (userResult[0].role !== 'INQUILINO') {
+      throw new BadRequestException(
+        'Solo los inquilinos pueden enviar solicitudes de alquiler. ' +
+        'Los administradores no pueden crear solicitudes.',
+      );
+    }
+
     // 1. Validar que la propiedad existe y está disponible
     const propertyResult = await this.dataSource.query<any[]>(
       'SELECT id, title, status FROM properties WHERE id = $1',

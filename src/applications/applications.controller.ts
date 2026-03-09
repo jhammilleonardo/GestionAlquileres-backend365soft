@@ -29,17 +29,21 @@ export class ApplicationsController {
   constructor(private readonly applicationsService: ApplicationsService) {}
 
   @Post()
+  @UseGuards(RolesGuard)
+  @Roles('INQUILINO')
   @ApiOperation({
     summary: 'Enviar una nueva solicitud de alquiler (Inquilino)',
   })
   async create(
-    @CurrentUser() user: { userId: number },
+    @CurrentUser() user: { userId: number; role: string },
     @Body() createApplicationDto: CreateApplicationDto,
   ): Promise<any> {
     return this.applicationsService.create(createApplicationDto, user.userId);
   }
 
   @Get('my-applications')
+  @UseGuards(RolesGuard)
+  @Roles('INQUILINO')
   @ApiOperation({ summary: 'Ver mis solicitudes enviadas (Inquilino)' })
   async findMyApplications(
     @CurrentUser() user: { userId: number },

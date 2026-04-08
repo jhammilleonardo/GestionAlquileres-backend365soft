@@ -138,9 +138,15 @@ export class PropertiesService {
         createPropertyDto.latitude || null,
         createPropertyDto.longitude || null,
         JSON.stringify([]),
-        createPropertyDto.amenities ? JSON.stringify(createPropertyDto.amenities) : null,
-        createPropertyDto.included_items ? JSON.stringify(createPropertyDto.included_items) : null,
-        createPropertyDto.property_rules ? JSON.stringify(createPropertyDto.property_rules) : null,
+        createPropertyDto.amenities
+          ? JSON.stringify(createPropertyDto.amenities)
+          : null,
+        createPropertyDto.included_items
+          ? JSON.stringify(createPropertyDto.included_items)
+          : null,
+        createPropertyDto.property_rules
+          ? JSON.stringify(createPropertyDto.property_rules)
+          : null,
       ],
     );
 
@@ -315,7 +321,7 @@ export class PropertiesService {
     for (const item of items) {
       const addresses = await this.dataSource.query(
         'SELECT * FROM property_addresses WHERE property_id = $1 ORDER BY id',
-        [item.id]
+        [item.id],
       );
       item.addresses = addresses;
     }
@@ -445,200 +451,210 @@ export class PropertiesService {
 
   async update(id: number, updatePropertyDto: UpdatePropertyDto) {
     try {
-    // Verify property exists
-    const properties = await this.dataSource.query(
-      'SELECT * FROM properties WHERE id = $1',
-      [id],
-    );
-
-    if (properties.length === 0) {
-      throw new NotFoundException(`Property with ID ${id} not found`);
-    }
-
-    const property = properties[0];
-
-    if (updatePropertyDto.property_type_id) {
-      const propertyTypes = await this.dataSource.query(
-        'SELECT * FROM property_types WHERE id = $1',
-        [updatePropertyDto.property_type_id],
-      );
-
-      if (propertyTypes.length === 0) {
-        throw new NotFoundException(
-          `PropertyType with ID ${updatePropertyDto.property_type_id} not found`,
-        );
-      }
-    }
-
-    if (updatePropertyDto.property_subtype_id) {
-      const propertySubtypes = await this.dataSource.query(
-        'SELECT * FROM property_subtypes WHERE id = $1',
-        [updatePropertyDto.property_subtype_id],
-      );
-
-      if (propertySubtypes.length === 0) {
-        throw new NotFoundException(
-          `PropertySubtype with ID ${updatePropertyDto.property_subtype_id} not found`,
-        );
-      }
-
-      // Validate subtype belongs to type
-      const typeId =
-        updatePropertyDto.property_type_id || property.property_type_id;
-      if (+propertySubtypes[0].property_type_id !== +typeId) {
-        throw new BadRequestException(
-          'PropertySubtype does not belong to the specified PropertyType',
-        );
-      }
-    }
-
-    // Build dynamic update query
-    const updateFields: string[] = [];
-    const updateValues: any[] = [];
-    let paramIndex = 1;
-
-    const allowedFields = [
-      'title',
-      'description',
-      'property_type_id',
-      'property_subtype_id',
-      'status',
-      'latitude',
-      'longitude',
-      'security_deposit_amount',
-      'account_number',
-      'account_type',
-      'account_holder_name',
-      'monthly_rent',
-      'currency',
-      'square_meters',
-      'bedrooms',
-      'bathrooms',
-      'parking_spaces',
-      'year_built',
-      'is_furnished',
-    ];
-
-    for (const field of allowedFields) {
-      const value = (updatePropertyDto as any)[field];
-      if (field in updatePropertyDto && value !== undefined && value !== null) {
-        updateFields.push(`${field} = $${paramIndex++}`);
-        updateValues.push(value);
-      }
-    }
-
-    // Handle JSON fields (amenities, included_items are json type)
-    const jsonFields = ['amenities', 'included_items'];
-    for (const field of jsonFields) {
-      if (field in updatePropertyDto && (updatePropertyDto as any)[field] != null) {
-        updateFields.push(`${field} = $${paramIndex++}::json`);
-        updateValues.push(JSON.stringify((updatePropertyDto as any)[field]));
-      }
-    }
-
-    // Handle property_rules (jsonb type)
-    if ('property_rules' in updatePropertyDto && updatePropertyDto.property_rules != null) {
-      updateFields.push(`property_rules = $${paramIndex++}::jsonb`);
-      updateValues.push(JSON.stringify(updatePropertyDto.property_rules));
-    }
-
-    // Handle images (json column)
-    if ('images' in updatePropertyDto && updatePropertyDto.images != null) {
-      updateFields.push(`images = $${paramIndex++}::json`);
-      updateValues.push(JSON.stringify(updatePropertyDto.images));
-    }
-
-    if (updateFields.length > 0) {
-      updateFields.push(`updated_at = NOW()`);
-      updateValues.push(id);
-
-      const sql = `UPDATE properties SET ${updateFields.join(', ')} WHERE id = $${paramIndex}`;
-      console.log('📝 UPDATE SQL:', sql);
-      console.log('📝 UPDATE VALUES:', updateValues);
-
-      try {
-        await this.dataSource.query(sql, updateValues);
-      } catch (error) {
-        console.error('❌ UPDATE ERROR:', error.message);
-        console.error('❌ SQL:', sql);
-        console.error('❌ VALUES:', updateValues);
-        throw error;
-      }
-    }
-
-    // Update addresses if provided
-    if (updatePropertyDto.addresses) {
-      // Delete existing addresses
-      await this.dataSource.query(
-        'DELETE FROM property_addresses WHERE property_id = $1',
+      // Verify property exists
+      const properties = await this.dataSource.query(
+        'SELECT * FROM properties WHERE id = $1',
         [id],
       );
 
-      // Create new addresses
-      for (const addressDto of updatePropertyDto.addresses) {
-        await this.dataSource.query(
-          `INSERT INTO property_addresses (property_id, address_type, street_address, city, state, zip_code, country, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-          [
-            id,
-            addressDto.address_type,
-            addressDto.street_address,
-            addressDto.city || null,
-            addressDto.state || null,
-            addressDto.zip_code || null,
-            addressDto.country,
-          ],
-        );
+      if (properties.length === 0) {
+        throw new NotFoundException(`Property with ID ${id} not found`);
       }
-    }
 
-    // Crear notificaciones por cambio de estado
-    if (
-      'status' in updatePropertyDto &&
-      updatePropertyDto.status !== property.status
-    ) {
-      try {
-        // Notificar a los admins sobre el cambio de estado
-        const admins = await this.dataSource.query(
-          `SELECT id FROM users WHERE role = 'ADMIN'`,
+      const property = properties[0];
+
+      if (updatePropertyDto.property_type_id) {
+        const propertyTypes = await this.dataSource.query(
+          'SELECT * FROM property_types WHERE id = $1',
+          [updatePropertyDto.property_type_id],
         );
 
-        for (const admin of admins) {
-          if (updatePropertyDto.status === 'DISPONIBLE') {
-            await this.notificationsService.createForUser(
-              admin.id,
-              NotificationEventType.PROPERTY_AVAILABLE,
-              'Propiedad disponible',
-              `La propiedad ${property.title} ahora está disponible`,
-              {
-                property_id: id,
-                property_title: property.title,
-                old_status: property.status,
-                new_status: updatePropertyDto.status,
-              },
-            );
-          } else {
-            await this.notificationsService.createForUser(
-              admin.id,
-              NotificationEventType.PROPERTY_STATUS_CHANGED,
-              'Estado de propiedad actualizado',
-              `La propiedad ${property.title} ha cambiado de ${property.status} a ${updatePropertyDto.status}`,
-              {
-                property_id: id,
-                property_title: property.title,
-                old_status: property.status,
-                new_status: updatePropertyDto.status,
-              },
-            );
-          }
+        if (propertyTypes.length === 0) {
+          throw new NotFoundException(
+            `PropertyType with ID ${updatePropertyDto.property_type_id} not found`,
+          );
         }
-      } catch (error) {
-        // No fallar si la notificación no se puede crear
-        console.error('Error al crear notificación:', error.message);
       }
-    }
 
-    return this.findOne(id);
+      if (updatePropertyDto.property_subtype_id) {
+        const propertySubtypes = await this.dataSource.query(
+          'SELECT * FROM property_subtypes WHERE id = $1',
+          [updatePropertyDto.property_subtype_id],
+        );
+
+        if (propertySubtypes.length === 0) {
+          throw new NotFoundException(
+            `PropertySubtype with ID ${updatePropertyDto.property_subtype_id} not found`,
+          );
+        }
+
+        // Validate subtype belongs to type
+        const typeId =
+          updatePropertyDto.property_type_id || property.property_type_id;
+        if (+propertySubtypes[0].property_type_id !== +typeId) {
+          throw new BadRequestException(
+            'PropertySubtype does not belong to the specified PropertyType',
+          );
+        }
+      }
+
+      // Build dynamic update query
+      const updateFields: string[] = [];
+      const updateValues: any[] = [];
+      let paramIndex = 1;
+
+      const allowedFields = [
+        'title',
+        'description',
+        'property_type_id',
+        'property_subtype_id',
+        'status',
+        'latitude',
+        'longitude',
+        'security_deposit_amount',
+        'account_number',
+        'account_type',
+        'account_holder_name',
+        'monthly_rent',
+        'currency',
+        'square_meters',
+        'bedrooms',
+        'bathrooms',
+        'parking_spaces',
+        'year_built',
+        'is_furnished',
+      ];
+
+      for (const field of allowedFields) {
+        const value = (updatePropertyDto as any)[field];
+        if (
+          field in updatePropertyDto &&
+          value !== undefined &&
+          value !== null
+        ) {
+          updateFields.push(`${field} = $${paramIndex++}`);
+          updateValues.push(value);
+        }
+      }
+
+      // Handle JSON fields (amenities, included_items are json type)
+      const jsonFields = ['amenities', 'included_items'];
+      for (const field of jsonFields) {
+        if (
+          field in updatePropertyDto &&
+          (updatePropertyDto as any)[field] != null
+        ) {
+          updateFields.push(`${field} = $${paramIndex++}::json`);
+          updateValues.push(JSON.stringify((updatePropertyDto as any)[field]));
+        }
+      }
+
+      // Handle property_rules (jsonb type)
+      if (
+        'property_rules' in updatePropertyDto &&
+        updatePropertyDto.property_rules != null
+      ) {
+        updateFields.push(`property_rules = $${paramIndex++}::jsonb`);
+        updateValues.push(JSON.stringify(updatePropertyDto.property_rules));
+      }
+
+      // Handle images (json column)
+      if ('images' in updatePropertyDto && updatePropertyDto.images != null) {
+        updateFields.push(`images = $${paramIndex++}::json`);
+        updateValues.push(JSON.stringify(updatePropertyDto.images));
+      }
+
+      if (updateFields.length > 0) {
+        updateFields.push(`updated_at = NOW()`);
+        updateValues.push(id);
+
+        const sql = `UPDATE properties SET ${updateFields.join(', ')} WHERE id = $${paramIndex}`;
+        console.log('📝 UPDATE SQL:', sql);
+        console.log('📝 UPDATE VALUES:', updateValues);
+
+        try {
+          await this.dataSource.query(sql, updateValues);
+        } catch (error) {
+          console.error('❌ UPDATE ERROR:', error.message);
+          console.error('❌ SQL:', sql);
+          console.error('❌ VALUES:', updateValues);
+          throw error;
+        }
+      }
+
+      // Update addresses if provided
+      if (updatePropertyDto.addresses) {
+        // Delete existing addresses
+        await this.dataSource.query(
+          'DELETE FROM property_addresses WHERE property_id = $1',
+          [id],
+        );
+
+        // Create new addresses
+        for (const addressDto of updatePropertyDto.addresses) {
+          await this.dataSource.query(
+            `INSERT INTO property_addresses (property_id, address_type, street_address, city, state, zip_code, country, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+            [
+              id,
+              addressDto.address_type,
+              addressDto.street_address,
+              addressDto.city || null,
+              addressDto.state || null,
+              addressDto.zip_code || null,
+              addressDto.country,
+            ],
+          );
+        }
+      }
+
+      // Crear notificaciones por cambio de estado
+      if (
+        'status' in updatePropertyDto &&
+        updatePropertyDto.status !== property.status
+      ) {
+        try {
+          // Notificar a los admins sobre el cambio de estado
+          const admins = await this.dataSource.query(
+            `SELECT id FROM users WHERE role = 'ADMIN'`,
+          );
+
+          for (const admin of admins) {
+            if (updatePropertyDto.status === 'DISPONIBLE') {
+              await this.notificationsService.createForUser(
+                admin.id,
+                NotificationEventType.PROPERTY_AVAILABLE,
+                'Propiedad disponible',
+                `La propiedad ${property.title} ahora está disponible`,
+                {
+                  property_id: id,
+                  property_title: property.title,
+                  old_status: property.status,
+                  new_status: updatePropertyDto.status,
+                },
+              );
+            } else {
+              await this.notificationsService.createForUser(
+                admin.id,
+                NotificationEventType.PROPERTY_STATUS_CHANGED,
+                'Estado de propiedad actualizado',
+                `La propiedad ${property.title} ha cambiado de ${property.status} a ${updatePropertyDto.status}`,
+                {
+                  property_id: id,
+                  property_title: property.title,
+                  old_status: property.status,
+                  new_status: updatePropertyDto.status,
+                },
+              );
+            }
+          }
+        } catch (error) {
+          // No fallar si la notificación no se puede crear
+          console.error('Error al crear notificación:', error.message);
+        }
+      }
+
+      return this.findOne(id);
     } catch (error) {
       if (error?.status && error.status < 500) throw error; // re-throw 4xx
       console.error('❌❌ UPDATE FULL ERROR:', error.message);
@@ -693,16 +709,24 @@ export class PropertiesService {
     // Handle JSON fields (amenities, included_items are json type)
     const jsonFields = ['amenities', 'included_items'];
     for (const field of jsonFields) {
-      if (field in updateDetailsDto && (updateDetailsDto as any)[field] != null) {
+      if (
+        field in updateDetailsDto &&
+        (updateDetailsDto as any)[field] != null
+      ) {
         updateFields.push(`${field} = $${paramIndex++}::json`);
         updateValues.push(JSON.stringify((updateDetailsDto as any)[field]));
       }
     }
 
     // Handle property_rules (jsonb type)
-    if ('property_rules' in updateDetailsDto && (updateDetailsDto as any)['property_rules'] != null) {
+    if (
+      'property_rules' in updateDetailsDto &&
+      (updateDetailsDto as any)['property_rules'] != null
+    ) {
       updateFields.push(`property_rules = $${paramIndex++}::jsonb`);
-      updateValues.push(JSON.stringify((updateDetailsDto as any)['property_rules']));
+      updateValues.push(
+        JSON.stringify((updateDetailsDto as any)['property_rules']),
+      );
     }
 
     // Handle images (json column)
@@ -824,13 +848,20 @@ export class PropertiesService {
     let idx = 1;
 
     const allowed = [
-      'name', 'company_name', 'is_company', 'primary_email',
-      'phone_number', 'secondary_email', 'secondary_phone', 'notes', 'is_active',
+      'name',
+      'company_name',
+      'is_company',
+      'primary_email',
+      'phone_number',
+      'secondary_email',
+      'secondary_phone',
+      'notes',
+      'is_active',
     ];
     for (const field of allowed) {
       if (field in updateDto) {
         fields.push(`${field} = $${idx++}`);
-        values.push((updateDto as any)[field]);
+        values.push(updateDto[field]);
       }
     }
     if (fields.length === 0) {
@@ -854,7 +885,9 @@ export class PropertiesService {
     if (owners.length === 0) {
       throw new NotFoundException(`RentalOwner with ID ${id} not found`);
     }
-    await this.dataSource.query('DELETE FROM rental_owners WHERE id = $1', [id]);
+    await this.dataSource.query('DELETE FROM rental_owners WHERE id = $1', [
+      id,
+    ]);
     return { message: 'RentalOwner deleted successfully', id };
   }
 
@@ -891,13 +924,17 @@ export class PropertiesService {
       [ownerRelationId, propertyId],
     );
     if (rows.length === 0) {
-      throw new NotFoundException(`Owner relation with ID ${ownerRelationId} not found for property ${propertyId}`);
+      throw new NotFoundException(
+        `Owner relation with ID ${ownerRelationId} not found for property ${propertyId}`,
+      );
     }
-    await this.dataSource.query(
-      'DELETE FROM property_owners WHERE id = $1',
-      [ownerRelationId],
-    );
-    return { message: 'Owner removed from property successfully', id: ownerRelationId };
+    await this.dataSource.query('DELETE FROM property_owners WHERE id = $1', [
+      ownerRelationId,
+    ]);
+    return {
+      message: 'Owner removed from property successfully',
+      id: ownerRelationId,
+    };
   }
 
   async getStats() {
@@ -934,4 +971,3 @@ export class PropertiesService {
     return rows;
   }
 }
-

@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentsService } from './payments.service';
-import { AdminPaymentsController, TenantPaymentsController } from './payments.controller';
+import {
+  AdminPaymentsController,
+  TenantPaymentsController,
+} from './payments.controller';
 import { TenantsModule } from '../tenants/tenants.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
@@ -15,6 +18,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [TenantsModule, NotificationsModule],
   controllers: [AdminPaymentsController, TenantPaymentsController],
   providers: [PaymentsService],
-  exports: [PaymentsService]
+  exports: [PaymentsService],
 })
 export class PaymentsModule {}

@@ -11,7 +11,10 @@ import { ContractHistory } from './entities/contract-history.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Contract, ContractHistory]), NotificationsModule],
+  imports: [
+    TypeOrmModule.forFeature([Contract, ContractHistory]),
+    NotificationsModule,
+  ],
   providers: [ContractsService, PdfService],
   controllers: [AdminContractsController, TenantContractsController],
   exports: [ContractsService, PdfService],

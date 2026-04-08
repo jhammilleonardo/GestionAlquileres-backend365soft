@@ -26,7 +26,7 @@ export enum PaymentStatus {
   REVERSED = 'REVERSED',
 
   /** En disputa (chargeback) */
-  DISPUTED = 'DISPUTED'
+  DISPUTED = 'DISPUTED',
 }
 
 /**
@@ -40,5 +40,5 @@ export const PaymentStatusLabels: Record<PaymentStatus, string> = {
   [PaymentStatus.FAILED]: 'Fallido',
   [PaymentStatus.REFUNDED]: 'Reembolsado',
   [PaymentStatus.REVERSED]: 'Revertido',
-  [PaymentStatus.DISPUTED]: 'En Disputa'
+  [PaymentStatus.DISPUTED]: 'En Disputa',
 };

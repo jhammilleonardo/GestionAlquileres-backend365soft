@@ -51,7 +51,7 @@ export enum PaymentMethod {
   OTHER = 'OTHER',
 
   /** QR dinámico (Bolivia - MC4/SIP) */
-  QR_MC4 = 'QR_MC4'
+  QR_MC4 = 'QR_MC4',
 }
 
 /**
@@ -73,5 +73,5 @@ export const PaymentMethodLabels: Record<PaymentMethod, string> = {
   [PaymentMethod.SEPA]: 'SEPA (Europa)',
   [PaymentMethod.TRANSFER]: 'Transferencia Bancaria',
   [PaymentMethod.OTHER]: 'Otro',
-  [PaymentMethod.QR_MC4]: 'QR Dinámico (MC4/SIP)'
+  [PaymentMethod.QR_MC4]: 'QR Dinámico (MC4/SIP)',
 };

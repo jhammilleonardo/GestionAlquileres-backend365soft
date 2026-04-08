@@ -33,10 +33,7 @@ export class AdminQrPaymentController {
    * Generar QR dinámico de pago para un inquilino
    */
   @Post()
-  async generarQr(
-    @Param('slug') slug: string,
-    @Body() dto: GenerateQrDto,
-  ) {
+  async generarQr(@Param('slug') slug: string, @Body() dto: GenerateQrDto) {
     // Admin puede generar QR para cualquier tenant — sin restricción de ownership
     return this.qrPaymentService.generarQrDinamico(slug, dto);
   }
@@ -47,10 +44,7 @@ export class AdminQrPaymentController {
    */
   @Post('verificar')
   @HttpCode(HttpStatus.OK)
-  async verificarEstado(
-    @Param('slug') slug: string,
-    @Body() dto: VerifyQrDto,
-  ) {
+  async verificarEstado(@Param('slug') slug: string, @Body() dto: VerifyQrDto) {
     // Admin puede verificar cualquier QR — sin restricción de ownership (tenantId=undefined)
     return this.qrPaymentService.verificarEstadoQr(slug, dto, undefined);
   }
@@ -186,10 +180,11 @@ export class PublicQrPaymentController {
     // Capa 1 + 2: verificar token con comparación en tiempo constante
     // timingSafeEqual previene ataques de timing que permiten adivinar el secreto bit a bit
     const { timingSafeEqual } = await import('crypto');
-    const tokenBuf    = Buffer.from(token ?? '');
+    const tokenBuf = Buffer.from(token ?? '');
     const expectedBuf = Buffer.from(expectedSecret);
-    const isValid = tokenBuf.length === expectedBuf.length
-      && timingSafeEqual(tokenBuf, expectedBuf);
+    const isValid =
+      tokenBuf.length === expectedBuf.length &&
+      timingSafeEqual(tokenBuf, expectedBuf);
 
     if (!isValid) {
       // Respuesta genérica — no revelar si el token es incorrecto o falta

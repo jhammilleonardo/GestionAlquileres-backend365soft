@@ -11,7 +11,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!jwtSecret || jwtSecret.length < 32) {
       throw new Error(
         'JWT_SECRET must be configured and have at least 32 characters. ' +
-        'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
+          "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
       );
     }
 

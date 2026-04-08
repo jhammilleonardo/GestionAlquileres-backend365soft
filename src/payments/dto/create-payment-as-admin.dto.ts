@@ -1,5 +1,21 @@
-import { IsNotEmpty, IsNumber, IsEnum, IsOptional, IsString, IsBoolean, IsDateString, Min, MaxLength } from 'class-validator';
-import { PaymentType, PaymentMethod, Currency, PaymentProcessor, PaymentStatus } from '../enums';
+import {
+  IsNotEmpty,
+  IsNumber,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsBoolean,
+  IsDateString,
+  Min,
+  MaxLength,
+} from 'class-validator';
+import {
+  PaymentType,
+  PaymentMethod,
+  Currency,
+  PaymentProcessor,
+  PaymentStatus,
+} from '../enums';
 
 /**
  * Create Payment As Admin DTO

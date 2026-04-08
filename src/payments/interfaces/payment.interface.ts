@@ -1,4 +1,10 @@
-import { PaymentType, PaymentMethod, PaymentStatus, Currency, PaymentProcessor } from '../enums';
+import {
+  PaymentType,
+  PaymentMethod,
+  PaymentStatus,
+  Currency,
+  PaymentProcessor,
+} from '../enums';
 
 /**
  * Payment Interface
@@ -87,10 +93,13 @@ export interface PaymentStats {
   total_amount_failed: number;
 
   // Por moneda
-  by_currency?: Record<string, {
-    count: number;
-    total_amount: number;
-  }>;
+  by_currency?: Record<
+    string,
+    {
+      count: number;
+      total_amount: number;
+    }
+  >;
 
   // Por tipo
   by_type?: Record<string, number>;

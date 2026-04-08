@@ -17,6 +17,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { QrPaymentModule } from './payments/qr/qr-payment.module';
+import { EmployeesModule } from './employees/employees.module';
 
 @Module({
   imports: [
@@ -26,13 +27,13 @@ import { QrPaymentModule } from './payments/qr/qr-payment.module';
     ThrottlerModule.forRoot([
       {
         name: 'default',
-        ttl: 60000,  // 60 segundos
-        limit: 100,  // 100 requests por minuto (general)
+        ttl: 60000, // 60 segundos
+        limit: 100, // 100 requests por minuto (general)
       },
       {
         name: 'strict',
-        ttl: 60000,  // 60 segundos
-        limit: 20,   // 20 requests por minuto (endpoints sensibles)
+        ttl: 60000, // 60 segundos
+        limit: 20, // 20 requests por minuto (endpoints sensibles)
       },
     ]),
     TypeOrmModule.forRootAsync({
@@ -74,6 +75,7 @@ import { QrPaymentModule } from './payments/qr/qr-payment.module';
     ApplicationsModule,
     PaymentsModule,
     QrPaymentModule,
+    EmployeesModule,
   ],
   controllers: [AppController],
   providers: [

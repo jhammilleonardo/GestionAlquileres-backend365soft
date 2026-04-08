@@ -118,7 +118,7 @@ export class AuthService {
         WHERE c.tenant_id = $1 AND c.status IN ('ACTIVO', 'POR_VENCER')
         ORDER BY c.created_at DESC
         LIMIT 1`,
-        [user.id]
+        [user.id],
       );
 
       if (contractResult && contractResult.length > 0) {
@@ -150,7 +150,7 @@ export class AuthService {
     // Obtener datos completos del usuario
     const userResult = await this.dataSource.query(
       'SELECT id, name, email, phone, role FROM "user" WHERE id = $1',
-      [user.userId]
+      [user.userId],
     );
 
     if (userResult.length === 0) {
@@ -173,7 +173,7 @@ export class AuthService {
         WHERE c.tenant_id = $1 AND c.status IN ('ACTIVO', 'POR_VENCER', 'BORRADOR')
         ORDER BY c.created_at DESC
         LIMIT 1`,
-        [fullUser.id]
+        [fullUser.id],
       );
 
       if (contractResult && contractResult.length > 0) {

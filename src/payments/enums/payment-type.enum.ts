@@ -33,7 +33,7 @@ export enum PaymentType {
   MAINTENANCE_FEE = 'MAINTENANCE_FEE',
 
   /** Otros cargos */
-  OTHER = 'OTHER'
+  OTHER = 'OTHER',
 }
 
 /**
@@ -49,5 +49,5 @@ export const PaymentTypeLabels: Record<PaymentType, string> = {
   [PaymentType.PARKING_FEE]: 'Estacionamiento',
   [PaymentType.APPLICATION_FEE]: 'Tarifa de Solicitud',
   [PaymentType.MAINTENANCE_FEE]: 'Mantenimiento',
-  [PaymentType.OTHER]: 'Otro'
+  [PaymentType.OTHER]: 'Otro',
 };

@@ -31,13 +31,13 @@ export type QrEstado = (typeof QR_ESTADO)[keyof typeof QR_ESTADO];
  */
 function getMc4Config() {
   return {
-    AUTH_URL:         process.env.MC4_AUTH_URL         ?? '',
-    QR_URL:           process.env.MC4_QR_URL           ?? '',
-    STATUS_URL:       process.env.MC4_STATUS_URL       ?? '',
-    API_KEY_AUTH:     process.env.MC4_API_KEY_AUTH     ?? '',
+    AUTH_URL: process.env.MC4_AUTH_URL ?? '',
+    QR_URL: process.env.MC4_QR_URL ?? '',
+    STATUS_URL: process.env.MC4_STATUS_URL ?? '',
+    API_KEY_AUTH: process.env.MC4_API_KEY_AUTH ?? '',
     API_KEY_SERVICIO: process.env.MC4_API_KEY_SERVICIO ?? '',
-    USERNAME:         process.env.MC4_USERNAME         ?? '',
-    PASSWORD:         process.env.MC4_PASSWORD         ?? '',
+    USERNAME: process.env.MC4_USERNAME ?? '',
+    PASSWORD: process.env.MC4_PASSWORD ?? '',
   };
 }
 
@@ -280,9 +280,7 @@ export class QrPaymentService {
       mc4Response = resp.data;
     } catch (error: any) {
       const msg =
-        error?.response?.data?.mensaje ??
-        error?.message ??
-        'Error de conexión';
+        error?.response?.data?.mensaje ?? error?.message ?? 'Error de conexión';
       throw new InternalServerErrorException(
         `Error al comunicarse con la API de QR: ${msg}`,
       );
@@ -381,9 +379,7 @@ export class QrPaymentService {
       mc4Response = resp.data;
     } catch (error: any) {
       const msg =
-        error?.response?.data?.mensaje ??
-        error?.message ??
-        'Error de conexión';
+        error?.response?.data?.mensaje ?? error?.message ?? 'Error de conexión';
       throw new InternalServerErrorException(
         `Error al consultar estado del QR: ${msg}`,
       );
@@ -528,7 +524,9 @@ export class QrPaymentService {
     // Patrón: QR365T{tenant_id}T{14 dígitos timestamp}{8 hex chars}
     const ALIAS_PATTERN = /^QR365T\d+T\d{14}[0-9a-f]{8}$/i;
     if (!dto.alias || !ALIAS_PATTERN.test(dto.alias)) {
-      this.logger.warn(`[callback] Alias con formato inválido rechazado: ${dto.alias}`);
+      this.logger.warn(
+        `[callback] Alias con formato inválido rechazado: ${dto.alias}`,
+      );
       // Respuesta genérica — no revelar por qué se rechaza
       return { codigo: '1212', mensaje: 'Error en la solicitud' };
     }

@@ -35,13 +35,15 @@ export class UsersController {
   @Roles('ADMIN', 'SUPERADMIN')
   @ApiOperation({
     summary: 'Obtener todos los inquilinos',
-    description: 'Lista solo usuarios con rol INQUILINO. Incluye información sobre sus solicitudes y contratos.',
+    description:
+      'Lista solo usuarios con rol INQUILINO. Incluye información sobre sus solicitudes y contratos.',
   })
   @ApiQuery({
     name: 'status',
     required: false,
     enum: ['approved', 'pending', 'all'],
-    description: 'Filtrar por estado de solicitud (approved = con solicitud aprobada)',
+    description:
+      'Filtrar por estado de solicitud (approved = con solicitud aprobada)',
   })
   @ApiQuery({
     name: 'hasActiveContract',

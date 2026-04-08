@@ -29,7 +29,7 @@ export enum PaymentProcessor {
   MANUAL = 'manual',
 
   /** MC4/SIP - QR dinámico Bolivia */
-  MC4_QR = 'mc4_qr'
+  MC4_QR = 'mc4_qr',
 }
 
 /**
@@ -44,5 +44,5 @@ export const PaymentProcessorLabels: Record<PaymentProcessor, string> = {
   [PaymentProcessor.DWOLLA]: 'Dwolla',
   [PaymentProcessor.MERCADO_PAGO]: 'Mercado Pago',
   [PaymentProcessor.MANUAL]: 'Manual',
-  [PaymentProcessor.MC4_QR]: 'QR MC4/SIP (Bolivia)'
+  [PaymentProcessor.MC4_QR]: 'QR MC4/SIP (Bolivia)',
 };

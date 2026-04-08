@@ -39,7 +39,7 @@ export enum Currency {
   ARS = 'ARS',
 
   /** Boliviano */
-  BOB = 'BOB'
+  BOB = 'BOB',
 }
 
 /**
@@ -57,7 +57,7 @@ export const CurrencySymbols: Record<Currency, string> = {
   [Currency.CLP]: 'CL$',
   [Currency.PEN]: 'S/',
   [Currency.ARS]: 'AR$',
-  [Currency.BOB]: 'Bs'
+  [Currency.BOB]: 'Bs',
 };
 
 /**
@@ -75,5 +75,5 @@ export const CurrencyNames: Record<Currency, string> = {
   [Currency.CLP]: 'Peso Chileno',
   [Currency.PEN]: 'Sol Peruano',
   [Currency.ARS]: 'Peso Argentino',
-  [Currency.BOB]: 'Boliviano'
+  [Currency.BOB]: 'Boliviano',
 };

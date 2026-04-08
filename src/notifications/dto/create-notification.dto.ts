@@ -30,6 +30,8 @@ export enum NotificationEventType {
   CONTRACT_CREATED = 'contract.created',
   CONTRACT_SIGNED = 'contract.signed',
   CONTRACT_EXPIRING = 'contract.expiring',
+  // Empleados
+  EMPLOYEE_CREATED = 'employee.created',
 }
 
 export class CreateNotificationDto {

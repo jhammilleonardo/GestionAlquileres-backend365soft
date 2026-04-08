@@ -784,14 +784,7 @@ export class MaintenanceService {
           maintenance_request_id, file_url, file_name, file_type, file_size, uploaded_by
         ) VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *`,
-        [
-          requestId,
-          fileUrl,
-          file.originalname,
-          fileType,
-          file.size,
-          userId,
-        ],
+        [requestId, fileUrl, file.originalname, fileType, file.size, userId],
       );
 
       savedFiles.push(result[0]);

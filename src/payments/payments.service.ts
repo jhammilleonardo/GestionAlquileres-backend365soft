@@ -1,6 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { CreatePaymentDto, CreatePaymentAsAdminDto, UpdatePaymentStatusDto, PaymentFiltersDto, CreateRefundDto } from './dto';
+import {
+  CreatePaymentDto,
+  CreatePaymentAsAdminDto,
+  UpdatePaymentStatusDto,
+  PaymentFiltersDto,
+  CreateRefundDto,
+} from './dto';
 import { Payment, PaymentStats } from './interfaces/payment.interface';
 import { PaymentStatus, PaymentProcessor } from './enums';
 import { TenantsService } from '../tenants/tenants.service';
@@ -29,7 +40,7 @@ export class PaymentsService {
     dto: CreatePaymentDto,
     tenantSlug?: string,
     contractId?: number,
-    propertyId?: number
+    propertyId?: number,
   ): Promise<Payment> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -48,7 +59,7 @@ export class PaymentsService {
           `SELECT id, property_id FROM contracts
            WHERE tenant_id = $1 AND status IN ('ACTIVO', 'POR_VENCER')
            ORDER BY created_at DESC LIMIT 1`,
-          [tenantId]
+          [tenantId],
         );
 
         if (!contract || contract.length === 0) {
@@ -88,8 +99,8 @@ export class PaymentsService {
           dto.parent_payment_id || null,
           dto.is_recurring || false,
           dto.recurring_schedule_id || null,
-          tenantId
-        ]
+          tenantId,
+        ],
       );
 
       await queryRunner.commitTransaction();
@@ -106,7 +117,11 @@ export class PaymentsService {
             NotificationEventType.PAYMENT_CREATED,
             'Nuevo pago registrado',
             `Un inquilino ha registrado un nuevo pago de ${dto.amount} ${dto.currency || 'USD'}`,
-            { payment_id: result[0].id, amount: dto.amount, currency: dto.currency || 'USD' },
+            {
+              payment_id: result[0].id,
+              amount: dto.amount,
+              currency: dto.currency || 'USD',
+            },
           );
         }
       } catch (notifError) {
@@ -125,7 +140,10 @@ export class PaymentsService {
   /**
    * Obtener pagos del tenant
    */
-  async getTenantPayments(tenantId: number, tenantSlug: string): Promise<Payment[]> {
+  async getTenantPayments(
+    tenantId: number,
+    tenantSlug: string,
+  ): Promise<Payment[]> {
     // Establecer el schema correcto del tenant
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
     await this.dataSource.query(`SET search_path TO ${tenant.schema_name}`);
@@ -149,7 +167,7 @@ export class PaymentsService {
       LEFT JOIN contracts c ON p.contract_id = c.id
       WHERE p.tenant_id = $1
       ORDER BY p.created_at DESC`,
-      [tenantId]
+      [tenantId],
     );
 
     return payments;
@@ -158,7 +176,10 @@ export class PaymentsService {
   /**
    * Obtener estadísticas del tenant
    */
-  async getTenantStats(tenantId: number, tenantSlug: string): Promise<PaymentStats> {
+  async getTenantStats(
+    tenantId: number,
+    tenantSlug: string,
+  ): Promise<PaymentStats> {
     // Establecer el schema correcto del tenant
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
     await this.dataSource.query(`SET search_path TO ${tenant.schema_name}`);
@@ -176,7 +197,7 @@ export class PaymentsService {
         COALESCE(SUM(amount) FILTER (WHERE status = 'FAILED'), 0)::numeric as total_amount_failed
       FROM payments
       WHERE tenant_id = $1`,
-      [tenantId]
+      [tenantId],
     );
 
     return stats[0];
@@ -197,8 +218,8 @@ export class PaymentsService {
     page: number;
     limit: number;
   }> {
-    let whereConditions: string[] = [];
-    let params: any[] = [];
+    const whereConditions: string[] = [];
+    const params: any[] = [];
     let paramIndex = 1;
 
     // Construir WHERE clause dinámicamente
@@ -247,15 +268,25 @@ export class PaymentsService {
       params.push(filters.date_to);
     }
 
-    const whereClause = whereConditions.length > 0
-      ? 'WHERE ' + whereConditions.join(' AND ')
-      : '';
+    const whereClause =
+      whereConditions.length > 0
+        ? 'WHERE ' + whereConditions.join(' AND ')
+        : '';
 
     // Whitelist para sort field (defensa en profundidad contra SQL injection)
-    const allowedSortFields = ['created_at', 'updated_at', 'payment_date', 'amount', 'status', 'tenant_id', 'property_id'];
-    const sortField = filters.sort && allowedSortFields.includes(filters.sort)
-      ? filters.sort
-      : 'created_at';
+    const allowedSortFields = [
+      'created_at',
+      'updated_at',
+      'payment_date',
+      'amount',
+      'status',
+      'tenant_id',
+      'property_id',
+    ];
+    const sortField =
+      filters.sort && allowedSortFields.includes(filters.sort)
+        ? filters.sort
+        : 'created_at';
 
     const sortOrder = filters.order === 'ASC' ? 'ASC' : 'DESC';
 
@@ -286,20 +317,24 @@ export class PaymentsService {
       ${whereClause}
       ORDER BY p.${sortField} ${sortOrder}
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-      [...params, filters.limit || 50, ((filters.page || 1) - 1) * (filters.limit || 50)]
+      [
+        ...params,
+        filters.limit || 50,
+        ((filters.page || 1) - 1) * (filters.limit || 50),
+      ],
     );
 
     // Contar total
     const countResult = await this.dataSource.query(
       `SELECT COUNT(*)::int as total FROM payments p ${whereClause}`,
-      params
+      params,
     );
 
     return {
       payments,
       total: countResult[0].total,
       page: filters.page || 1,
-      limit: filters.limit || 50
+      limit: filters.limit || 50,
     };
   }
 
@@ -318,7 +353,7 @@ export class PaymentsService {
         COALESCE(SUM(amount) FILTER (WHERE status = 'PENDING'), 0)::numeric as total_amount_pending,
         COALESCE(SUM(amount) FILTER (WHERE status = 'APPROVED'), 0)::numeric as total_amount_approved,
         COALESCE(SUM(amount) FILTER (WHERE status = 'FAILED'), 0)::numeric as total_amount_failed
-      FROM payments`
+      FROM payments`,
     );
 
     return stats[0];
@@ -331,7 +366,7 @@ export class PaymentsService {
   async createPaymentAsAdmin(
     dto: CreatePaymentAsAdminDto,
     adminId: number,
-    schemaName?: string
+    schemaName?: string,
   ): Promise<Payment> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -346,30 +381,39 @@ export class PaymentsService {
       // Verificar que el contrato existe y pertenece al tenant
       const contract = await queryRunner.query(
         `SELECT id, tenant_id, property_id, status FROM contracts WHERE id = $1`,
-        [dto.contract_id]
+        [dto.contract_id],
       );
 
       if (!contract || contract.length === 0) {
-        throw new NotFoundException(`Contrato #${dto.contract_id} no encontrado`);
+        throw new NotFoundException(
+          `Contrato #${dto.contract_id} no encontrado`,
+        );
       }
 
       if (contract[0].tenant_id !== dto.tenant_id) {
-        throw new BadRequestException('El contrato no pertenece al inquilino especificado');
+        throw new BadRequestException(
+          'El contrato no pertenece al inquilino especificado',
+        );
       }
 
       if (contract[0].property_id !== dto.property_id) {
-        throw new BadRequestException('El contrato no pertenece a la propiedad especificada');
+        throw new BadRequestException(
+          'El contrato no pertenece a la propiedad especificada',
+        );
       }
 
       // Construir metadata con campos específicos del método de pago
       const metadata: any = {};
 
       // Campos específicos por método de pago
-      if (dto.card_last_4_digits) metadata.card_last_4_digits = dto.card_last_4_digits;
-      if (dto.card_holder_name) metadata.card_holder_name = dto.card_holder_name;
+      if (dto.card_last_4_digits)
+        metadata.card_last_4_digits = dto.card_last_4_digits;
+      if (dto.card_holder_name)
+        metadata.card_holder_name = dto.card_holder_name;
       if (dto.card_expiry) metadata.card_expiry = dto.card_expiry;
       if (dto.bank_name) metadata.bank_name = dto.bank_name;
-      if (dto.bank_account_last_4) metadata.bank_account_last_4 = dto.bank_account_last_4;
+      if (dto.bank_account_last_4)
+        metadata.bank_account_last_4 = dto.bank_account_last_4;
       if (dto.received_by) metadata.received_by = dto.received_by;
 
       // Crear el pago
@@ -406,8 +450,8 @@ export class PaymentsService {
           adminId, // created_by
           dto.status === PaymentStatus.APPROVED ? adminId : null, // approved_by
           dto.status === PaymentStatus.APPROVED ? new Date() : null, // approved_at
-          Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null // metadata
-        ]
+          Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null, // metadata
+        ],
       );
 
       await queryRunner.commitTransaction();
@@ -420,7 +464,11 @@ export class PaymentsService {
             NotificationEventType.PAYMENT_APPROVED,
             'Pago aprobado',
             `Tu pago de ${dto.amount} ${dto.currency || 'USD'} ha sido aprobado`,
-            { payment_id: result[0].id, amount: dto.amount, currency: dto.currency || 'USD' },
+            {
+              payment_id: result[0].id,
+              amount: dto.amount,
+              currency: dto.currency || 'USD',
+            },
           );
         } catch (notifError) {
           // No propagar errores de notificación
@@ -440,8 +488,8 @@ export class PaymentsService {
    * Exportar pagos como CSV (Admin)
    */
   async exportPaymentsCsv(filters: PaymentFiltersDto): Promise<string> {
-    let whereConditions: string[] = [];
-    let params: any[] = [];
+    const whereConditions: string[] = [];
+    const params: any[] = [];
     let paramIndex = 1;
 
     if (filters.status) {
@@ -481,14 +529,24 @@ export class PaymentsService {
       params.push(filters.date_to);
     }
 
-    const whereClause = whereConditions.length > 0
-      ? 'WHERE ' + whereConditions.join(' AND ')
-      : '';
+    const whereClause =
+      whereConditions.length > 0
+        ? 'WHERE ' + whereConditions.join(' AND ')
+        : '';
 
-    const allowedSortFields = ['created_at', 'updated_at', 'payment_date', 'amount', 'status', 'tenant_id', 'property_id'];
-    const sortField = filters.sort && allowedSortFields.includes(filters.sort)
-      ? filters.sort
-      : 'created_at';
+    const allowedSortFields = [
+      'created_at',
+      'updated_at',
+      'payment_date',
+      'amount',
+      'status',
+      'tenant_id',
+      'property_id',
+    ];
+    const sortField =
+      filters.sort && allowedSortFields.includes(filters.sort)
+        ? filters.sort
+        : 'created_at';
     const sortOrder = filters.order === 'ASC' ? 'ASC' : 'DESC';
 
     const payments = await this.dataSource.query(
@@ -514,13 +572,25 @@ export class PaymentsService {
       LEFT JOIN contracts c ON p.contract_id = c.id
       ${whereClause}
       ORDER BY p.${sortField} ${sortOrder}`,
-      params
+      params,
     );
 
     const headers = [
-      'ID', 'Monto', 'Moneda', 'Tipo', 'Método', 'Estado',
-      'Fecha Pago', 'Fecha Vencimiento', 'Referencia', 'Notas',
-      'Creado', 'Inquilino', 'Email Inquilino', 'Propiedad', 'Contrato'
+      'ID',
+      'Monto',
+      'Moneda',
+      'Tipo',
+      'Método',
+      'Estado',
+      'Fecha Pago',
+      'Fecha Vencimiento',
+      'Referencia',
+      'Notas',
+      'Creado',
+      'Inquilino',
+      'Email Inquilino',
+      'Propiedad',
+      'Contrato',
     ];
 
     const escape = (val: any) => {
@@ -529,23 +599,25 @@ export class PaymentsService {
       return `"${str}"`;
     };
 
-    const rows = payments.map((p: any) => [
-      escape(p.id),
-      escape(p.amount),
-      escape(p.currency),
-      escape(p.payment_type),
-      escape(p.payment_method),
-      escape(p.status),
-      escape(p.payment_date),
-      escape(p.due_date),
-      escape(p.reference_number),
-      escape(p.notes),
-      escape(p.created_at),
-      escape(p.tenant_name),
-      escape(p.tenant_email),
-      escape(p.property_title),
-      escape(p.contract_number),
-    ].join(','));
+    const rows = payments.map((p: any) =>
+      [
+        escape(p.id),
+        escape(p.amount),
+        escape(p.currency),
+        escape(p.payment_type),
+        escape(p.payment_method),
+        escape(p.status),
+        escape(p.payment_date),
+        escape(p.due_date),
+        escape(p.reference_number),
+        escape(p.notes),
+        escape(p.created_at),
+        escape(p.tenant_name),
+        escape(p.tenant_email),
+        escape(p.property_title),
+        escape(p.contract_number),
+      ].join(','),
+    );
 
     return [headers.join(','), ...rows].join('\n');
   }
@@ -583,7 +655,7 @@ export class PaymentsService {
       LEFT JOIN properties prop ON p.property_id = prop.id
       LEFT JOIN contracts c ON p.contract_id = c.id
       ${conditions}`,
-      params
+      params,
     );
 
     if (!payments || payments.length === 0) {
@@ -600,7 +672,7 @@ export class PaymentsService {
     id: number,
     dto: UpdatePaymentStatusDto,
     adminId: number,
-    schemaName?: string
+    schemaName?: string,
   ): Promise<Payment> {
     // Usar nombre de tabla calificado para evitar depender de search_path
     const schema = schemaName || 'public';
@@ -610,7 +682,7 @@ export class PaymentsService {
       // Verificar que el pago existe
       const payment = await this.dataSource.query(
         `SELECT * FROM ${table} WHERE id = $1`,
-        [id]
+        [id],
       );
 
       if (!payment || payment.length === 0) {
@@ -635,8 +707,8 @@ export class PaymentsService {
           dto.rejection_reason || payment[0].rejection_reason,
           adminId,
           id,
-          isApproved
-        ]
+          isApproved,
+        ],
       );
 
       // Notificar al tenant según el nuevo estado
@@ -658,7 +730,12 @@ export class PaymentsService {
             NotificationEventType.PAYMENT_REJECTED,
             'Pago rechazado',
             `Tu pago de ${amount} ${currency} ha sido rechazado`,
-            { payment_id: id, amount, currency, rejection_reason: dto.rejection_reason || '' },
+            {
+              payment_id: id,
+              amount,
+              currency,
+              rejection_reason: dto.rejection_reason || '',
+            },
           );
         }
       } catch (notifError) {
@@ -681,7 +758,7 @@ export class PaymentsService {
     }
     const result = await this.dataSource.query(
       'DELETE FROM payments WHERE id = $1',
-      [id]
+      [id],
     );
 
     if (result[1] === 0) {
@@ -692,7 +769,11 @@ export class PaymentsService {
   /**
    * Crear un reembolso (Admin)
    */
-  async createRefund(paymentId: number, dto: CreateRefundDto, adminId: number): Promise<void> {
+  async createRefund(
+    paymentId: number,
+    dto: CreateRefundDto,
+    adminId: number,
+  ): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -701,16 +782,20 @@ export class PaymentsService {
       // Verificar que el pago existe y está aprobado
       const payment = await queryRunner.query(
         'SELECT * FROM payments WHERE id = $1 AND status = $2',
-        [paymentId, PaymentStatus.APPROVED]
+        [paymentId, PaymentStatus.APPROVED],
       );
 
       if (!payment || payment.length === 0) {
-        throw new BadRequestException('El pago debe estar aprobado para reembolsarlo');
+        throw new BadRequestException(
+          'El pago debe estar aprobado para reembolsarlo',
+        );
       }
 
       // Verificar que el monto del reembolso no exceda el pago
       if (dto.amount > payment[0].amount) {
-        throw new BadRequestException('El monto del reembolso no puede exceder el monto del pago');
+        throw new BadRequestException(
+          'El monto del reembolso no puede exceder el monto del pago',
+        );
       }
 
       // Crear el reembolso
@@ -726,14 +811,14 @@ export class PaymentsService {
           dto.refund_method || null,
           dto.refund_date || new Date().toISOString().split('T')[0],
           dto.transaction_id || null,
-          adminId
-        ]
+          adminId,
+        ],
       );
 
       // Actualizar el estado del pago
       await queryRunner.query(
         `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
-        [PaymentStatus.REFUNDED, paymentId]
+        [PaymentStatus.REFUNDED, paymentId],
       );
 
       await queryRunner.commitTransaction();

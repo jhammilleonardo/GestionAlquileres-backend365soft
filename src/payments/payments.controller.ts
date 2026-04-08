@@ -10,11 +10,17 @@ import {
   ParseIntPipe,
   UseGuards,
   Request,
-  Res
+  Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto, CreatePaymentAsAdminDto, UpdatePaymentStatusDto, PaymentFiltersDto, CreateRefundDto } from './dto';
+import {
+  CreatePaymentDto,
+  CreatePaymentAsAdminDto,
+  UpdatePaymentStatusDto,
+  PaymentFiltersDto,
+  CreateRefundDto,
+} from './dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -62,7 +68,7 @@ export class AdminPaymentsController {
   async createPaymentAsAdmin(
     @Param('slug') slug: string,
     @Body() dto: CreatePaymentAsAdminDto,
-    @Request() req
+    @Request() req,
   ) {
     const adminId = req.user.userId;
     const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
@@ -99,12 +105,17 @@ export class AdminPaymentsController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePaymentStatusDto,
-    @Request() req
+    @Request() req,
   ) {
     // Obtener adminId del usuario autenticado
     const adminId = req.user.userId;
     const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
-    return this.paymentsService.updatePaymentStatus(id, dto, adminId, schemaName);
+    return this.paymentsService.updatePaymentStatus(
+      id,
+      dto,
+      adminId,
+      schemaName,
+    );
   }
 
   /**
@@ -115,7 +126,7 @@ export class AdminPaymentsController {
   async deletePayment(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
-    @Request() req
+    @Request() req,
   ) {
     const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
     await this.paymentsService.deletePayment(id, schemaName);
@@ -130,7 +141,7 @@ export class AdminPaymentsController {
   async createRefund(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateRefundDto,
-    @Request() req
+    @Request() req,
   ) {
     const adminId = req.user.userId;
     await this.paymentsService.createRefund(id, dto, adminId);
@@ -155,7 +166,7 @@ export class TenantPaymentsController {
   async createPayment(
     @Param('slug') slug: string,
     @Body() dto: CreatePaymentDto,
-    @Request() req
+    @Request() req,
   ) {
     // Obtener tenantId del usuario autenticado
     const tenantId = req.user.userId;

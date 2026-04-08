@@ -54,6 +54,7 @@ export class TenantsService implements OnModuleInit {
         await this.migrateImagesToJson(schema_name);
         await this.createPaymentsTables(schema_name);
         await this.migrateContractsApplicationId(schema_name);
+        await this.migrateEmployeeTables(schema_name);
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -127,6 +128,55 @@ export class TenantsService implements OnModuleInit {
     await this.dataSource.query(
       `ALTER TABLE ${schemaName}.contracts ADD COLUMN IF NOT EXISTS application_id INTEGER REFERENCES ${schemaName}.rental_applications(id) ON DELETE SET NULL`,
     );
+  }
+
+  /**
+   * Migra los schemas de tenants existentes para soportar empleados:
+   * - Agrega 'EMPLEADO' al enum user_role_enum
+   * - Agrega columna last_connection a la tabla user
+   * - Crea la tabla employee_permissions si no existe
+   */
+  private async migrateEmployeeTables(schemaName: string) {
+    // Agregar valor 'EMPLEADO' al enum si no existe
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        ALTER TYPE ${schemaName}.user_role_enum ADD VALUE IF NOT EXISTS 'EMPLEADO';
+      EXCEPTION
+        WHEN others THEN null;
+      END $$;
+    `);
+
+    // Agregar columna last_connection si no existe
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}."user" ADD COLUMN IF NOT EXISTS last_connection TIMESTAMP`,
+    );
+
+    // Crear la tabla employee_permissions
+    await this.createEmployeePermissionsTable(schemaName);
+  }
+
+  private async createEmployeePermissionsTable(schemaName: string) {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.employee_permissions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        module character varying NOT NULL,
+        can_view boolean NOT NULL DEFAULT false,
+        can_create boolean NOT NULL DEFAULT false,
+        can_edit boolean NOT NULL DEFAULT false,
+        can_delete boolean NOT NULL DEFAULT false,
+        created_at TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP NOT NULL DEFAULT now(),
+        CONSTRAINT fk_employee_permissions_user FOREIGN KEY (user_id)
+          REFERENCES ${schemaName}."user"(id) ON DELETE CASCADE,
+        CONSTRAINT uq_employee_permissions_user_module UNIQUE (user_id, module)
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS IDX_EMPLOYEE_PERMISSIONS_USER_ID
+        ON ${schemaName}.employee_permissions(user_id);
+    `);
   }
 
   async create(createTenantDto: CreateTenantDto) {
@@ -232,7 +282,7 @@ export class TenantsService implements OnModuleInit {
       // ENUM de user_role
       await this.dataSource.query(`
         DO $$ BEGIN
-          CREATE TYPE ${tenant.schema_name}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO');
+          CREATE TYPE ${tenant.schema_name}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO');
         EXCEPTION
           WHEN duplicate_object THEN null;
         END $$;
@@ -248,6 +298,7 @@ export class TenantsService implements OnModuleInit {
           phone character varying,
           role ${tenant.schema_name}.user_role_enum NOT NULL DEFAULT 'INQUILINO',
           is_active boolean NOT NULL DEFAULT true,
+          last_connection TIMESTAMP,
           created_at TIMESTAMP NOT NULL DEFAULT now(),
           updated_at TIMESTAMP NOT NULL DEFAULT now()
         );
@@ -276,10 +327,13 @@ export class TenantsService implements OnModuleInit {
       // 10. Crear tablas de Payments
       await this.createPaymentsTables(tenant.schema_name);
 
-      // 10. Insertar datos iniciales (seed data)
+      // 11. Crear tabla de permisos de empleados
+      await this.createEmployeePermissionsTable(tenant.schema_name);
+
+      // 12. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
-      // 11. Otorgar permisos al usuario de la aplicación
+      // 13. Otorgar permisos al usuario de la aplicación
       await this.grantSchemaPermissions(tenant.schema_name);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

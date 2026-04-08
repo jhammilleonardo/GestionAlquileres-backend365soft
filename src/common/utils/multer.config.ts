@@ -117,9 +117,7 @@ export const maintenanceFileFilter = (
     cb(null, true);
   } else {
     cb(
-      new Error(
-        'Solo se permiten imágenes (JPEG, PNG, WebP) y documentos PDF',
-      ),
+      new Error('Solo se permiten imágenes (JPEG, PNG, WebP) y documentos PDF'),
       false,
     );
   }

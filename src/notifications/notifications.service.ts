@@ -220,9 +220,11 @@ export class NotificationsService {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (row.by_type) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      Object.entries(row.by_type as Record<string, unknown>).forEach(([k, v]) => {
-        by_type[k] = parseInt(String(v));
-      });
+      Object.entries(row.by_type as Record<string, unknown>).forEach(
+        ([k, v]) => {
+          by_type[k] = parseInt(String(v));
+        },
+      );
     }
 
     return {
@@ -376,13 +378,18 @@ export class NotificationsService {
         title_template: 'Nuevo pago registrado',
         message_template:
           '{{tenant_name}} ha registrado un pago de {{amount}} {{currency}} para la propiedad {{property_title}}',
-        variables: ['tenant_name', 'amount', 'currency', 'property_title', 'payment_id'],
+        variables: [
+          'tenant_name',
+          'amount',
+          'currency',
+          'property_title',
+          'payment_id',
+        ],
       },
       {
         event_type: 'payment.approved' as NotificationEventType,
         title_template: 'Pago aprobado',
-        message_template:
-          'Tu pago de {{amount}} {{currency}} ha sido aprobado',
+        message_template: 'Tu pago de {{amount}} {{currency}} ha sido aprobado',
         variables: ['amount', 'currency', 'payment_id', 'property_title'],
       },
       {
@@ -405,14 +412,24 @@ export class NotificationsService {
         title_template: 'Contrato firmado',
         message_template:
           '{{tenant_name}} ha firmado el contrato {{contract_number}} para la propiedad {{property_title}}',
-        variables: ['tenant_name', 'contract_number', 'property_title', 'contract_id'],
+        variables: [
+          'tenant_name',
+          'contract_number',
+          'property_title',
+          'contract_id',
+        ],
       },
       {
         event_type: 'contract.expiring' as NotificationEventType,
         title_template: 'Contrato próximo a vencer',
         message_template:
           'El contrato {{contract_number}} para la propiedad {{property_title}} vence el {{end_date}}',
-        variables: ['contract_number', 'property_title', 'end_date', 'contract_id'],
+        variables: [
+          'contract_number',
+          'property_title',
+          'end_date',
+          'contract_id',
+        ],
       },
     ];
 

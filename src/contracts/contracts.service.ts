@@ -141,16 +141,17 @@ export class ContractsService {
       if (approvedApplication.length === 0) {
         throw new BadRequestException(
           'No se puede crear un contrato manual para este inquilino. ' +
-          'El inquilino debe tener al menos una solicitud de alquiler aprobada antes de poder crear un contrato. ' +
-          'Utilice el flujo de solicitudes para aprobar al inquilino primero.',
+            'El inquilino debe tener al menos una solicitud de alquiler aprobada antes de poder crear un contrato. ' +
+            'Utilice el flujo de solicitudes para aprobar al inquilino primero.',
         );
       }
     } else {
       // Si viene de una solicitud, validar que la solicitud existe y pertenece al inquilino
-      const application = await this.dataSource.query<{ id: number; applicant_id: number }[]>(
-        'SELECT id, applicant_id FROM rental_applications WHERE id = $1',
-        [createContractDto.application_id],
-      );
+      const application = await this.dataSource.query<
+        { id: number; applicant_id: number }[]
+      >('SELECT id, applicant_id FROM rental_applications WHERE id = $1', [
+        createContractDto.application_id,
+      ]);
 
       if (application.length === 0) {
         throw new NotFoundException(
@@ -478,7 +479,12 @@ export class ContractsService {
 
       // Notificar al inquilino sobre el cambio de estado relevante
       try {
-        const statusNotifMap: Partial<Record<ContractStatus, { type: NotificationEventType; title: string; msg: string }>> = {
+        const statusNotifMap: Partial<
+          Record<
+            ContractStatus,
+            { type: NotificationEventType; title: string; msg: string }
+          >
+        > = {
           [ContractStatus.ACTIVO]: {
             type: NotificationEventType.CONTRACT_SIGNED,
             title: 'Contrato activado',

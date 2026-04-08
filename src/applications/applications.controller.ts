@@ -71,7 +71,8 @@ export class ApplicationsController {
   @Roles('ADMIN', 'SUPERADMIN')
   @ApiOperation({
     summary: 'Aprobar solicitud y crear contrato automáticamente (Admin)',
-    description: 'Aprobar una solicitud crea automáticamente un contrato con los datos proporcionados. El monthly_rent es obligatorio.',
+    description:
+      'Aprobar una solicitud crea automáticamente un contrato con los datos proporcionados. El monthly_rent es obligatorio.',
   })
   async approveAndCreateContract(
     @Param('id', ParseIntPipe) id: number,

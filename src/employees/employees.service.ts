@@ -105,11 +105,10 @@ export class EmployeesService {
         employee.id,
         NotificationEventType.EMPLOYEE_CREATED,
         'Bienvenido al sistema',
-        `Tu cuenta ha sido creada. Puedes iniciar sesión con: Email: ${email} / Contraseña: (la proporcionada por el administrador)`,
+        'Tu cuenta ha sido creada exitosamente. El administrador te proporcionará tus credenciales de acceso.',
         {
           employee_id: employee.id,
           employee_name: name,
-          employee_email: email,
           created_by: adminId,
         },
       );

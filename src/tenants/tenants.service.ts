@@ -330,10 +330,10 @@ export class TenantsService implements OnModuleInit {
       // 11. Crear tabla de permisos de empleados
       await this.createEmployeePermissionsTable(tenant.schema_name);
 
-      // 10. Insertar datos iniciales (seed data)
+      // 12. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
-      // 11. Otorgar permisos al usuario de la aplicación
+      // 13. Otorgar permisos al usuario de la aplicación
       await this.grantSchemaPermissions(tenant.schema_name);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

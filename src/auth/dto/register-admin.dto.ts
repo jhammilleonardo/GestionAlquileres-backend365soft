@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional, IsEnum } from 'class-validator';
+import { TenantCountry } from '../../tenants/dto/create-tenant.dto';
 
 export class RegisterAdminDto {
   // Datos del Tenant
@@ -8,6 +9,9 @@ export class RegisterAdminDto {
 
   @IsString()
   company_name: string;
+
+  @IsEnum(TenantCountry)
+  country: TenantCountry;
 
   @IsOptional()
   @IsString()

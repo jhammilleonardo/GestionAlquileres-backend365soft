@@ -18,6 +18,7 @@ import { ApplicationsModule } from './applications/applications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { QrPaymentModule } from './payments/qr/qr-payment.module';
 import { EmployeesModule } from './employees/employees.module';
+import { TenantConfigModule } from './tenant-config/tenant-config.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { EmployeesModule } from './employees/employees.module';
     PaymentsModule,
     QrPaymentModule,
     EmployeesModule,
+    TenantConfigModule,
   ],
   controllers: [AppController],
   providers: [

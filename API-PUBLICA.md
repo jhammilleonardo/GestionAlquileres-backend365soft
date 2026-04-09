@@ -1,3 +1,10 @@
+# Endpoints Públicos
+
+Documentación de endpoints sin autenticación (públicos).
+
+## Catálogo de Propiedades
+
+Ver [API-CATALOG.md](./API-CATALOG.md)
 # API Documentation - Catálogo Público (Sin Autenticación)
 
 Esta documentación está diseñada para el frontend público donde los usuarios (sin cuenta) pueden ver las propiedades disponibles de diferentes organizaciones/tenants. **No se requiere autenticación para ninguna de estas endpoints.**

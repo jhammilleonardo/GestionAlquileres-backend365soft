@@ -6,6 +6,7 @@ import {
   PublicPropertiesController,
   TenantPropertiesController,
 } from './properties.controller';
+import { PublicCatalogController } from './public-catalog.controller';
 import { Property } from './entities/property.entity';
 import { PropertyType } from './entities/property-type.entity';
 import { PropertySubtype } from './entities/property-subtype.entity';
@@ -31,6 +32,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AdminPropertiesController,
     PublicPropertiesController,
     TenantPropertiesController,
+    PublicCatalogController,
   ],
   exports: [PropertiesService],
 })

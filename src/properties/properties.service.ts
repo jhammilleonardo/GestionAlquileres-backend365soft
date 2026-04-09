@@ -15,6 +15,8 @@ import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { UpdatePropertyDetailsDto } from './dto/update-property-details.dto';
 import { FilterPropertiesDto } from './dto/filter-properties.dto';
+import { FilterCatalogPropertiesDto } from './dto/filter-catalog-properties.dto';
+import { CreatePropertyContactDto } from './dto/create-property-contact.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 
@@ -867,32 +869,319 @@ export class PropertiesService {
     if (fields.length === 0) {
       return this.getRentalOwner(id);
     }
-    fields.push(`updated_at = NOW()`);
-    values.push(id);
 
-    await this.dataSource.query(
-      `UPDATE rental_owners SET ${fields.join(', ')} WHERE id = $${idx}`,
-      values,
-    );
+    values.push(id);
+    const sql = `UPDATE rental_owners SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${idx++}`;
+
+    await this.dataSource.query(sql, values);
+
     return this.getRentalOwner(id);
   }
 
-  async removeRentalOwner(id: number) {
-    const owners = await this.dataSource.query(
-      'SELECT id FROM rental_owners WHERE id = $1',
+  // ==========================================
+  // F2-BE-03: CATÁLOGO PÚBLICO CON FILTROS
+  // ==========================================
+
+  /**
+   * Obtener catálogo de propiedades disponibles con filtros, paginación y ordenamiento
+   * Endpoint público: GET /:slug/catalog/properties
+   */
+  async findCatalogProperties(
+    filters: FilterCatalogPropertiesDto,
+    tenantSlug: string,
+  ) {
+    await this.setTenantSchema(tenantSlug);
+
+    // Construir WHERE clause dinámico
+    let whereSql = 'WHERE p.status = $1'; // Solo propiedades disponibles por defecto
+    const params: any[] = [filters.status || 'DISPONIBLE'];
+    let paramIndex = 2;
+
+    // Filtro por tipo de propiedad
+    if (filters.type) {
+      whereSql += ` AND LOWER(pt.code) = LOWER($${paramIndex++})`;
+      params.push(filters.type);
+    }
+
+    // Filtro por precio mínimo
+    if (filters.min_price !== undefined) {
+      whereSql += ` AND p.monthly_rent >= $${paramIndex++}`;
+      params.push(filters.min_price);
+    }
+
+    // Filtro por precio máximo
+    if (filters.max_price !== undefined) {
+      whereSql += ` AND p.monthly_rent <= $${paramIndex++}`;
+      params.push(filters.max_price);
+    }
+
+    // Filtro por dormitorios
+    if (filters.bedrooms !== undefined) {
+      whereSql += ` AND p.bedrooms >= $${paramIndex++}`;
+      params.push(filters.bedrooms);
+    }
+
+    // Filtro por ciudad
+    if (filters.city) {
+      whereSql += ` AND LOWER(pa.city) ILIKE LOWER($${paramIndex++})`;
+      params.push(`%${filters.city}%`);
+    }
+
+    // Filtro por país
+    if (filters.country) {
+      whereSql += ` AND LOWER(pa.country) = LOWER($${paramIndex++})`;
+      params.push(filters.country);
+    }
+
+    // Búsqueda de texto libre
+    if (filters.search) {
+      whereSql += ` AND (
+        LOWER(p.title) ILIKE LOWER($${paramIndex++}) OR 
+        LOWER(p.description) ILIKE LOWER($${paramIndex++})
+      )`;
+      params.push(`%${filters.search}%`, `%${filters.search}%`);
+    }
+
+    // Contar total de resultados
+    const countSql = `
+      SELECT COUNT(DISTINCT p.id) as count
+      FROM properties p
+      LEFT JOIN property_types pt ON p.property_type_id = pt.id
+      LEFT JOIN property_subtypes pst ON p.property_subtype_id = pst.id
+      LEFT JOIN property_addresses pa ON p.id = pa.property_id
+      ${whereSql}
+    `;
+
+    const countResult = await this.dataSource.query(countSql, params.slice(0, paramIndex - 1));
+    const total = parseInt(countResult[0].count);
+
+    // Construir ORDER BY basado en sort param
+    let orderBy = 'p.created_at DESC'; // default
+    if (filters.sort === 'price_asc') {
+      orderBy = 'p.monthly_rent ASC';
+    } else if (filters.sort === 'price_desc') {
+      orderBy = 'p.monthly_rent DESC';
+    } else if (filters.sort === 'newest') {
+      orderBy = 'p.created_at DESC';
+    } else if (filters.sort === 'available') {
+      orderBy = 'p.last_viewed_at DESC NULLS LAST';
+    }
+
+    // Paginación
+    const page = filters.page || 1;
+    const limit = Math.min(filters.limit || 20, 100); // Máximo 100 results por página
+    const offset = (page - 1) * limit;
+
+    // Query principal con DISTINCT ON para evitar duplicados
+    const sql = `
+      SELECT DISTINCT ON (p.id) 
+        p.id, p.title, p.description,
+        p.property_type_id, p.property_subtype_id,
+        p.status, p.latitude, p.longitude,
+        p.monthly_rent, p.currency,
+        p.bedrooms, p.bathrooms, p.square_meters, p.parking_spaces,
+        p.is_furnished, p.images, p.amenities, p.included_items,
+        p.view_count, p.last_viewed_at,
+        p.created_at, p.updated_at,
+        pt.name as property_type_name, pt.code as property_type_code,
+        pst.name as property_subtype_name, pst.code as property_subtype_code
+      FROM properties p
+      LEFT JOIN property_types pt ON p.property_type_id = pt.id
+      LEFT JOIN property_subtypes pst ON p.property_subtype_id = pst.id
+      LEFT JOIN property_addresses pa ON p.id = pa.property_id
+      ${whereSql}
+      ORDER BY p.id, ${orderBy}
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+    `;
+
+    params.push(limit, offset);
+
+    const items = await this.dataSource.query(sql, params);
+
+    // Obtener primera dirección para cada propiedad
+    for (const item of items) {
+      const addresses = await this.dataSource.query(
+        `SELECT * FROM property_addresses 
+         WHERE property_id = $1 AND address_type = 'address_1'
+         LIMIT 1`,
+        [item.id],
+      );
+      item.first_address = addresses.length > 0 ? addresses[0] : null;
+    }
+
+    return {
+      data: items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Obtener detalle de propiedad pública e incrementar contador de vistas
+   * Endpoint público: GET /:slug/catalog/properties/:id
+   */
+  async findCatalogPropertyDetail(id: number, tenantSlug: string, userIP?: string) {
+    await this.setTenantSchema(tenantSlug);
+
+    // Obtener detalle de propiedad
+    const properties = await this.dataSource.query(
+      `SELECT p.*, 
+        pt.name as property_type_name, pt.code as property_type_code,
+        pst.name as property_subtype_name, pst.code as property_subtype_code
+       FROM properties p
+       LEFT JOIN property_types pt ON p.property_type_id = pt.id
+       LEFT JOIN property_subtypes pst ON p.property_subtype_id = pst.id
+       WHERE p.id = $1`,
       [id],
     );
-    if (owners.length === 0) {
-      throw new NotFoundException(`RentalOwner with ID ${id} not found`);
+
+    if (properties.length === 0) {
+      throw new NotFoundException(`Property with ID ${id} not found`);
     }
-    await this.dataSource.query('DELETE FROM rental_owners WHERE id = $1', [
-      id,
-    ]);
-    return { message: 'RentalOwner deleted successfully', id };
+
+    const property = properties[0];
+
+    // Incrementar contador de vistas de forma asíncrona (no esperar)
+    this.recordPropertyView(id, userIP).catch((error) => {
+      console.error(`Error recording property view for ID ${id}:`, error);
+    });
+
+    // Obtener direcciones completas
+    const addresses = await this.dataSource.query(
+      'SELECT * FROM property_addresses WHERE property_id = $1 ORDER BY id',
+      [id],
+    );
+
+    // Obtener dueños
+    const owners = await this.dataSource.query(
+      `SELECT ro.id, ro.name, ro.company_name, ro.primary_email as email,
+        ro.phone_number as phone, po.is_primary
+       FROM property_owners po
+       LEFT JOIN rental_owners ro ON po.rental_owner_id = ro.id
+       WHERE po.property_id = $1`,
+      [id],
+    );
+
+    return {
+      ...property,
+      addresses,
+      owners,
+    };
+  }
+
+  /**
+   * Registrar la vista de una propiedad (incrementar contador y guardar timestamp)
+   * Puede ejecutarse de forma asíncrona
+   */
+  async recordPropertyView(propertyId: number, userIP?: string) {
+    try {
+      // Actualizar contador y timestamp
+      await this.dataSource.query(
+        `UPDATE properties 
+         SET view_count = view_count + 1,
+             last_viewed_at = NOW()
+         WHERE id = $1`,
+        [propertyId],
+      );
+
+      // Opcional: Guardar log detallado en tabla de auditoría
+      if (userIP) {
+        try {
+          await this.dataSource.query(
+            `INSERT INTO property_view_logs (property_id, user_ip, viewed_at)
+             VALUES ($1, $2, NOW())`,
+            [propertyId, userIP],
+          );
+        } catch (error) {
+          console.warn('Could not log property view:', error.message);
+        }
+      }
+    } catch (error) {
+      console.error('Error in recordPropertyView:', error);
+    }
+  }
+
+  /**
+   * Crear un contacto/lead para una propiedad
+   * Endpoint público: POST /:slug/catalog/properties/:id/contact
+   * Autenticación: NO requerida
+   */
+  async createPropertyContact(
+    propertyId: number,
+    contactDto: CreatePropertyContactDto,
+    tenantSlug: string,
+    userIP?: string,
+  ) {
+    await this.setTenantSchema(tenantSlug);
+
+    // Verificar que la propiedad existe
+    const properties = await this.dataSource.query(
+      'SELECT id, title FROM properties WHERE id = $1',
+      [propertyId],
+    );
+
+    if (properties.length === 0) {
+      throw new NotFoundException(`Property with ID ${propertyId} not found`);
+    }
+
+    const property = properties[0];
+
+    // Guardar lead en tabla property_leads
+    try {
+      const result = await this.dataSource.query(
+        `INSERT INTO property_leads 
+         (property_id, name, email, phone, message, inquiry_type, availability, identity_document, status, user_ip, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+         RETURNING id, property_id, name, email, phone, message, inquiry_type, availability, created_at, status`,
+        [
+          propertyId,
+          contactDto.name,
+          contactDto.email,
+          contactDto.phone,
+          contactDto.message,
+          contactDto.inquiry_type || 'general',
+          contactDto.availability || null,
+          contactDto.identity_document || null,
+          'PENDING',
+          userIP,
+        ],
+      );
+
+      const lead = result[0];
+
+      // Enviar notificación al admin usando NotificationsService (asíncrono)
+      try {
+        // TODO: Obtener IDs de admins del tenant contexto
+        await this.notificationsService.notifyAdmins(
+          [1], // Temporal: Admin ID 1
+          NotificationEventType.PROPERTY_LEAD_RECEIVED,
+          `New Lead: ${contactDto.name}`,
+          `New contact inquiry for ${property.title}: ${contactDto.message.substring(0, 50)}...`,
+          {
+            property_id: propertyId,
+            property_title: property.title,
+            lead_name: contactDto.name,
+            lead_email: contactDto.email,
+            lead_phone: contactDto.phone,
+            inquiry_type: contactDto.inquiry_type,
+          },
+        );
+      } catch (error) {
+        console.error('Error sending notification:', error);
+      }
+
+      return lead;
+    } catch (error) {
+      if (error.code === '23506') {
+        throw new BadRequestException('Invalid property ID');
+      }
+      throw error;
+    }
   }
 
   async assignOwnerToProperty(propertyId: number, assignDto: any) {
-    // Check property exists
     const props = await this.dataSource.query(
       'SELECT id FROM properties WHERE id = $1',
       [propertyId],
@@ -900,7 +1189,6 @@ export class PropertiesService {
     if (props.length === 0) {
       throw new NotFoundException(`Property with ID ${propertyId} not found`);
     }
-
     const result = await this.dataSource.query(
       `INSERT INTO property_owners (property_id, rental_owner_id, ownership_percentage, is_primary, created_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -937,6 +1225,20 @@ export class PropertiesService {
     };
   }
 
+  async removeRentalOwner(id: number) {
+    const owners = await this.dataSource.query(
+      'SELECT * FROM rental_owners WHERE id = $1',
+      [id],
+    );
+    if (owners.length === 0) {
+      throw new NotFoundException(`RentalOwner with ID ${id} not found`);
+    }
+    await this.dataSource.query('DELETE FROM rental_owners WHERE id = $1', [
+      id,
+    ]);
+    return { message: 'RentalOwner deleted successfully', id };
+  }
+
   async getStats() {
     const [total] = await this.dataSource.query(
       `SELECT COUNT(*) AS total,
@@ -958,7 +1260,6 @@ export class PropertiesService {
   }
 
   async findByTenant(userId: number, filters?: FilterPropertiesDto) {
-    // Returns properties where the tenant (user) has an active contract
     const rows = await this.dataSource.query(
       `SELECT DISTINCT p.*
        FROM properties p

@@ -138,14 +138,16 @@ export class TenantsService implements OnModuleInit {
    * - Crea la tabla employee_permissions si no existe
    */
   private async migrateEmployeeTables(schemaName: string) {
-    // Agregar valor 'EMPLEADO' al enum si no existe
-    await this.dataSource.query(`
-      DO $$ BEGIN
-        ALTER TYPE ${schemaName}.user_role_enum ADD VALUE IF NOT EXISTS 'EMPLEADO';
-      EXCEPTION
-        WHEN others THEN null;
-      END $$;
-    `);
+    // Agregar valores al enum si no existen
+    for (const value of ['EMPLEADO', 'TECNICO']) {
+      await this.dataSource.query(`
+        DO $$ BEGIN
+          ALTER TYPE ${schemaName}.user_role_enum ADD VALUE IF NOT EXISTS '${value}';
+        EXCEPTION
+          WHEN others THEN null;
+        END $$;
+      `);
+    }
 
     // Agregar columna last_connection si no existe
     await this.dataSource.query(
@@ -401,7 +403,7 @@ export class TenantsService implements OnModuleInit {
       // ENUM de user_role
       await this.dataSource.query(`
         DO $$ BEGIN
-          CREATE TYPE ${tenant.schema_name}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO');
+          CREATE TYPE ${tenant.schema_name}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO');
         EXCEPTION
           WHEN duplicate_object THEN null;
         END $$;

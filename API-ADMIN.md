@@ -17,7 +17,9 @@ Esta documentación está diseñada específicamente para el equipo de frontend 
 7. [Catálogos y Referencias](#7-catálogos-y-referencias)
 8. [Usuarios](#8-usuarios)
 
-> **Ver también:** [`API-CONFIG.md`](./API-CONFIG.md) — Configuración regional del tenant (`tenant_config`)
+> **Ver también:**
+> - [`API-CONFIG.md`](./API-CONFIG.md) — Configuración regional del tenant (`tenant_config`)
+> - [`API-PERMISSIONS.md`](./API-PERMISSIONS.md) — Roles, permisos granulares y uso del PermissionsGuard
 
 ---
 

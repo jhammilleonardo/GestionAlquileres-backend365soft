@@ -14,10 +14,20 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export const AVAILABLE_MODULES = [
   'properties',
-  'maintenance',
-  'payments',
+  'units',
+  'users',
   'contracts',
-  'applications',
+  'payments',
+  'maintenance',
+  'reports',
+  'config',
+  'employees',
+  'owners',
+  'inspections',
+  'violations',
+  'expenses',
+  'vendors',
+  'messages',
 ] as const;
 
 export type AvailableModule = (typeof AVAILABLE_MODULES)[number];

@@ -57,6 +57,8 @@ export class TenantsService implements OnModuleInit {
         await this.migrateEmployeeTables(schema_name);
         await this.createTenantConfigTable(schema_name);
         await this.createPropertyLeadsTable(schema_name);
+        await this.createUnitsTables(schema_name);
+        await this.migrateContractsUnitId(schema_name);
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -278,6 +280,75 @@ export class TenantsService implements OnModuleInit {
     `);
   }
 
+  private async createUnitsTables(schemaName: string): Promise<void> {
+    // ENUM de unit_status
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        CREATE TYPE ${schemaName}.unit_status_enum AS ENUM (
+          'available', 'occupied', 'maintenance', 'reserved'
+        );
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // ENUM de rental_type (si no existe ya)
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        CREATE TYPE ${schemaName}.unit_rental_type_enum AS ENUM (
+          'SHORT_TERM', 'LONG_TERM', 'BOTH'
+        );
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.units (
+        id             SERIAL PRIMARY KEY,
+        property_id    INTEGER NOT NULL,
+        unit_number    VARCHAR(50) NOT NULL,
+        floor          INTEGER,
+        bedrooms       INTEGER,
+        bathrooms      INTEGER,
+        square_meters  NUMERIC(10,2),
+        status         ${schemaName}.unit_status_enum NOT NULL DEFAULT 'available',
+        rental_type    ${schemaName}.unit_rental_type_enum,
+        price_per_month  NUMERIC(10,2),
+        price_per_night  NUMERIC(10,2),
+        deposit_amount   NUMERIC(10,2),
+        features         JSONB,
+        created_at     TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at     TIMESTAMP NOT NULL DEFAULT now(),
+        CONSTRAINT fk_units_property
+          FOREIGN KEY (property_id) REFERENCES ${schemaName}.properties(id) ON DELETE CASCADE,
+        CONSTRAINT uq_units_property_number
+          UNIQUE (property_id, unit_number)
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_units_property_id
+        ON ${schemaName}.units(property_id);
+      CREATE INDEX IF NOT EXISTS idx_units_status
+        ON ${schemaName}.units(status);
+    `);
+  }
+
+  /** Agrega unit_id nullable FK a contracts para schemas existentes. */
+  private async migrateContractsUnitId(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      ALTER TABLE ${schemaName}.contracts
+        ADD COLUMN IF NOT EXISTS unit_id INTEGER
+          REFERENCES ${schemaName}.units(id) ON DELETE SET NULL;
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_contracts_unit_id
+        ON ${schemaName}.contracts(unit_id);
+    `);
+  }
+
   private async createTenantConfigTable(
     schemaName: string,
     country: TenantCountry = TenantCountry.BO,
@@ -488,10 +559,13 @@ export class TenantsService implements OnModuleInit {
       // 13. Crear tabla de leads del catálogo público
       await this.createPropertyLeadsTable(tenant.schema_name);
 
-      // 14. Insertar datos iniciales (seed data)
+      // 14. Crear tabla de unidades
+      await this.createUnitsTables(tenant.schema_name);
+
+      // 15. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
-      // 15. Otorgar permisos al usuario de la aplicación
+      // 16. Otorgar permisos al usuario de la aplicación
       await this.grantSchemaPermissions(tenant.schema_name);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

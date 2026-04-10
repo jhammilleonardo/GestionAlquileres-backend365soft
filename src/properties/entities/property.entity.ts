@@ -118,6 +118,13 @@ export class Property {
   @OneToMany(() => PropertyAddress, (address) => address.property)
   addresses: PropertyAddress[];
 
+  // View tracking (F2-BE-03)
+  @Column({ type: 'int', default: 0 })
+  view_count: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  last_viewed_at: Date;
+
   @CreateDateColumn()
   created_at: Date;
 

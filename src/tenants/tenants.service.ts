@@ -56,6 +56,7 @@ export class TenantsService implements OnModuleInit {
         await this.migrateContractsApplicationId(schema_name);
         await this.migrateEmployeeTables(schema_name);
         await this.createTenantConfigTable(schema_name);
+        await this.createPropertyLeadsTable(schema_name);
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -80,6 +81,9 @@ export class TenantsService implements OnModuleInit {
       ['year_built', 'INT NULL'],
       ['is_furnished', 'BOOLEAN NOT NULL DEFAULT FALSE'],
       ['property_rules', 'JSONB NULL'],
+      ['rental_type', 'VARCHAR(20) NULL'],
+      ['view_count', 'INT NOT NULL DEFAULT 0'],
+      ['last_viewed_at', 'TIMESTAMP NULL'],
     ];
 
     for (const [col, def] of columns) {
@@ -246,6 +250,33 @@ export class TenantsService implements OnModuleInit {
       late_fee_percentage: 3,
     },
   };
+
+  private async createPropertyLeadsTable(schemaName: string) {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.property_leads (
+        id SERIAL PRIMARY KEY,
+        property_id INT NOT NULL REFERENCES ${schemaName}.properties(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        phone VARCHAR(20) NOT NULL,
+        message TEXT NOT NULL,
+        inquiry_type VARCHAR(50) DEFAULT 'general',
+        availability VARCHAR(50),
+        status VARCHAR(50) DEFAULT 'PENDING',
+        user_ip VARCHAR(45),
+        assigned_to INT REFERENCES ${schemaName}."user"(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_property_leads_property_id ON ${schemaName}.property_leads(property_id);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_email ON ${schemaName}.property_leads(email);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_status ON ${schemaName}.property_leads(status);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_created_at ON ${schemaName}.property_leads(created_at DESC);
+    `);
+  }
 
   private async createTenantConfigTable(
     schemaName: string,
@@ -454,10 +485,13 @@ export class TenantsService implements OnModuleInit {
       // 12. Crear tabla de configuración del tenant
       await this.createTenantConfigTable(tenant.schema_name, country);
 
-      // 13. Insertar datos iniciales (seed data)
+      // 13. Crear tabla de leads del catálogo público
+      await this.createPropertyLeadsTable(tenant.schema_name);
+
+      // 14. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
-      // 14. Otorgar permisos al usuario de la aplicación
+      // 15. Otorgar permisos al usuario de la aplicación
       await this.grantSchemaPermissions(tenant.schema_name);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -570,6 +604,9 @@ export class TenantsService implements OnModuleInit {
         year_built INT NULL,
         is_furnished BOOLEAN NOT NULL DEFAULT FALSE,
         property_rules JSONB NULL,
+        rental_type VARCHAR(20) NULL,
+        view_count INT NOT NULL DEFAULT 0,
+        last_viewed_at TIMESTAMP NULL,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_properties_type FOREIGN KEY (property_type_id)

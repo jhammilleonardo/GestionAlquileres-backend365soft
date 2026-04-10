@@ -936,10 +936,16 @@ export class PropertiesService {
     // Búsqueda de texto libre
     if (filters.search) {
       whereSql += ` AND (
-        LOWER(p.title) ILIKE LOWER($${paramIndex++}) OR 
+        LOWER(p.title) ILIKE LOWER($${paramIndex++}) OR
         LOWER(p.description) ILIKE LOWER($${paramIndex++})
       )`;
       params.push(`%${filters.search}%`, `%${filters.search}%`);
+    }
+
+    // Filtro por tipo de alquiler
+    if (filters.rental_type && filters.rental_type !== 'any') {
+      whereSql += ` AND LOWER(p.rental_type) = LOWER($${paramIndex++})`;
+      params.push(filters.rental_type);
     }
 
     // Contar total de resultados
@@ -1131,9 +1137,9 @@ export class PropertiesService {
     // Guardar lead en tabla property_leads
     try {
       const result = await this.dataSource.query(
-        `INSERT INTO property_leads 
-         (property_id, name, email, phone, message, inquiry_type, availability, identity_document, status, user_ip, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        `INSERT INTO property_leads
+         (property_id, name, email, phone, message, inquiry_type, availability, status, user_ip, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
          RETURNING id, property_id, name, email, phone, message, inquiry_type, availability, created_at, status`,
         [
           propertyId,
@@ -1143,7 +1149,6 @@ export class PropertiesService {
           contactDto.message,
           contactDto.inquiry_type || 'general',
           contactDto.availability || null,
-          contactDto.identity_document || null,
           'PENDING',
           userIP,
         ],
@@ -1151,23 +1156,28 @@ export class PropertiesService {
 
       const lead = result[0];
 
-      // Enviar notificación al admin usando NotificationsService (asíncrono)
+      // Enviar notificación a los admins del tenant (asíncrono)
       try {
-        // TODO: Obtener IDs de admins del tenant contexto
-        await this.notificationsService.notifyAdmins(
-          [1], // Temporal: Admin ID 1
-          NotificationEventType.PROPERTY_LEAD_RECEIVED,
-          `New Lead: ${contactDto.name}`,
-          `New contact inquiry for ${property.title}: ${contactDto.message.substring(0, 50)}...`,
-          {
-            property_id: propertyId,
-            property_title: property.title,
-            lead_name: contactDto.name,
-            lead_email: contactDto.email,
-            lead_phone: contactDto.phone,
-            inquiry_type: contactDto.inquiry_type,
-          },
+        const adminRows: { id: number }[] = await this.dataSource.query(
+          `SELECT id FROM "user" WHERE role = 'ADMIN' AND is_active = true`,
         );
+        const adminIds = adminRows.map((r) => r.id);
+        if (adminIds.length > 0) {
+          await this.notificationsService.notifyAdmins(
+            adminIds,
+            NotificationEventType.PROPERTY_LEAD_RECEIVED,
+            `New Lead: ${contactDto.name}`,
+            `New contact inquiry for ${property.title}: ${contactDto.message.substring(0, 50)}...`,
+            {
+              property_id: propertyId,
+              property_title: property.title,
+              lead_name: contactDto.name,
+              lead_email: contactDto.email,
+              lead_phone: contactDto.phone,
+              inquiry_type: contactDto.inquiry_type,
+            },
+          );
+        }
       } catch (error) {
         console.error('Error sending notification:', error);
       }

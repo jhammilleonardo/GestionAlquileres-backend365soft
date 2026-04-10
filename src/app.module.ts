@@ -19,6 +19,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { QrPaymentModule } from './payments/qr/qr-payment.module';
 import { EmployeesModule } from './employees/employees.module';
 import { TenantConfigModule } from './tenant-config/tenant-config.module';
+import { UnitsModule } from './units/units.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { TenantConfigModule } from './tenant-config/tenant-config.module';
           __dirname + '/maintenance/entities/*.entity{.ts,.js}',
           __dirname + '/notifications/entities/*.entity{.ts,.js}',
           __dirname + '/applications/entities/*.entity{.ts,.js}',
+          __dirname + '/units/entities/*.entity{.ts,.js}',
         ],
         // NO sincronizar automáticamente - las tablas de tenants se crean manualmente
         synchronize: false,
@@ -78,6 +80,7 @@ import { TenantConfigModule } from './tenant-config/tenant-config.module';
     QrPaymentModule,
     EmployeesModule,
     TenantConfigModule,
+    UnitsModule,
   ],
   controllers: [AppController],
   providers: [

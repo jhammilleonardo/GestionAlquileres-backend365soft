@@ -794,90 +794,6 @@ export class PropertiesService {
     );
   }
 
-  // Rental Owners management
-  async createRentalOwner(ownerDto: any) {
-    const result = await this.dataSource.query(
-      `INSERT INTO rental_owners (name, company_name, is_company, primary_email, phone_number,
-        secondary_email, secondary_phone, notes, is_active, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-       RETURNING *`,
-      [
-        ownerDto.name,
-        ownerDto.company_name || null,
-        ownerDto.is_company || null,
-        ownerDto.primary_email,
-        ownerDto.phone_number,
-        ownerDto.secondary_email || null,
-        ownerDto.secondary_phone || null,
-        ownerDto.notes || null,
-        true,
-      ],
-    );
-
-    return result[0];
-  }
-
-  async getRentalOwners() {
-    return this.dataSource.query(
-      'SELECT * FROM rental_owners ORDER BY name ASC',
-    );
-  }
-
-  async getRentalOwner(id: number) {
-    const owners = await this.dataSource.query(
-      'SELECT * FROM rental_owners WHERE id = $1',
-      [id],
-    );
-
-    if (owners.length === 0) {
-      throw new NotFoundException(`RentalOwner with ID ${id} not found`);
-    }
-
-    return owners[0];
-  }
-
-  async updateRentalOwner(id: number, updateDto: any) {
-    const owners = await this.dataSource.query(
-      'SELECT id FROM rental_owners WHERE id = $1',
-      [id],
-    );
-    if (owners.length === 0) {
-      throw new NotFoundException(`RentalOwner with ID ${id} not found`);
-    }
-
-    const fields: string[] = [];
-    const values: any[] = [];
-    let idx = 1;
-
-    const allowed = [
-      'name',
-      'company_name',
-      'is_company',
-      'primary_email',
-      'phone_number',
-      'secondary_email',
-      'secondary_phone',
-      'notes',
-      'is_active',
-    ];
-    for (const field of allowed) {
-      if (field in updateDto) {
-        fields.push(`${field} = $${idx++}`);
-        values.push(updateDto[field]);
-      }
-    }
-    if (fields.length === 0) {
-      return this.getRentalOwner(id);
-    }
-
-    values.push(id);
-    const sql = `UPDATE rental_owners SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${idx++}`;
-
-    await this.dataSource.query(sql, values);
-
-    return this.getRentalOwner(id);
-  }
-
   // ==========================================
   // F2-BE-03: CATÁLOGO PÚBLICO CON FILTROS
   // ==========================================
@@ -1233,20 +1149,6 @@ export class PropertiesService {
       message: 'Owner removed from property successfully',
       id: ownerRelationId,
     };
-  }
-
-  async removeRentalOwner(id: number) {
-    const owners = await this.dataSource.query(
-      'SELECT * FROM rental_owners WHERE id = $1',
-      [id],
-    );
-    if (owners.length === 0) {
-      throw new NotFoundException(`RentalOwner with ID ${id} not found`);
-    }
-    await this.dataSource.query('DELETE FROM rental_owners WHERE id = $1', [
-      id,
-    ]);
-    return { message: 'RentalOwner deleted successfully', id };
   }
 
   async getStats() {

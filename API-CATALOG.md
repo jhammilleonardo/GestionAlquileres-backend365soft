@@ -14,11 +14,13 @@ Listar propiedades del catálogo con filtros, búsqueda, paginación y ordenamie
 
 | Parámetro | Tipo | Requerido | Descripción | Ejemplo |
 |-----------|------|-----------|-------------|---------|
-| `type` | string | No | Tipo de propiedad | `casa`, `departamento` |
+| `type` | string | No | Tipo de propiedad (code del property_type) | `residential`, `commercial` |
 | `min_price` | number | No | Precio mínimo mensual | `1000` |
 | `max_price` | number | No | Precio máximo mensual | `50000` |
 | `bedrooms` | number | No | Mínimo de habitaciones | `2`, `3` |
-| `city` | string | No | Filtrar por ciudad | `La Paz` |
+| `rental_type` | string | No | Tipo de alquiler: `short_term`, `long_term`, `any` | `long_term` |
+| `status` | string | No | Estado de la propiedad (default: `DISPONIBLE`) | `DISPONIBLE`, `RESERVADO` |
+| `city` | string | No | Filtrar por ciudad (búsqueda parcial) | `La Paz` |
 | `country` | string | No | Filtrar por país | `Bolivia` |
 | `search` | string | No | Buscar en título/descripción (case-insensitive) | `moderno`, `balcón` |
 | `sort` | string | No | Ordenamiento: `price_asc`, `price_desc`, `newest`, `available` | `price_asc` |
@@ -28,7 +30,7 @@ Listar propiedades del catálogo con filtros, búsqueda, paginación y ordenamie
 #### Ejemplo de Solicitud
 
 ```
-GET http://localhost:3000/mi-inmobiliaria/catalog/properties?type=casa&min_price=5000&max_price=50000&bedrooms=3&sort=price_asc&page=1&limit=20
+GET http://localhost:3000/mi-inmobiliaria/catalog/properties?type=residential&min_price=5000&max_price=50000&bedrooms=3&rental_type=long_term&sort=price_asc&page=1&limit=20
 ```
 
 #### Response 200 OK

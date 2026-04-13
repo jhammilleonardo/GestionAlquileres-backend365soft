@@ -20,6 +20,7 @@ import { QrPaymentModule } from './payments/qr/qr-payment.module';
 import { EmployeesModule } from './employees/employees.module';
 import { TenantConfigModule } from './tenant-config/tenant-config.module';
 import { UnitsModule } from './units/units.module';
+import { RentalOwnersModule } from './rental-owners/rental-owners.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { UnitsModule } from './units/units.module';
     EmployeesModule,
     TenantConfigModule,
     UnitsModule,
+    RentalOwnersModule,
   ],
   controllers: [AppController],
   providers: [

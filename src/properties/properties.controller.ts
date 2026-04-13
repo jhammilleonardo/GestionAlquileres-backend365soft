@@ -25,8 +25,6 @@ import {
 import { PropertiesService } from './properties.service';
 import {
   CreatePropertyDto,
-  CreateRentalOwnerDto,
-  UpdateRentalOwnerDto,
   AssignOwnerDto,
 } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
@@ -231,60 +229,6 @@ export class AdminPropertiesController {
     );
   }
 
-  // =============================================
-  // Rental Owners CRUD
-  // =============================================
-
-  @Post('rental-owners')
-  @ApiOperation({ summary: 'Crear propietario' })
-  @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async createRentalOwner(
-    @Param('slug') slug: string,
-    @Body() ownerDto: CreateRentalOwnerDto,
-  ) {
-    return this.propertiesService.createRentalOwner(ownerDto);
-  }
-
-  @Get('rental-owners')
-  @ApiOperation({ summary: 'Obtener todos los propietarios' })
-  @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async getRentalOwners(@Param('slug') slug: string) {
-    return this.propertiesService.getRentalOwners();
-  }
-
-  @Get('rental-owners/:id')
-  @ApiOperation({ summary: 'Obtener un propietario con sus propiedades' })
-  @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  @ApiParam({ name: 'id', type: Number })
-  async getRentalOwner(
-    @Param('slug') slug: string,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.propertiesService.getRentalOwner(id);
-  }
-
-  @Patch('rental-owners/:id')
-  @ApiOperation({ summary: 'Actualizar propietario' })
-  @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  @ApiParam({ name: 'id', type: Number })
-  async updateRentalOwner(
-    @Param('slug') slug: string,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdateRentalOwnerDto,
-  ) {
-    return this.propertiesService.updateRentalOwner(id, updateDto);
-  }
-
-  @Delete('rental-owners/:id')
-  @ApiOperation({ summary: 'Eliminar propietario' })
-  @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  @ApiParam({ name: 'id', type: Number })
-  async removeRentalOwner(
-    @Param('slug') slug: string,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.propertiesService.removeRentalOwner(id);
-  }
 }
 
 // Catalogo Publico - Propiedades disponibles para todos

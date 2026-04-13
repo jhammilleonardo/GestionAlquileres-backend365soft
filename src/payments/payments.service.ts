@@ -766,6 +766,71 @@ export class PaymentsService {
     }
   }
 
+  // ==========================================
+  // LÓGICA DE NEGOCIO — independiente del procesador
+  // ==========================================
+
+  /**
+   * Calcula el cargo por mora.
+   *
+   * @param monthlyRent   Monto base del alquiler
+   * @param daysLate      Días transcurridos desde el vencimiento
+   * @param lateFeePct    Porcentaje de mora configurado en tenant_config (ej: 2 para 2%)
+   * @param graceDays     Días de gracia antes de aplicar mora (default 0)
+   * @returns Monto de mora a cobrar (0 si está dentro del período de gracia)
+   */
+  calculateLateFee(
+    monthlyRent: number,
+    daysLate: number,
+    lateFeePct: number,
+    graceDays = 0,
+  ): number {
+    if (daysLate <= graceDays) return 0;
+    const fee = (monthlyRent * lateFeePct) / 100;
+    return Math.round(fee * 100) / 100; // redondeo a 2 decimales
+  }
+
+  /**
+   * Aplica un descuento porcentual al monto.
+   *
+   * @param amount       Monto base
+   * @param discountPct  Porcentaje de descuento (0–100)
+   * @returns Monto final tras aplicar el descuento
+   */
+  applyDiscount(amount: number, discountPct: number): number {
+    if (discountPct <= 0) return amount;
+    if (discountPct >= 100) return 0;
+    const discounted = amount * (1 - discountPct / 100);
+    return Math.round(discounted * 100) / 100;
+  }
+
+  /**
+   * Valida si una transición de estado de pago es permitida.
+   *
+   * Transiciones válidas:
+   *   PENDING     → PROCESSING | APPROVED | REJECTED | FAILED
+   *   PROCESSING  → APPROVED | FAILED
+   *   APPROVED    → REFUNDED | REVERSED | DISPUTED
+   *   REJECTED    → (estado terminal)
+   *   FAILED      → (estado terminal)
+   *   REFUNDED    → (estado terminal)
+   *   REVERSED    → (estado terminal)
+   *   DISPUTED    → APPROVED | REVERSED
+   */
+  isValidStatusTransition(from: string, to: string): boolean {
+    const allowed: Record<string, string[]> = {
+      PENDING:    ['PROCESSING', 'APPROVED', 'REJECTED', 'FAILED'],
+      PROCESSING: ['APPROVED', 'FAILED'],
+      APPROVED:   ['REFUNDED', 'REVERSED', 'DISPUTED'],
+      DISPUTED:   ['APPROVED', 'REVERSED'],
+      REJECTED:   [],
+      FAILED:     [],
+      REFUNDED:   [],
+      REVERSED:   [],
+    };
+    return (allowed[from] ?? []).includes(to);
+  }
+
   /**
    * Crear un reembolso (Admin)
    */

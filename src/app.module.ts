@@ -21,6 +21,7 @@ import { EmployeesModule } from './employees/employees.module';
 import { TenantConfigModule } from './tenant-config/tenant-config.module';
 import { UnitsModule } from './units/units.module';
 import { RentalOwnersModule } from './rental-owners/rental-owners.module';
+import { DevSeedModule } from './common/seed/dev-seed.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { RentalOwnersModule } from './rental-owners/rental-owners.module';
     TenantConfigModule,
     UnitsModule,
     RentalOwnersModule,
+    DevSeedModule,
   ],
   controllers: [AppController],
   providers: [

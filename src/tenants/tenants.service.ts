@@ -1253,6 +1253,22 @@ export class TenantsService implements OnModuleInit {
       CREATE INDEX IF NOT EXISTS IDX_PAYMENT_REFUNDS_PAYMENT ON ${schemaName}.payment_refunds(payment_id);
     `);
 
+    // Tabla: payment_splits — distribución del pago entre propietarios
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.payment_splits (
+        id               SERIAL PRIMARY KEY,
+        payment_id       INTEGER NOT NULL
+          REFERENCES ${schemaName}.payments(id) ON DELETE CASCADE,
+        rental_owner_id  INTEGER NOT NULL,
+        owner_name       VARCHAR(255),
+        ownership_pct    INTEGER NOT NULL,
+        amount           DECIMAL(12,2) NOT NULL,
+        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SPLITS_PAYMENT
+        ON ${schemaName}.payment_splits(payment_id);
+    `);
+
     // Crear trigger para updated_at (si no existe)
     await this.dataSource.query(`
       CREATE OR REPLACE FUNCTION ${schemaName}.update_updated_at_column()

@@ -9,9 +9,12 @@ import {
   Query,
   ParseIntPipe,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   Request,
   Res,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { PaymentsService } from './payments.service';
 import {
@@ -20,10 +23,13 @@ import {
   UpdatePaymentStatusDto,
   PaymentFiltersDto,
   CreateRefundDto,
+  ApprovePaymentDto,
+  RejectPaymentDto,
 } from './dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { receiptMulterConfig } from '../common/utils/multer.config';
 
 /**
  * Payments Controller
@@ -97,8 +103,42 @@ export class AdminPaymentsController {
   }
 
   /**
+   * PATCH /:slug/admin/payments/:id/approve
+   * Aprobar un pago con comentario opcional.
+   * Dispara el cálculo de split payment automáticamente.
+   */
+  @Patch(':id/approve')
+  async approvePayment(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ApprovePaymentDto,
+    @Request() req,
+  ) {
+    const adminId = req.user.userId;
+    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    return this.paymentsService.approvePayment(id, dto, adminId, schemaName);
+  }
+
+  /**
+   * PATCH /:slug/admin/payments/:id/reject
+   * Rechazar un pago con motivo obligatorio.
+   * El inquilino verá el motivo en su portal.
+   */
+  @Patch(':id/reject')
+  async rejectPayment(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RejectPaymentDto,
+    @Request() req,
+  ) {
+    const adminId = req.user.userId;
+    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    return this.paymentsService.rejectPayment(id, dto, adminId, schemaName);
+  }
+
+  /**
    * PATCH /:slug/admin/payments/:id
-   * Actualizar estado de un pago (aprobar/rechazar)
+   * Actualizar estado de un pago (genérico — mantener para compatibilidad)
    */
   @Patch(':id')
   async updatePaymentStatus(
@@ -107,7 +147,6 @@ export class AdminPaymentsController {
     @Body() dto: UpdatePaymentStatusDto,
     @Request() req,
   ) {
-    // Obtener adminId del usuario autenticado
     const adminId = req.user.userId;
     const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
     return this.paymentsService.updatePaymentStatus(
@@ -159,18 +198,34 @@ export class TenantPaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   /**
+   * GET /:slug/tenant/payments/methods
+   * Métodos de pago disponibles según la configuración del tenant.
+   * El frontend usa esto para construir el formulario de pago.
+   */
+  @Get('methods')
+  async getPaymentMethods(@Param('slug') slug: string) {
+    return this.paymentsService.getAvailablePaymentMethods(slug);
+  }
+
+  /**
    * POST /:slug/tenant/payments
-   * Crear un nuevo pago
+   * Registrar un nuevo pago con comprobante opcional (multipart/form-data).
+   * Campo file: "receipt" (imagen o PDF, máx 10 MB).
    */
   @Post()
+  @UseInterceptors(FileInterceptor('receipt', receiptMulterConfig))
   async createPayment(
     @Param('slug') slug: string,
     @Body() dto: CreatePaymentDto,
     @Request() req,
+    @UploadedFile() receipt?: Express.Multer.File,
   ) {
-    // Obtener tenantId del usuario autenticado
     const tenantId = req.user.userId;
-    return this.paymentsService.createPayment(tenantId, dto, slug);
+    // Construir ruta relativa para almacenar en la DB
+    const receiptPath = receipt
+      ? `storage/receipts/${slug}/${receipt.filename}`
+      : undefined;
+    return this.paymentsService.createPayment(tenantId, dto, slug, undefined, undefined, receiptPath);
   }
 
   /**

@@ -43,9 +43,28 @@ services:
     networks:
       - gestion-network
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: gestion-pgadmin-dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@365soft.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin365}
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin_dev_data:/var/lib/pgadmin
+      - ./docker/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - gestion-network
+    restart: unless-stopped
+
 networks:
   gestion-network:
     driver: bridge
 
 volumes:
   postgres_dev_data:
+  pgadmin_dev_data:

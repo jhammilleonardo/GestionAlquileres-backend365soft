@@ -59,6 +59,7 @@ export class TenantsService implements OnModuleInit {
         await this.createPropertyLeadsTable(schema_name);
         await this.createUnitsTables(schema_name);
         await this.migrateContractsUnitId(schema_name);
+        await this.migrateRentalOwnersBankFields(schema_name);
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -335,6 +336,26 @@ export class TenantsService implements OnModuleInit {
     `);
   }
 
+  /**
+   * Agrega los campos bancarios a rental_owners para schemas existentes.
+   * Idempotente: usa ADD COLUMN IF NOT EXISTS.
+   */
+  private async migrateRentalOwnersBankFields(schemaName: string): Promise<void> {
+    const columns: [string, string][] = [
+      ['bank_name',           'VARCHAR(100) NULL'],
+      ['account_number',      'VARCHAR(50)  NULL'],
+      ['account_type',        'VARCHAR(20)  NULL'],
+      ['account_holder_name', 'VARCHAR(150) NULL'],
+      ['cbu_iban',            'VARCHAR(50)  NULL'],
+    ];
+
+    for (const [col, def] of columns) {
+      await this.dataSource.query(
+        `ALTER TABLE ${schemaName}.rental_owners ADD COLUMN IF NOT EXISTS ${col} ${def}`,
+      );
+    }
+  }
+
   /** Agrega unit_id nullable FK a contracts para schemas existentes. */
   private async migrateContractsUnitId(schemaName: string): Promise<void> {
     await this.dataSource.query(`
@@ -562,7 +583,10 @@ export class TenantsService implements OnModuleInit {
       // 14. Crear tabla de unidades
       await this.createUnitsTables(tenant.schema_name);
 
-      // 15. Insertar datos iniciales (seed data)
+      // 15. Campos bancarios en rental_owners ya incluidos en createPropertiesTables
+      // (la tabla se crea con esos campos desde el inicio)
+
+      // 16. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
       // 16. Otorgar permisos al usuario de la aplicación
@@ -646,6 +670,11 @@ export class TenantsService implements OnModuleInit {
         secondary_phone character varying,
         notes text DEFAULT '',
         is_active boolean NOT NULL DEFAULT true,
+        bank_name VARCHAR(100),
+        account_number VARCHAR(50),
+        account_type VARCHAR(20),
+        account_holder_name VARCHAR(150),
+        cbu_iban VARCHAR(50),
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now()
       );

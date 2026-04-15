@@ -6,6 +6,7 @@ import {
 } from './payments.controller';
 import { TenantsModule } from '../tenants/tenants.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { OwnerStatementsModule } from '../owner-statements/owner-statements.module';
 import { PaymentProcessorFactory } from './payment-processor.factory';
 import { ManualPaymentProcessor } from './processors/manual.processor';
 import { StripeProcessor } from './processors/stripe.processor';
@@ -24,7 +25,7 @@ import { QRBoliviaProcessor } from './processors/qr-bolivia.processor';
  *   - PaymentProcessorFactory → selecciona el procesador según tenant_config.payment_methods
  */
 @Module({
-  imports: [TenantsModule, NotificationsModule],
+  imports: [TenantsModule, NotificationsModule, OwnerStatementsModule],
   controllers: [AdminPaymentsController, TenantPaymentsController],
   providers: [
     PaymentsService,

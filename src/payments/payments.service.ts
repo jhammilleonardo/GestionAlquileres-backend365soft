@@ -18,6 +18,7 @@ import { PaymentStatus, PaymentProcessor, PaymentMethod, PaymentMethodLabels } f
 import { TenantsService } from '../tenants/tenants.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
+import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
 
 @Injectable()
 export class PaymentsService {
@@ -25,6 +26,7 @@ export class PaymentsService {
     private dataSource: DataSource,
     private tenantsService: TenantsService,
     private notificationsService: NotificationsService,
+    private ownerStatementsService: OwnerStatementsService,
   ) {}
 
   /**
@@ -900,6 +902,14 @@ export class PaymentsService {
       schema,
     );
 
+    // Disparar creación de owner statements
+    await this.triggerOwnerStatements(
+      id,
+      Number(payment.amount),
+      payment.property_id as number,
+      schema,
+    );
+
     return updated[0];
   }
 
@@ -1041,6 +1051,81 @@ export class PaymentsService {
       }
     } catch {
       // El split es no-crítico: si falla, no afecta la aprobación del pago
+    }
+  }
+
+  /**
+   * Crear estados de cuenta para los propietarios (owner statements)
+   * Se dispara automáticamente al aprobar un pago
+   */
+  private async triggerOwnerStatements(
+    paymentId: number,
+    amount: number,
+    propertyId: number,
+    schemaName: string,
+  ): Promise<void> {
+    try {
+      // Obtener el pago para saber la fecha
+      const payment = await this.dataSource.query(
+        `SELECT * FROM ${schemaName}.payments WHERE id = $1`,
+        [paymentId],
+      );
+
+      if (!payment || payment.length === 0) return;
+
+      const paymentDate = new Date(payment[0].payment_date);
+      const year = paymentDate.getFullYear();
+      const month = paymentDate.getMonth() + 1; // getMonth() retorna 0-11
+
+      // Obtener propietarios de la propiedad
+      const owners = await this.dataSource.query(
+        `SELECT po.rental_owner_id, ro.name AS owner_name, po.ownership_percentage
+         FROM ${schemaName}.property_owners po
+         JOIN ${schemaName}.rental_owners ro ON ro.id = po.rental_owner_id
+         WHERE po.property_id = $1
+           AND po.ownership_percentage > 0`,
+        [propertyId],
+      );
+
+      if (!owners || owners.length === 0) return;
+
+      // Obtener configuración del tenant para commission_percentage
+      const config = await this.dataSource.query(
+        `SELECT commission_percentage FROM tenant_config LIMIT 1`,
+      );
+
+      const commissionPercentage = config && config.length > 0 ? config[0].commission_percentage || 15 : 15;
+
+      // Obtener el currency del pago
+      const currency = payment[0].currency || 'BOB';
+
+      // Crear o actualizar statement para cada propietario
+      for (const owner of owners) {
+        const ownerShare = (amount * owner.ownership_percentage) / 100;
+
+        try {
+          await this.ownerStatementsService.createStatementFromPayment({
+            month,
+            year,
+            rentalOwnerId: owner.rental_owner_id,
+            propertyId,
+            grossRent: ownerShare,
+            maintenanceDeduction: 0, // TODO: Obtener deducción real cuando se implemente
+            commissionPercentage,
+            currency,
+            paymentCount: 1,
+          });
+        } catch (error) {
+          // Logear pero no fallar - owner statements es no-crítico
+          console.warn(
+            `No se pudo crear statement para propietario ${owner.rental_owner_id}:`,
+            error,
+          );
+        }
+      }
+    } catch (error) {
+      // Los owner statements son no-críticos: si falla, no afecta la aprobación del pago
+      console.warn('Error al crear owner statements:', error);
     }
   }
 

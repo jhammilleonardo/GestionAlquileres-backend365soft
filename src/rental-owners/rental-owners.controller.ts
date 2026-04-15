@@ -10,7 +10,11 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Res,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -21,8 +25,10 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { RentalOwnersService } from './rental-owners.service';
+import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
 import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -32,7 +38,10 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 @Controller(':slug/admin/rental-owners')
 @UseGuards(JwtAuthGuard)
 export class RentalOwnersController {
-  constructor(private readonly rentalOwnersService: RentalOwnersService) {}
+  constructor(
+    private readonly rentalOwnersService: RentalOwnersService,
+    private readonly ownerStatementsService: OwnerStatementsService,
+  ) {}
 
   /**
    * Lista todos los propietarios con cantidad de propiedades y saldo pendiente.
@@ -173,5 +182,49 @@ export class RentalOwnersController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.rentalOwnersService.getStatements(id);
+  }
+
+  /**
+   * GET /:slug/admin/rental-owners/:ownerId/statements/:statementId/pdf
+   * Descargar PDF del estado de cuenta - ADMIN
+   */
+  @Get(':ownerId/statements/:statementId/pdf')
+  @ApiOperation({
+    summary: 'Descargar PDF de liquidación mensual (Admin)',
+    description: 'El administrador descarga el PDF de liquidación de un propietario específico',
+  })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'ownerId', type: Number, description: 'ID del propietario' })
+  @ApiParam({ name: 'statementId', type: Number, description: 'ID del estado de cuenta' })
+  @ApiQuery({ name: 'lang', enum: ['es', 'en'], required: false, description: 'Idioma del PDF (es|en)' })
+  async downloadStatementPdfAdmin(
+    @Param('slug') _slug: string,
+    @Param('ownerId', ParseIntPipe) _ownerId: number,
+    @Param('statementId', ParseIntPipe) statementId: number,
+    @Query('lang') lang?: 'es' | 'en',
+    @Res() res?: Response,
+  ) {
+    const language = (lang === 'en' ? 'en' : 'es') as 'es' | 'en';
+
+    try {
+      const filePath = await this.ownerStatementsService.generatePdf(
+        statementId,
+        language,
+      );
+
+      if (!res) {
+        throw new BadRequestException('Response object unavailable');
+      }
+
+      res.download(filePath, `liquidacion_${statementId}.pdf`, (err) => {
+        if (err) {
+          console.error('Error al descargar archivo:', err);
+        }
+      });
+    } catch (error) {
+      throw new BadRequestException(
+        `Error generando PDF: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+      );
+    }
   }
 }

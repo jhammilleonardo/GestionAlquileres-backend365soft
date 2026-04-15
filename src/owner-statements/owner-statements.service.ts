@@ -208,7 +208,6 @@ export class OwnerStatementsService {
         pa.street_address AS property_address,
         pa.city AS property_city,
         pa.country AS property_country,
-        u.name AS tenant_name,
         os.period_year,
         os.period_month,
         os.gross_rent,
@@ -221,7 +220,6 @@ export class OwnerStatementsService {
       JOIN properties p ON p.id = os.property_id
       LEFT JOIN property_addresses pa 
         ON pa.property_id = p.id AND pa.address_type = 'address_1'
-      LEFT JOIN units u ON u.id = p.default_unit_id
       WHERE os.id = $1
     `;
 
@@ -244,7 +242,6 @@ export class OwnerStatementsService {
         property_address: data.property_address || 'No especificada',
         property_city: data.property_city || '',
         property_country: data.property_country || '',
-        tenant_name: data.tenant_name,
         period_year: data.period_year,
         period_month: data.period_month,
         gross_rent: Number(data.gross_rent),

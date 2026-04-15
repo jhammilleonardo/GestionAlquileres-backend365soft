@@ -12,6 +12,7 @@ import { Property } from '../../properties/entities/property.entity';
 import { ContractStatus } from '../enums/contract-status.enum';
 import { MaintenanceRequest } from '../../maintenance/entities/maintenance-request.entity';
 import { RentalApplication } from '../../applications/entities/application.entity';
+import { Unit } from '../../units/entities/unit.entity';
 
 @Entity('contracts')
 export class Contract {
@@ -30,6 +31,13 @@ export class Contract {
   @ManyToOne(() => Property)
   @JoinColumn({ name: 'property_id' })
   property: Property;
+
+  @Column({ nullable: true })
+  unit_id: number;
+
+  @ManyToOne(() => Unit, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'unit_id' })
+  unit: Unit;
 
   @OneToMany(() => MaintenanceRequest, (maintenance) => maintenance.contract)
   maintenance_requests: MaintenanceRequest[];

@@ -8,7 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Tenant } from './metadata/tenant.entity';
-import { CreateTenantDto } from './dto/create-tenant.dto';
+import { CreateTenantDto, TenantCountry } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
 @Injectable()
@@ -55,6 +55,11 @@ export class TenantsService implements OnModuleInit {
         await this.createPaymentsTables(schema_name);
         await this.migrateContractsApplicationId(schema_name);
         await this.migrateEmployeeTables(schema_name);
+        await this.createTenantConfigTable(schema_name);
+        await this.createPropertyLeadsTable(schema_name);
+        await this.createUnitsTables(schema_name);
+        await this.migrateContractsUnitId(schema_name);
+        await this.migrateRentalOwnersBankFields(schema_name);
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -79,6 +84,9 @@ export class TenantsService implements OnModuleInit {
       ['year_built', 'INT NULL'],
       ['is_furnished', 'BOOLEAN NOT NULL DEFAULT FALSE'],
       ['property_rules', 'JSONB NULL'],
+      ['rental_type', 'VARCHAR(20) NULL'],
+      ['view_count', 'INT NOT NULL DEFAULT 0'],
+      ['last_viewed_at', 'TIMESTAMP NULL'],
     ];
 
     for (const [col, def] of columns) {
@@ -137,14 +145,16 @@ export class TenantsService implements OnModuleInit {
    * - Crea la tabla employee_permissions si no existe
    */
   private async migrateEmployeeTables(schemaName: string) {
-    // Agregar valor 'EMPLEADO' al enum si no existe
-    await this.dataSource.query(`
-      DO $$ BEGIN
-        ALTER TYPE ${schemaName}.user_role_enum ADD VALUE IF NOT EXISTS 'EMPLEADO';
-      EXCEPTION
-        WHEN others THEN null;
-      END $$;
-    `);
+    // Agregar valores al enum si no existen
+    for (const value of ['EMPLEADO', 'TECNICO']) {
+      await this.dataSource.query(`
+        DO $$ BEGIN
+          ALTER TYPE ${schemaName}.user_role_enum ADD VALUE IF NOT EXISTS '${value}';
+        EXCEPTION
+          WHEN others THEN null;
+        END $$;
+      `);
+    }
 
     // Agregar columna last_connection si no existe
     await this.dataSource.query(
@@ -177,6 +187,240 @@ export class TenantsService implements OnModuleInit {
       CREATE INDEX IF NOT EXISTS IDX_EMPLOYEE_PERMISSIONS_USER_ID
         ON ${schemaName}.employee_permissions(user_id);
     `);
+  }
+
+  private readonly configDefaultsByCountry: Record<
+    TenantCountry,
+    {
+      currency: string;
+      language: string;
+      timezone: string;
+      date_format: string;
+      rental_type: string;
+      payment_methods: string[];
+      notification_channels: { email: boolean; whatsapp: boolean; internal: boolean };
+      commission_percentage: number;
+      grace_days_late_fee: number;
+      late_fee_percentage: number;
+    }
+  > = {
+    [TenantCountry.US]: {
+      currency: 'USD',
+      language: 'en',
+      timezone: 'America/New_York',
+      date_format: 'MM/DD/YYYY',
+      rental_type: 'LONG_TERM',
+      payment_methods: ['stripe', 'ach', 'paypal'],
+      notification_channels: { email: true, whatsapp: false, internal: true },
+      commission_percentage: 0,
+      grace_days_late_fee: 5,
+      late_fee_percentage: 5,
+    },
+    [TenantCountry.BO]: {
+      currency: 'BOB',
+      language: 'es',
+      timezone: 'America/La_Paz',
+      date_format: 'DD/MM/YYYY',
+      rental_type: 'BOTH',
+      payment_methods: ['qr_accl', 'transferencia'],
+      notification_channels: { email: true, whatsapp: true, internal: true },
+      commission_percentage: 10,
+      grace_days_late_fee: 5,
+      late_fee_percentage: 2,
+    },
+    [TenantCountry.GT]: {
+      currency: 'GTQ',
+      language: 'es',
+      timezone: 'America/Guatemala',
+      date_format: 'DD/MM/YYYY',
+      rental_type: 'BOTH',
+      payment_methods: ['stripe', 'payu', 'tarjeta'],
+      notification_channels: { email: true, whatsapp: true, internal: true },
+      commission_percentage: 0,
+      grace_days_late_fee: 5,
+      late_fee_percentage: 3,
+    },
+    [TenantCountry.HN]: {
+      currency: 'HNL',
+      language: 'es',
+      timezone: 'America/Tegucigalpa',
+      date_format: 'DD/MM/YYYY',
+      rental_type: 'LONG_TERM',
+      payment_methods: ['payu', 'tarjeta', 'transferencia'],
+      notification_channels: { email: true, whatsapp: true, internal: true },
+      commission_percentage: 0,
+      grace_days_late_fee: 5,
+      late_fee_percentage: 3,
+    },
+  };
+
+  private async createPropertyLeadsTable(schemaName: string) {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.property_leads (
+        id SERIAL PRIMARY KEY,
+        property_id INT NOT NULL REFERENCES ${schemaName}.properties(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        phone VARCHAR(20) NOT NULL,
+        message TEXT NOT NULL,
+        inquiry_type VARCHAR(50) DEFAULT 'general',
+        availability VARCHAR(50),
+        status VARCHAR(50) DEFAULT 'PENDING',
+        user_ip VARCHAR(45),
+        assigned_to INT REFERENCES ${schemaName}."user"(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_property_leads_property_id ON ${schemaName}.property_leads(property_id);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_email ON ${schemaName}.property_leads(email);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_status ON ${schemaName}.property_leads(status);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_created_at ON ${schemaName}.property_leads(created_at DESC);
+    `);
+  }
+
+  private async createUnitsTables(schemaName: string): Promise<void> {
+    // ENUM de unit_status
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        CREATE TYPE ${schemaName}.unit_status_enum AS ENUM (
+          'available', 'occupied', 'maintenance', 'reserved'
+        );
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // ENUM de rental_type (si no existe ya)
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        CREATE TYPE ${schemaName}.unit_rental_type_enum AS ENUM (
+          'SHORT_TERM', 'LONG_TERM', 'BOTH'
+        );
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.units (
+        id             SERIAL PRIMARY KEY,
+        property_id    INTEGER NOT NULL,
+        unit_number    VARCHAR(50) NOT NULL,
+        floor          INTEGER,
+        bedrooms       INTEGER,
+        bathrooms      INTEGER,
+        square_meters  NUMERIC(10,2),
+        status         ${schemaName}.unit_status_enum NOT NULL DEFAULT 'available',
+        rental_type    ${schemaName}.unit_rental_type_enum,
+        price_per_month  NUMERIC(10,2),
+        price_per_night  NUMERIC(10,2),
+        deposit_amount   NUMERIC(10,2),
+        features         JSONB,
+        created_at     TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at     TIMESTAMP NOT NULL DEFAULT now(),
+        CONSTRAINT fk_units_property
+          FOREIGN KEY (property_id) REFERENCES ${schemaName}.properties(id) ON DELETE CASCADE,
+        CONSTRAINT uq_units_property_number
+          UNIQUE (property_id, unit_number)
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_units_property_id
+        ON ${schemaName}.units(property_id);
+      CREATE INDEX IF NOT EXISTS idx_units_status
+        ON ${schemaName}.units(status);
+    `);
+  }
+
+  /**
+   * Agrega los campos bancarios a rental_owners para schemas existentes.
+   * Idempotente: usa ADD COLUMN IF NOT EXISTS.
+   */
+  private async migrateRentalOwnersBankFields(schemaName: string): Promise<void> {
+    const columns: [string, string][] = [
+      ['bank_name',           'VARCHAR(100) NULL'],
+      ['account_number',      'VARCHAR(50)  NULL'],
+      ['account_type',        'VARCHAR(20)  NULL'],
+      ['account_holder_name', 'VARCHAR(150) NULL'],
+      ['cbu_iban',            'VARCHAR(50)  NULL'],
+    ];
+
+    for (const [col, def] of columns) {
+      await this.dataSource.query(
+        `ALTER TABLE ${schemaName}.rental_owners ADD COLUMN IF NOT EXISTS ${col} ${def}`,
+      );
+    }
+  }
+
+  /** Agrega unit_id nullable FK a contracts para schemas existentes. */
+  private async migrateContractsUnitId(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      ALTER TABLE ${schemaName}.contracts
+        ADD COLUMN IF NOT EXISTS unit_id INTEGER
+          REFERENCES ${schemaName}.units(id) ON DELETE SET NULL;
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_contracts_unit_id
+        ON ${schemaName}.contracts(unit_id);
+    `);
+  }
+
+  private async createTenantConfigTable(
+    schemaName: string,
+    country: TenantCountry = TenantCountry.BO,
+  ) {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.tenant_config (
+        id SERIAL PRIMARY KEY,
+        country VARCHAR(2) NOT NULL,
+        currency VARCHAR(3) NOT NULL,
+        language VARCHAR(2) NOT NULL,
+        timezone VARCHAR(100) NOT NULL,
+        date_format VARCHAR(20) NOT NULL,
+        rental_type VARCHAR(20) NOT NULL,
+        payment_methods JSONB NOT NULL DEFAULT '[]',
+        notification_channels JSONB NOT NULL DEFAULT '{"email": true, "whatsapp": false, "internal": true}',
+        commission_percentage NUMERIC(5,2) NOT NULL DEFAULT 0,
+        grace_days_late_fee INTEGER NOT NULL DEFAULT 0,
+        late_fee_percentage NUMERIC(5,2) NOT NULL DEFAULT 0,
+        setup_completed BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `);
+
+    const defaults = this.configDefaultsByCountry[country];
+
+    // Insertar fila inicial solo si la tabla está vacía
+    await this.dataSource.query(
+      `
+      INSERT INTO ${schemaName}.tenant_config (
+        country, currency, language, timezone, date_format,
+        rental_type, payment_methods, notification_channels,
+        commission_percentage, grace_days_late_fee, late_fee_percentage, setup_completed
+      )
+      SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false
+      WHERE NOT EXISTS (SELECT 1 FROM ${schemaName}.tenant_config);
+      `,
+      [
+        country,
+        defaults.currency,
+        defaults.language,
+        defaults.timezone,
+        defaults.date_format,
+        defaults.rental_type,
+        JSON.stringify(defaults.payment_methods),
+        JSON.stringify(defaults.notification_channels),
+        defaults.commission_percentage,
+        defaults.grace_days_late_fee,
+        defaults.late_fee_percentage,
+      ],
+    );
   }
 
   async create(createTenantDto: CreateTenantDto) {
@@ -212,7 +456,7 @@ export class TenantsService implements OnModuleInit {
 
     // Crear el schema en PostgreSQL; si falla, eliminar el registro del tenant
     try {
-      await this.createTenantSchema(savedTenant);
+      await this.createTenantSchema(savedTenant, createTenantDto.country);
     } catch (error) {
       // Limpiar el registro huérfano para evitar inconsistencias
       await this.tenantRepository.delete(savedTenant.id);
@@ -271,7 +515,7 @@ export class TenantsService implements OnModuleInit {
     return { message: 'Tenant deleted successfully' };
   }
 
-  private async createTenantSchema(tenant: Tenant) {
+  private async createTenantSchema(tenant: Tenant, country: TenantCountry = TenantCountry.BO) {
     try {
       // 1. Crear el schema en PostgreSQL
       await this.dataSource.query(
@@ -282,7 +526,7 @@ export class TenantsService implements OnModuleInit {
       // ENUM de user_role
       await this.dataSource.query(`
         DO $$ BEGIN
-          CREATE TYPE ${tenant.schema_name}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO');
+          CREATE TYPE ${tenant.schema_name}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO');
         EXCEPTION
           WHEN duplicate_object THEN null;
         END $$;
@@ -330,10 +574,22 @@ export class TenantsService implements OnModuleInit {
       // 11. Crear tabla de permisos de empleados
       await this.createEmployeePermissionsTable(tenant.schema_name);
 
-      // 12. Insertar datos iniciales (seed data)
+      // 12. Crear tabla de configuración del tenant
+      await this.createTenantConfigTable(tenant.schema_name, country);
+
+      // 13. Crear tabla de leads del catálogo público
+      await this.createPropertyLeadsTable(tenant.schema_name);
+
+      // 14. Crear tabla de unidades
+      await this.createUnitsTables(tenant.schema_name);
+
+      // 15. Campos bancarios en rental_owners ya incluidos en createPropertiesTables
+      // (la tabla se crea con esos campos desde el inicio)
+
+      // 16. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
-      // 13. Otorgar permisos al usuario de la aplicación
+      // 16. Otorgar permisos al usuario de la aplicación
       await this.grantSchemaPermissions(tenant.schema_name);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -414,6 +670,11 @@ export class TenantsService implements OnModuleInit {
         secondary_phone character varying,
         notes text DEFAULT '',
         is_active boolean NOT NULL DEFAULT true,
+        bank_name VARCHAR(100),
+        account_number VARCHAR(50),
+        account_type VARCHAR(20),
+        account_holder_name VARCHAR(150),
+        cbu_iban VARCHAR(50),
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now()
       );
@@ -446,6 +707,9 @@ export class TenantsService implements OnModuleInit {
         year_built INT NULL,
         is_furnished BOOLEAN NOT NULL DEFAULT FALSE,
         property_rules JSONB NULL,
+        rental_type VARCHAR(20) NULL,
+        view_count INT NOT NULL DEFAULT 0,
+        last_viewed_at TIMESTAMP NULL,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_properties_type FOREIGN KEY (property_type_id)
@@ -987,6 +1251,22 @@ export class TenantsService implements OnModuleInit {
       CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_CONTRACT ON ${schemaName}.payment_schedules(contract_id);
       CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_ACTIVE ON ${schemaName}.payment_schedules(is_active);
       CREATE INDEX IF NOT EXISTS IDX_PAYMENT_REFUNDS_PAYMENT ON ${schemaName}.payment_refunds(payment_id);
+    `);
+
+    // Tabla: payment_splits — distribución del pago entre propietarios
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.payment_splits (
+        id               SERIAL PRIMARY KEY,
+        payment_id       INTEGER NOT NULL
+          REFERENCES ${schemaName}.payments(id) ON DELETE CASCADE,
+        rental_owner_id  INTEGER NOT NULL,
+        owner_name       VARCHAR(255),
+        ownership_pct    INTEGER NOT NULL,
+        amount           DECIMAL(12,2) NOT NULL,
+        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SPLITS_PAYMENT
+        ON ${schemaName}.payment_splits(payment_id);
     `);
 
     // Crear trigger para updated_at (si no existe)

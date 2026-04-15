@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentsService } from './payments.service';
 import {
   AdminPaymentsController,
@@ -7,17 +6,33 @@ import {
 } from './payments.controller';
 import { TenantsModule } from '../tenants/tenants.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PaymentProcessorFactory } from './payment-processor.factory';
+import { ManualPaymentProcessor } from './processors/manual.processor';
+import { StripeProcessor } from './processors/stripe.processor';
+import { QRBoliviaProcessor } from './processors/qr-bolivia.processor';
 
 /**
  * Payments Module
  *
  * Módulo completo de gestión de pagos multi-moneda y multi-método.
- * Incluye soporte para procesadores de pago internacionales.
+ *
+ * Arquitectura de procesadores:
+ *   - IPaymentProcessor  → interfaz común para todos los procesadores
+ *   - ManualPaymentProcessor  → activo ahora (comprobante + aprobación admin)
+ *   - StripeProcessor         → stub listo para conectar (Fase 3)
+ *   - QRBoliviaProcessor      → stub listo para conectar con QrPaymentService (Fase 3)
+ *   - PaymentProcessorFactory → selecciona el procesador según tenant_config.payment_methods
  */
 @Module({
   imports: [TenantsModule, NotificationsModule],
   controllers: [AdminPaymentsController, TenantPaymentsController],
-  providers: [PaymentsService],
-  exports: [PaymentsService],
+  providers: [
+    PaymentsService,
+    PaymentProcessorFactory,
+    ManualPaymentProcessor,
+    StripeProcessor,
+    QRBoliviaProcessor,
+  ],
+  exports: [PaymentsService, PaymentProcessorFactory],
 })
 export class PaymentsModule {}

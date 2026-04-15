@@ -17,16 +17,21 @@ Esta documentación está diseñada específicamente para el equipo de frontend 
 7. [Catálogos y Referencias](#7-catálogos-y-referencias)
 8. [Usuarios](#8-usuarios)
 
+> **Ver también:**
+> - [`API-CONFIG.md`](./API-CONFIG.md) — Configuración regional del tenant (`tenant_config`)
+> - [`API-PERMISSIONS.md`](./API-PERMISSIONS.md) — Roles, permisos granulares y uso del PermissionsGuard
+
 ---
 
 ## 1. Autenticación y Registro Inicial
 
 ### 1.1 Registrar Admin (Crear nueva organización/tenant)
 
-Esta es la PRIMERA operación que se debe realizar para crear una nueva organización. Crea el tenant y el usuario administrador simultáneamente.
+Esta es la PRIMERA operación que se debe realizar para crear una nueva organización. Crea el tenant, el usuario administrador y la configuración regional (`tenant_config`) simultáneamente.
 
 **Endpoint:** `POST /auth/register-admin`
 **Auth:** No requerida (pública)
+**Rate limit:** 3 registros por hora
 
 ⚠️ **IMPORTANTE:** El email debe ser único en todo el sistema. No puede haber un usuario con el mismo email en ningún otro tenant.
 
@@ -34,15 +39,27 @@ Esta es la PRIMERA operación que se debe realizar para crear una nueva organiza
 ```json
 {
   "company_name": "Mi Inmobiliaria S.A.",
-  "slug": "mi-inmobiliaria",  // Opcional - si no se envía, se genera automáticamente
-  "currency": "BO",          // Opcional - default: "BO"
-  "locale": "es",             // Opcional - default: "es"
+  "country": "BO",            // Requerido — valores: "US" | "BO" | "GT" | "HN"
+  "slug": "mi-inmobiliaria",  // Opcional — si no se envía, se genera a partir de company_name
+  "currency": "BOB",          // Opcional
+  "locale": "es-BO",          // Opcional
   "name": "Juan Pérez",
   "email": "juan@mi-inmobiliaria.com",
   "password": "password123",  // Mínimo 6 caracteres
-  "phone": "+5491112345678"   // Opcional
+  "phone": "+59171234567"      // Opcional
 }
 ```
+
+**Efecto del campo `country`:** Al crear el tenant se inicializa automáticamente la tabla `tenant_config` con los valores por defecto del país:
+
+| `country` | Moneda | Idioma | Pagos por defecto |
+|-----------|--------|--------|-------------------|
+| `US` | USD | en | stripe, ach, paypal |
+| `BO` | BOB | es | qr_accl, transferencia |
+| `GT` | GTQ | es | stripe, payu, tarjeta |
+| `HN` | HNL | es | payu, tarjeta, transferencia |
+
+Todos los valores son editables después desde `PATCH /:slug/admin/config`.
 
 **Response (201):**
 ```json

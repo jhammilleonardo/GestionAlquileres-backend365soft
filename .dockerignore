@@ -1,6 +1,41 @@
+# Dependencias — se reinstalan dentro del contenedor
 node_modules
+
+# Output de compilación — se genera dentro del contenedor
 dist
+
+# Control de versiones
 .git
+.gitignore
+
+# Variables de entorno — nunca deben entrar a la imagen
 .env
-*.md
+.env.*
+
+# Docker — no se necesitan dentro de la imagen
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Archivos de desarrollo y CI
+.github
+docs
+*.sh
+
+# Tests — no se ejecutan en producción
 coverage
+test
+
+# Archivos locales del OS e IDEs
+.DS_Store
+.vscode
+.idea
+*.sublime-workspace
+
+# Logs
+*.log
+logs
+
+# Directorios de uploads — se montan como volúmenes en runtime
+uploads
+storage

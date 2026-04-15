@@ -32,6 +32,8 @@ export enum NotificationEventType {
   CONTRACT_EXPIRING = 'contract.expiring',
   // Empleados
   EMPLOYEE_CREATED = 'employee.created',
+  // Leads de Propiedades
+  PROPERTY_LEAD_RECEIVED = 'property.lead.received',
 }
 
 export class CreateNotificationDto {

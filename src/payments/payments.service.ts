@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
@@ -11,9 +10,11 @@ import {
   UpdatePaymentStatusDto,
   PaymentFiltersDto,
   CreateRefundDto,
+  ApprovePaymentDto,
+  RejectPaymentDto,
 } from './dto';
 import { Payment, PaymentStats } from './interfaces/payment.interface';
-import { PaymentStatus, PaymentProcessor } from './enums';
+import { PaymentStatus, PaymentProcessor, PaymentMethod, PaymentMethodLabels } from './enums';
 import { TenantsService } from '../tenants/tenants.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
@@ -33,7 +34,8 @@ export class PaymentsService {
    */
 
   /**
-   * Crear un nuevo pago (Tenant)
+   * Crear un nuevo pago (Tenant) con comprobante opcional.
+   * receiptPath: ruta relativa del archivo subido (proof_file).
    */
   async createPayment(
     tenantId: number,
@@ -41,6 +43,7 @@ export class PaymentsService {
     tenantSlug?: string,
     contractId?: number,
     propertyId?: number,
+    receiptPath?: string,
   ): Promise<Payment> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -70,22 +73,23 @@ export class PaymentsService {
         propertyId = contract[0].property_id;
       }
 
-      // Crear el pago
+      // Crear el pago (incluye proof_file si se subió comprobante)
       const result = await queryRunner.query(
         `INSERT INTO payments (
           tenant_id, contract_id, property_id, amount, currency,
           payment_type, payment_method, status, payment_date, due_date,
           reference_number, check_number, notes, payment_processor,
+          proof_file,
           is_partial_payment, parent_payment_id, is_recurring,
           recurring_schedule_id, created_by, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW(), NOW())
         RETURNING *`,
         [
           tenantId,
           contractId,
           propertyId,
           dto.amount,
-          dto.currency || 'USD',
+          dto.currency || 'BOB',
           dto.payment_type,
           dto.payment_method,
           PaymentStatus.PENDING,
@@ -95,6 +99,7 @@ export class PaymentsService {
           dto.check_number || null,
           dto.notes || null,
           dto.payment_processor || PaymentProcessor.MANUAL,
+          receiptPath || null,
           dto.is_partial_payment || false,
           dto.parent_payment_id || null,
           dto.is_recurring || false,
@@ -105,26 +110,29 @@ export class PaymentsService {
 
       await queryRunner.commitTransaction();
 
-      // Notificar a los admins del nuevo pago
+      // Notificar a los admins del nuevo pago pendiente de aprobación
       try {
+        const tenant = await this.tenantsService.findBySlug(tenantSlug!);
         const admins = await this.dataSource.query(
-          `SELECT id FROM users WHERE role = 'ADMIN' LIMIT 5`,
+          `SELECT id FROM ${tenant.schema_name}."user" WHERE role = 'ADMIN' AND is_active = true LIMIT 5`,
         );
-        const adminIds = admins.map((a: any) => a.id as number);
+        const adminIds = admins.map((a: { id: number }) => a.id);
         if (adminIds.length > 0) {
+          const receiptNote = receiptPath ? ' con comprobante adjunto' : '';
           await this.notificationsService.notifyAdmins(
             adminIds,
             NotificationEventType.PAYMENT_CREATED,
-            'Nuevo pago registrado',
-            `Un inquilino ha registrado un nuevo pago de ${dto.amount} ${dto.currency || 'USD'}`,
+            'Pago pendiente de aprobación',
+            `Un inquilino registró un pago de ${dto.amount} ${dto.currency || 'BOB'}${receiptNote}. Requiere revisión.`,
             {
               payment_id: result[0].id,
               amount: dto.amount,
-              currency: dto.currency || 'USD',
+              currency: dto.currency || 'BOB',
+              has_receipt: !!receiptPath,
             },
           );
         }
-      } catch (notifError) {
+      } catch {
         // No propagar errores de notificación
       }
 
@@ -763,6 +771,276 @@ export class PaymentsService {
 
     if (result[1] === 0) {
       throw new NotFoundException(`Pago #${id} no encontrado`);
+    }
+  }
+
+  // ==========================================
+  // LÓGICA DE NEGOCIO — independiente del procesador
+  // ==========================================
+
+  /**
+   * Calcula el cargo por mora.
+   *
+   * @param monthlyRent   Monto base del alquiler
+   * @param daysLate      Días transcurridos desde el vencimiento
+   * @param lateFeePct    Porcentaje de mora configurado en tenant_config (ej: 2 para 2%)
+   * @param graceDays     Días de gracia antes de aplicar mora (default 0)
+   * @returns Monto de mora a cobrar (0 si está dentro del período de gracia)
+   */
+  calculateLateFee(
+    monthlyRent: number,
+    daysLate: number,
+    lateFeePct: number,
+    graceDays = 0,
+  ): number {
+    if (daysLate <= graceDays) return 0;
+    const fee = (monthlyRent * lateFeePct) / 100;
+    return Math.round(fee * 100) / 100; // redondeo a 2 decimales
+  }
+
+  /**
+   * Aplica un descuento porcentual al monto.
+   *
+   * @param amount       Monto base
+   * @param discountPct  Porcentaje de descuento (0–100)
+   * @returns Monto final tras aplicar el descuento
+   */
+  applyDiscount(amount: number, discountPct: number): number {
+    if (discountPct <= 0) return amount;
+    if (discountPct >= 100) return 0;
+    const discounted = amount * (1 - discountPct / 100);
+    return Math.round(discounted * 100) / 100;
+  }
+
+  /**
+   * Valida si una transición de estado de pago es permitida.
+   *
+   * Transiciones válidas:
+   *   PENDING     → PROCESSING | APPROVED | REJECTED | FAILED
+   *   PROCESSING  → APPROVED | FAILED
+   *   APPROVED    → REFUNDED | REVERSED | DISPUTED
+   *   REJECTED    → (estado terminal)
+   *   FAILED      → (estado terminal)
+   *   REFUNDED    → (estado terminal)
+   *   REVERSED    → (estado terminal)
+   *   DISPUTED    → APPROVED | REVERSED
+   */
+  isValidStatusTransition(from: string, to: string): boolean {
+    const allowed: Record<string, string[]> = {
+      PENDING:    ['PROCESSING', 'APPROVED', 'REJECTED', 'FAILED'],
+      PROCESSING: ['APPROVED', 'FAILED'],
+      APPROVED:   ['REFUNDED', 'REVERSED', 'DISPUTED'],
+      DISPUTED:   ['APPROVED', 'REVERSED'],
+      REJECTED:   [],
+      FAILED:     [],
+      REFUNDED:   [],
+      REVERSED:   [],
+    };
+    return (allowed[from] ?? []).includes(to);
+  }
+
+  /**
+   * Aprobar un pago (Admin)
+   * Cambia el estado a APPROVED, notifica al inquilino y dispara el split payment.
+   */
+  async approvePayment(
+    id: number,
+    dto: ApprovePaymentDto,
+    adminId: number,
+    schemaName: string,
+  ): Promise<Payment> {
+    const schema = schemaName;
+    const table = `${schema}.payments`;
+
+    const rows = await this.dataSource.query(
+      `SELECT * FROM ${table} WHERE id = $1`,
+      [id],
+    );
+    if (!rows || rows.length === 0) {
+      throw new NotFoundException(`Pago #${id} no encontrado`);
+    }
+    const payment = rows[0];
+
+    if (payment.status !== PaymentStatus.PENDING && payment.status !== PaymentStatus.PROCESSING) {
+      throw new BadRequestException(
+        `Solo se pueden aprobar pagos en estado PENDING o PROCESSING. Estado actual: ${payment.status}`,
+      );
+    }
+
+    const updated = await this.dataSource.query(
+      `UPDATE ${table}
+       SET status      = $1,
+           admin_notes = COALESCE($2, admin_notes),
+           approved_by = $3,
+           approved_at = NOW(),
+           updated_at  = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [PaymentStatus.APPROVED, dto.admin_notes || null, adminId, id],
+    );
+
+    // Notificar al inquilino
+    try {
+      await this.notificationsService.createForUser(
+        payment.tenant_id as number,
+        NotificationEventType.PAYMENT_APPROVED,
+        'Pago aprobado',
+        `Tu pago de ${payment.amount} ${payment.currency} ha sido aprobado`,
+        { payment_id: id, amount: payment.amount, currency: payment.currency },
+      );
+    } catch {
+      // No propagar errores de notificación
+    }
+
+    // Disparar cálculo de split payment
+    await this.triggerSplitPayment(
+      id,
+      Number(payment.amount),
+      payment.property_id as number,
+      schema,
+    );
+
+    return updated[0];
+  }
+
+  /**
+   * Rechazar un pago (Admin)
+   * El motivo de rechazo es obligatorio y queda visible para el inquilino.
+   */
+  async rejectPayment(
+    id: number,
+    dto: RejectPaymentDto,
+    adminId: number,
+    schemaName: string,
+  ): Promise<Payment> {
+    const schema = schemaName;
+    const table = `${schema}.payments`;
+
+    const rows = await this.dataSource.query(
+      `SELECT * FROM ${table} WHERE id = $1`,
+      [id],
+    );
+    if (!rows || rows.length === 0) {
+      throw new NotFoundException(`Pago #${id} no encontrado`);
+    }
+    const payment = rows[0];
+
+    if (payment.status !== PaymentStatus.PENDING && payment.status !== PaymentStatus.PROCESSING) {
+      throw new BadRequestException(
+        `Solo se pueden rechazar pagos en estado PENDING o PROCESSING. Estado actual: ${payment.status}`,
+      );
+    }
+
+    const updated = await this.dataSource.query(
+      `UPDATE ${table}
+       SET status           = $1,
+           rejection_reason = $2,
+           admin_notes      = COALESCE($3, admin_notes),
+           approved_by      = $4,
+           updated_at       = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [PaymentStatus.REJECTED, dto.rejection_reason, dto.admin_notes || null, adminId, id],
+    );
+
+    // Notificar al inquilino con el motivo
+    try {
+      await this.notificationsService.createForUser(
+        payment.tenant_id as number,
+        NotificationEventType.PAYMENT_REJECTED,
+        'Pago rechazado',
+        `Tu pago de ${payment.amount} ${payment.currency} fue rechazado: ${dto.rejection_reason}`,
+        {
+          payment_id: id,
+          amount: payment.amount,
+          currency: payment.currency,
+          rejection_reason: dto.rejection_reason,
+        },
+      );
+    } catch {
+      // No propagar errores de notificación
+    }
+
+    return updated[0];
+  }
+
+  /**
+   * Retorna los métodos de pago disponibles para el tenant según su configuración.
+   * El frontend usa esto para construir el formulario de pago.
+   */
+  async getAvailablePaymentMethods(
+    tenantSlug: string,
+  ): Promise<{ method: string; label: string }[]> {
+    const tenant = await this.tenantsService.findBySlug(tenantSlug);
+
+    const config = await this.dataSource.query(
+      `SELECT payment_methods FROM ${tenant.schema_name}.tenant_config LIMIT 1`,
+    );
+
+    if (!config || config.length === 0 || !config[0].payment_methods) {
+      // Sin configuración: devolver todos los métodos disponibles
+      return Object.values(PaymentMethod).map((m) => ({
+        method: m,
+        label: PaymentMethodLabels[m],
+      }));
+    }
+
+    const configured: string[] = Array.isArray(config[0].payment_methods)
+      ? config[0].payment_methods
+      : JSON.parse(config[0].payment_methods);
+
+    // Filtrar los métodos configurados que existen en el enum
+    const validMethods = Object.values(PaymentMethod);
+    return configured
+      .filter((m) => validMethods.includes(m as PaymentMethod))
+      .map((m) => ({
+        method: m,
+        label: PaymentMethodLabels[m as PaymentMethod],
+      }));
+  }
+
+  /**
+   * Calcula y persiste el split payment entre los propietarios de la propiedad.
+   * Se llama automáticamente al aprobar un pago.
+   * Si la propiedad no tiene propietarios registrados, no hace nada.
+   */
+  private async triggerSplitPayment(
+    paymentId: number,
+    amount: number,
+    propertyId: number,
+    schemaName: string,
+  ): Promise<void> {
+    try {
+      const owners = await this.dataSource.query(
+        `SELECT po.rental_owner_id, po.ownership_percentage, ro.name AS owner_name
+         FROM ${schemaName}.property_owners po
+         JOIN ${schemaName}.rental_owners ro ON ro.id = po.rental_owner_id
+         WHERE po.property_id = $1
+           AND po.ownership_percentage > 0`,
+        [propertyId],
+      );
+
+      if (!owners || owners.length === 0) return;
+
+      for (const owner of owners) {
+        const splitAmount = Number(
+          ((amount * owner.ownership_percentage) / 100).toFixed(2),
+        );
+        await this.dataSource.query(
+          `INSERT INTO ${schemaName}.payment_splits
+             (payment_id, rental_owner_id, owner_name, ownership_pct, amount)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            paymentId,
+            owner.rental_owner_id,
+            owner.owner_name,
+            owner.ownership_percentage,
+            splitAmount,
+          ],
+        );
+      }
+    } catch {
+      // El split es no-crítico: si falla, no afecta la aprobación del pago
     }
   }
 

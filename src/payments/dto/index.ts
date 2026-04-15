@@ -7,3 +7,5 @@ export * from './create-payment-as-admin.dto';
 export * from './update-payment-status.dto';
 export * from './payment-filters.dto';
 export * from './create-refund.dto';
+export * from './approve-payment.dto';
+export * from './reject-payment.dto';

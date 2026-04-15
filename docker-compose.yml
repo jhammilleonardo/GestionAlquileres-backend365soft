@@ -1,19 +1,21 @@
 services:
 
   postgres:
-    image: postgres:16-alpine
-    container_name: gestion-postgres
+    image: postgres:18-alpine
+    container_name: gestion-postgres-dev
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_dev_data:/var/lib/postgresql/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - gestion-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -22,7 +24,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: gestion-backend
+    container_name: gestion-backend-dev
     ports:
       - "3000:3000"
     depends_on:
@@ -31,12 +33,38 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=postgres
+      NODE_ENV: development
+      DB_HOST: postgres
     volumes:
       - ./src:/app/src
       - ./uploads:/app/uploads
       - ./storage:/app/storage
       - /app/node_modules
+    networks:
+      - gestion-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: gestion-pgadmin-dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@365soft.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin365}
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin_dev_data:/var/lib/pgadmin
+      - ./docker/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - gestion-network
+    restart: unless-stopped
+
+networks:
+  gestion-network:
+    driver: bridge
 
 volumes:
-  postgres_data:
+  postgres_dev_data:
+  pgadmin_dev_data:

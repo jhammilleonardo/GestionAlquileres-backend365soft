@@ -252,6 +252,7 @@ export class AuthService {
   async registerAdmin(data: {
     slug?: string;
     company_name: string;
+    country: import('../tenants/dto/create-tenant.dto').TenantCountry;
     name: string;
     email: string;
     password: string;
@@ -262,6 +263,7 @@ export class AuthService {
     const {
       slug: providedSlug,
       company_name,
+      country,
       name,
       email,
       password,
@@ -299,6 +301,7 @@ export class AuthService {
     const tenant = await this.tenantsService.create({
       slug,
       company_name,
+      country,
       currency,
       locale,
       is_active: true,

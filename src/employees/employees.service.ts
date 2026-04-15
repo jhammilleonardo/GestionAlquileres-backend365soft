@@ -255,6 +255,40 @@ export class EmployeesService {
   }
 
   /**
+   * Retorna los módulos que el usuario logueado puede ver.
+   * Usado por el frontend para construir el sidebar dinámico.
+   */
+  async getMyPermissions(
+    schemaName: string,
+    user: { userId: number; role: string },
+  ): Promise<{ role: string; allowedModules: string[] }> {
+    const ALL_MODULES = [
+      'properties', 'users', 'contracts', 'payments', 'maintenance',
+      'reports', 'config', 'employees',
+    ];
+    const TECNICO_MODULES = ['maintenance'];
+
+    if (user.role === 'ADMIN' || user.role === 'SUPERADMIN') {
+      return { role: user.role, allowedModules: ALL_MODULES };
+    }
+
+    if (user.role === 'TECNICO') {
+      return { role: user.role, allowedModules: TECNICO_MODULES };
+    }
+
+    if (user.role === 'EMPLEADO') {
+      const rows: Array<{ module: string }> = await this.dataSource.query(
+        `SELECT module FROM "${schemaName}".employee_permissions
+         WHERE user_id = $1 AND can_view = true`,
+        [user.userId],
+      );
+      return { role: user.role, allowedModules: rows.map((r) => r.module) };
+    }
+
+    return { role: user.role, allowedModules: [] };
+  }
+
+  /**
    * Inserta o actualiza permisos (upsert) para un empleado
    */
   private async upsertPermissions(

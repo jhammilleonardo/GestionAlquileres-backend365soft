@@ -39,6 +39,7 @@ export class AdminMaintenanceController {
   constructor(private readonly maintenanceService: MaintenanceService) {}
 
   @Get()
+  @Roles('ADMIN', 'TECNICO')
   @ApiOperation({ summary: 'Obtener todas las solicitudes' })
   @ApiParam({ name: 'slug', description: 'Tenant slug', example: 'mi-empresa' })
   @ApiQuery({ name: 'status', required: false })
@@ -106,6 +107,7 @@ export class AdminMaintenanceController {
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'TECNICO')
   @ApiOperation({ summary: 'Obtener detalle de una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -114,6 +116,7 @@ export class AdminMaintenanceController {
   }
 
   @Patch(':id')
+  @Roles('ADMIN', 'TECNICO')
   @ApiOperation({ summary: 'Actualizar una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -135,6 +138,7 @@ export class AdminMaintenanceController {
   }
 
   @Get(':id/messages')
+  @Roles('ADMIN', 'TECNICO')
   @ApiOperation({ summary: 'Obtener mensajes de una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -143,6 +147,7 @@ export class AdminMaintenanceController {
   }
 
   @Post(':id/messages')
+  @Roles('ADMIN', 'TECNICO')
   @ApiOperation({ summary: 'Enviar mensaje a una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -160,6 +165,7 @@ export class AdminMaintenanceController {
   }
 
   @Post(':id/upload')
+  @Roles('ADMIN', 'TECNICO')
   @ApiOperation({
     summary: 'Subir archivos adjuntos a una solicitud (máx. 3, 10MB c/u)',
   })

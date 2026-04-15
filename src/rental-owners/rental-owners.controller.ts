@@ -184,47 +184,5 @@ export class RentalOwnersController {
     return this.rentalOwnersService.getStatements(id);
   }
 
-  /**
-   * GET /:slug/admin/rental-owners/:ownerId/statements/:statementId/pdf
-   * Descargar PDF del estado de cuenta - ADMIN
-   */
-  @Get(':ownerId/statements/:statementId/pdf')
-  @ApiOperation({
-    summary: 'Descargar PDF de liquidación mensual (Admin)',
-    description: 'El administrador descarga el PDF de liquidación de un propietario específico',
-  })
-  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiParam({ name: 'ownerId', type: Number, description: 'ID del propietario' })
-  @ApiParam({ name: 'statementId', type: Number, description: 'ID del estado de cuenta' })
-  @ApiQuery({ name: 'lang', enum: ['es', 'en'], required: false, description: 'Idioma del PDF (es|en)' })
-  async downloadStatementPdfAdmin(
-    @Param('slug') _slug: string,
-    @Param('ownerId', ParseIntPipe) _ownerId: number,
-    @Param('statementId', ParseIntPipe) statementId: number,
-    @Query('lang') lang?: 'es' | 'en',
-    @Res() res?: Response,
-  ) {
-    const language = (lang === 'en' ? 'en' : 'es') as 'es' | 'en';
 
-    try {
-      const filePath = await this.ownerStatementsService.generatePdf(
-        statementId,
-        language,
-      );
-
-      if (!res) {
-        throw new BadRequestException('Response object unavailable');
-      }
-
-      res.download(filePath, `liquidacion_${statementId}.pdf`, (err) => {
-        if (err) {
-          console.error('Error al descargar archivo:', err);
-        }
-      });
-    } catch (error) {
-      throw new BadRequestException(
-        `Error generando PDF: ${error instanceof Error ? error.message : 'Error desconocido'}`,
-      );
-    }
-  }
 }

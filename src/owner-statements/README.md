@@ -115,18 +115,6 @@ Content-Type: application/json
 DELETE /:slug/admin/owner-statements/:id
 ```
 
-#### 6. Download PDF from Rental Owners Controller
-```
-GET /:slug/admin/rental-owners/:ownerId/statements/:statementId/pdf?lang=en
-```
-
-**Example:**
-```bash
-curl -H "Authorization: Bearer <token>" \
-  "http://localhost:3000/tenant_mi_inmobiliaria/admin/rental-owners/5/statements/1/pdf?lang=en" \
-  -o liquidacion_1_en.pdf
-```
-
 ### Owner Portal Endpoints
 
 #### 1. Download Own Statement
@@ -137,6 +125,25 @@ GET /:slug/owner/statements/:id/pdf?lang=es
 **Note:** Owner can only download their own statements (authorization verified by JWT)
 
 **Response:** PDF file download
+
+#### 2. Download Statement from Properties Portal
+```
+GET /:slug/owner/properties/:propertyId/statements/:statementId/pdf?lang=es
+```
+
+**Description:** Propietario descarga el PDF de su liquidación desde el portal de propiedades
+
+**Query Parameters:**
+- `lang` (optional): `es` or `en` (default: `es`)
+
+**Response:** PDF file download
+
+**Example:**
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "http://localhost:3000/tenant_mi-inmobiliaria/owner/properties/1/statements/1/pdf?lang=es" \
+  -o liquidacion_1.pdf
+```
 
 ## PDF Content
 

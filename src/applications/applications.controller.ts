@@ -35,10 +35,11 @@ export class ApplicationsController {
     summary: 'Enviar una nueva solicitud de alquiler (Inquilino)',
   })
   async create(
+    @Param('slug') slug: string,
     @CurrentUser() user: { userId: number; role: string },
     @Body() createApplicationDto: CreateApplicationDto,
   ): Promise<any> {
-    return this.applicationsService.create(createApplicationDto, user.userId);
+    return this.applicationsService.create(createApplicationDto, user.userId, slug);
   }
 
   @Get('my-applications')

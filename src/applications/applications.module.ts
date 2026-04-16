@@ -6,6 +6,8 @@ import { RentalApplication } from './entities/application.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
 import { ContractsModule } from '../contracts/contracts.module';
+import { BlacklistModule } from '../blacklist/blacklist.module';
+import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
   imports: [
@@ -13,6 +15,8 @@ import { ContractsModule } from '../contracts/contracts.module';
     NotificationsModule,
     UsersModule,
     ContractsModule,
+    BlacklistModule,
+    TenantsModule,
   ],
   controllers: [ApplicationsController],
   providers: [ApplicationsService],

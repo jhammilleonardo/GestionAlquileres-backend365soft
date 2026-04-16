@@ -22,6 +22,7 @@ import { TenantConfigModule } from './tenant-config/tenant-config.module';
 import { UnitsModule } from './units/units.module';
 import { RentalOwnersModule } from './rental-owners/rental-owners.module';
 import { OwnerStatementsModule } from './owner-statements/owner-statements.module';
+import { BlacklistModule } from './blacklist/blacklist.module';
 import { DevSeedModule } from './common/seed/dev-seed.module';
 
 @Module({
@@ -63,6 +64,7 @@ import { DevSeedModule } from './common/seed/dev-seed.module';
           __dirname + '/applications/entities/*.entity{.ts,.js}',
           __dirname + '/units/entities/*.entity{.ts,.js}',
           __dirname + '/owner-statements/entities/*.entity{.ts,.js}',
+          __dirname + '/blacklist/entities/*.entity{.ts,.js}',
         ],
         // Sincronizar automáticamente en desarrollo - crea/actualiza tablas desde las entidades
         synchronize: configService.app.nodeEnv === 'development',
@@ -87,6 +89,7 @@ import { DevSeedModule } from './common/seed/dev-seed.module';
     UnitsModule,
     RentalOwnersModule,
     OwnerStatementsModule,
+    BlacklistModule,
     DevSeedModule,
   ],
   controllers: [AppController],

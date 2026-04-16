@@ -11,11 +11,9 @@ import {
   UseGuards,
   Res,
   BadRequestException,
-  Query as QueryParam,
+  Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiOkResponse, ApiNotFoundResponse, ApiQuery } from '@nestjs/swagger';
 import { OwnerStatementsService } from './owner-statements.service';
 import {
@@ -36,6 +34,8 @@ import { Roles } from '../common/decorators/roles.decorator';
 @Roles('ADMIN')
 @Controller(':slug/admin/owner-statements')
 export class AdminOwnerStatementsController {
+  private readonly logger = new Logger(AdminOwnerStatementsController.name);
+
   constructor(private readonly ownerStatementsService: OwnerStatementsService) {}
 
   /**
@@ -73,7 +73,7 @@ export class AdminOwnerStatementsController {
   async downloadPdfAdmin(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
-    @QueryParam('lang') lang?: 'es' | 'en',
+    @Query('lang') lang?: 'es' | 'en',
     @Res() res?: Response,
   ) {
     const language = (lang === 'en' ? 'en' : 'es') as 'es' | 'en';
@@ -87,7 +87,7 @@ export class AdminOwnerStatementsController {
 
       res.download(filePath, `liquidacion_${id}.pdf`, (err) => {
         if (err) {
-          console.error('Error al descargar archivo:', err);
+          this.logger.error('Error al descargar archivo', err);
         }
       });
     } catch (error) {
@@ -155,6 +155,8 @@ export class AdminOwnerStatementsController {
 @UseGuards(JwtAuthGuard)
 @Controller(':slug/owner/statements')
 export class OwnerStatementPortalController {
+  private readonly logger = new Logger(OwnerStatementPortalController.name);
+
   constructor(private readonly ownerStatementsService: OwnerStatementsService) {}
 
   /**
@@ -172,7 +174,7 @@ export class OwnerStatementPortalController {
   async downloadPdfOwner(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
-    @QueryParam('lang') lang?: 'es' | 'en',
+    @Query('lang') lang?: 'es' | 'en',
     @Res() res?: Response,
   ) {
     const language = (lang === 'en' ? 'en' : 'es') as 'es' | 'en';
@@ -186,7 +188,7 @@ export class OwnerStatementPortalController {
 
       res.download(filePath, `liquidacion_${id}.pdf`, (err) => {
         if (err) {
-          console.error('Error al descargar archivo:', err);
+          this.logger.error('Error al descargar archivo', err);
         }
       });
     } catch (error) {

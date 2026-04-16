@@ -10,7 +10,11 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Res,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -21,8 +25,10 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { RentalOwnersService } from './rental-owners.service';
+import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
 import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -32,7 +38,10 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 @Controller(':slug/admin/rental-owners')
 @UseGuards(JwtAuthGuard)
 export class RentalOwnersController {
-  constructor(private readonly rentalOwnersService: RentalOwnersService) {}
+  constructor(
+    private readonly rentalOwnersService: RentalOwnersService,
+    private readonly ownerStatementsService: OwnerStatementsService,
+  ) {}
 
   /**
    * Lista todos los propietarios con cantidad de propiedades y saldo pendiente.
@@ -174,4 +183,6 @@ export class RentalOwnersController {
   ) {
     return this.rentalOwnersService.getStatements(id);
   }
+
+
 }

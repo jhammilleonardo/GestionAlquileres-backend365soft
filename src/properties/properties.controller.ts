@@ -13,6 +13,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -22,7 +23,9 @@ import {
   ApiQuery,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { PropertiesService } from './properties.service';
+import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
 import {
   CreatePropertyDto,
   AssignOwnerDto,
@@ -287,5 +290,58 @@ export class TenantPropertiesController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.propertiesService.findOne(id);
+  }
+}
+
+// Owner Portal Controller - Acceso propietario a sus statements desde propiedades
+@ApiTags('Properties - Owner Portal')
+@ApiBearerAuth()
+@Controller(':slug/owner/properties')
+@UseGuards(JwtAuthGuard)
+export class OwnerPropertiesPortalController {
+  constructor(private readonly ownerStatementsService: OwnerStatementsService) {}
+
+  /**
+   * GET /:slug/owner/properties/:propertyId/statements/:statementId/pdf
+   * Descargar PDF del estado de cuenta desde el portal de propiedades
+   */
+  @Get(':propertyId/statements/:statementId/pdf')
+  @ApiOperation({
+    summary: 'Descargar PDF de liquidación personal desde propiedades',
+    description: 'El propietario descarga el PDF de su liquidación desde el portal de propiedades',
+  })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'propertyId', type: Number, description: 'ID de la propiedad' })
+  @ApiParam({ name: 'statementId', type: Number, description: 'ID del estado de cuenta' })
+  @ApiQuery({ name: 'lang', enum: ['es', 'en'], required: false, description: 'Idioma del PDF' })
+  async downloadStatementPdfFromProperty(
+    @Param('slug') _slug: string,
+    @Param('propertyId', ParseIntPipe) _propertyId: number,
+    @Param('statementId', ParseIntPipe) statementId: number,
+    @Query('lang') lang?: 'es' | 'en',
+    @Res() res?: Response,
+  ) {
+    const language = (lang === 'en' ? 'en' : 'es') as 'es' | 'en';
+
+    try {
+      const filePath = await this.ownerStatementsService.generatePdf(
+        statementId,
+        language,
+      );
+
+      if (!res) {
+        throw new BadRequestException('Response object unavailable');
+      }
+
+      res.download(filePath, `liquidacion_${statementId}.pdf`, (err) => {
+        if (err) {
+          console.error('Error al descargar archivo:', err);
+        }
+      });
+    } catch (error) {
+      throw new BadRequestException(
+        `Error generando PDF: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+      );
+    }
   }
 }

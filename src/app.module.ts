@@ -21,6 +21,7 @@ import { EmployeesModule } from './employees/employees.module';
 import { TenantConfigModule } from './tenant-config/tenant-config.module';
 import { UnitsModule } from './units/units.module';
 import { RentalOwnersModule } from './rental-owners/rental-owners.module';
+import { OwnerStatementsModule } from './owner-statements/owner-statements.module';
 import { DevSeedModule } from './common/seed/dev-seed.module';
 
 @Module({
@@ -51,7 +52,7 @@ import { DevSeedModule } from './common/seed/dev-seed.module';
         password: configService.database.password,
         database: configService.database.database,
         // IMPORTANTE: Solo sincronizar entidades del schema public (tenant metadata)
-        // Las entidades de tenants (properties, users, maintenance, etc.) se creen MANUALMENTE en cada schema
+        // Las entidades de tenants (properties, users, maintenance, etc.) se crean automáticamente
         entities: [
           __dirname + '/tenants/metadata/*.entity{.ts,.js}',
           __dirname + '/properties/entities/*.entity{.ts,.js}',
@@ -61,9 +62,10 @@ import { DevSeedModule } from './common/seed/dev-seed.module';
           __dirname + '/notifications/entities/*.entity{.ts,.js}',
           __dirname + '/applications/entities/*.entity{.ts,.js}',
           __dirname + '/units/entities/*.entity{.ts,.js}',
+          __dirname + '/owner-statements/entities/*.entity{.ts,.js}',
         ],
-        // NO sincronizar automáticamente - las tablas de tenants se crean manualmente
-        synchronize: false,
+        // Sincronizar automáticamente en desarrollo - crea/actualiza tablas desde las entidades
+        synchronize: configService.app.nodeEnv === 'development',
         logging: configService.app.nodeEnv === 'development',
         schema: 'public',
         // Configurar el search_path por defecto
@@ -84,6 +86,7 @@ import { DevSeedModule } from './common/seed/dev-seed.module';
     TenantConfigModule,
     UnitsModule,
     RentalOwnersModule,
+    OwnerStatementsModule,
     DevSeedModule,
   ],
   controllers: [AppController],

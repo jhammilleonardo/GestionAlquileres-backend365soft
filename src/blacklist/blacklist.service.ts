@@ -18,6 +18,19 @@ import {
 import { BlacklistAction } from './enums/blacklist.enum';
 import { TenantsService } from '../tenants/tenants.service';
 
+interface AuditLogRow {
+  id: number;
+  action: string;
+  tenant_id: number;
+  admin_user_id: number | null;
+  admin_email: string | null;
+  blacklisted_tenant_id: number | null;
+  document_number: string | null;
+  full_name: string | null;
+  ip_address: string | null;
+  created_at: Date;
+}
+
 @Injectable()
 export class BlacklistService {
   private readonly logger = new Logger(BlacklistService.name);
@@ -233,7 +246,7 @@ export class BlacklistService {
 
       // Registrar acceso en audit log
       await this.logAuditAction(
-        'LIST',
+        BlacklistAction.LIST,
         tenant.id,
         adminId,
         null,
@@ -400,7 +413,7 @@ export class BlacklistService {
     tenantSlug: string,
     adminId: number,
     limit: number = 100,
-  ): Promise<any[]> {
+  ): Promise<AuditLogRow[]> {
     try {
       // Obtener tenant
       const tenant = await this.tenantsService.findBySlug(tenantSlug);

@@ -9,4 +9,5 @@ export enum BlacklistAction {
   UPDATE = 'UPDATE',
   DELETE = 'DELETE',
   CHECK = 'CHECK',
+  LIST = 'LIST',
 }

@@ -73,7 +73,7 @@ describe('OwnerStatementsService', () => {
 
       expect(result).toBeDefined();
       expect(result.rental_owner_id).toBe(dto.rental_owner_id);
-      expect(mockDataSource.query).toHaveBeenCalledOnce();
+      expect(mockDataSource.query).toHaveBeenCalledTimes(1);
     });
 
     it('debe lanzar BadRequestException si ya existe el statement', async () => {

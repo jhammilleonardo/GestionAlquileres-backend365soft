@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -14,18 +15,26 @@ import { NotificationEventType } from '../notifications/dto/create-notification.
 import { UsersService, UserWithoutPassword } from '../users/users.service';
 import { ContractsService } from '../contracts/contracts.service';
 import { BlacklistService } from '../blacklist/blacklist.service';
+import { DocumentType } from '../blacklist/enums/blacklist.enum';
 import { TenantsService } from '../tenants/tenants.service';
+
+interface BlacklistAlertInfo {
+  is_blacklisted: boolean;
+  reason: string | undefined;
+  reported_by: string | undefined;
+  message: string | undefined;
+}
 
 export interface ApplicationResult {
   id: number;
   property_id: number;
   applicant_id: number;
   status: ApplicationStatus;
-  personal_data: any;
-  employment_data: any;
-  rental_history: any;
-  references: any;
-  documents: any;
+  personal_data: Record<string, unknown>;
+  employment_data: Record<string, unknown>;
+  rental_history: Record<string, unknown>;
+  references: Record<string, unknown>;
+  documents: Record<string, unknown>;
   additional_notes?: string;
   admin_feedback?: string;
   created_at: Date;
@@ -33,7 +42,7 @@ export interface ApplicationResult {
   property_title?: string;
   applicant_name?: string;
   applicant_email?: string;
-  blacklist_alert?: any;
+  blacklist_alert?: BlacklistAlertInfo;
 }
 
 interface PropertyResult {
@@ -44,6 +53,8 @@ interface PropertyResult {
 
 @Injectable()
 export class ApplicationsService {
+  private readonly logger = new Logger(ApplicationsService.name);
+
   constructor(
     @InjectDataSource() private dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
@@ -219,14 +230,14 @@ export class ApplicationsService {
     }
 
     // 2. VERIFICACIÓN DE BLACKLIST - Chequear documento del aplicante
-    let blacklistAlert: any = null;
+    let blacklistAlert: BlacklistAlertInfo | null = null;
     const documentNumber = createApplicationDto.personal_data?.identity_document;
     if (documentNumber) {
       try {
         const checkResult = await this.blacklistService.checkBlacklist(
           {
             document_number: documentNumber,
-            document_type: 'CEDULA' as any, // Asumimos CEDULA por defecto
+            document_type: DocumentType.CEDULA,
           },
           tenantSlug,
           userId,
@@ -243,13 +254,12 @@ export class ApplicationsService {
             message: checkResult.message,
           };
           
-          // Log: inquilino vetado intenta aplicar
-          console.warn(
+          this.logger.warn(
             `[BLACKLIST ALERT] Inquilino VETADO intenta aplicar: ${documentNumber} para propiedad ${createApplicationDto.property_id}`,
           );
         }
       } catch (error) {
-        console.error('Error al verificar blacklist:', error);
+        this.logger.error('Error al verificar blacklist', error);
         // No bloquear la solicitud si hay error en blacklist check
       }
     }
@@ -310,7 +320,7 @@ export class ApplicationsService {
         );
       }
     } catch (e) {
-      console.error('Error al notificar admins:', e);
+      this.logger.error('Error al notificar admins', e);
     }
 
     return application;
@@ -398,7 +408,7 @@ export class ApplicationsService {
         },
       );
     } catch (e) {
-      console.error('Error al notificar al inquilino:', e);
+      this.logger.error('Error al notificar al inquilino', e);
     }
 
     return updatedApplication;

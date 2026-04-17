@@ -13,6 +13,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { UsersService, UserWithoutPassword } from '../users/users.service';
 import { ContractsService } from '../contracts/contracts.service';
+import { BlacklistService } from '../blacklist/blacklist.service';
+import { TenantsService } from '../tenants/tenants.service';
 
 export interface ApplicationResult {
   id: number;
@@ -31,6 +33,7 @@ export interface ApplicationResult {
   property_title?: string;
   applicant_name?: string;
   applicant_email?: string;
+  blacklist_alert?: any;
 }
 
 interface PropertyResult {
@@ -46,6 +49,8 @@ export class ApplicationsService {
     private readonly notificationsService: NotificationsService,
     private readonly usersService: UsersService,
     private readonly contractsService: ContractsService,
+    private readonly blacklistService: BlacklistService,
+    private readonly tenantsService: TenantsService,
   ) {}
 
   async approveAndCreateContract(
@@ -178,7 +183,7 @@ export class ApplicationsService {
     };
   }
 
-  async create(createApplicationDto: CreateApplicationDto, userId: number) {
+  async create(createApplicationDto: CreateApplicationDto, userId: number, tenantSlug: string) {
     // 0. Validar que el solicitante sea INQUILINO (nunca un ADMIN)
     const userResult = await this.dataSource.query<{ role: string }[]>(
       'SELECT role FROM "user" WHERE id = $1',
@@ -213,7 +218,43 @@ export class ApplicationsService {
       );
     }
 
-    // 2. Crear la solicitud
+    // 2. VERIFICACIÓN DE BLACKLIST - Chequear documento del aplicante
+    let blacklistAlert: any = null;
+    const documentNumber = createApplicationDto.personal_data?.identity_document;
+    if (documentNumber) {
+      try {
+        const checkResult = await this.blacklistService.checkBlacklist(
+          {
+            document_number: documentNumber,
+            document_type: 'CEDULA' as any, // Asumimos CEDULA por defecto
+          },
+          tenantSlug,
+          userId,
+          undefined,
+          undefined,
+          true, // isAdmin=true para obtener detalles completos en verificación de aplicaciones
+        );
+
+        if (checkResult.is_blacklisted) {
+          blacklistAlert = {
+            is_blacklisted: true,
+            reason: checkResult.details?.reason,
+            reported_by: checkResult.details?.reported_by_tenant_name,
+            message: checkResult.message,
+          };
+          
+          // Log: inquilino vetado intenta aplicar
+          console.warn(
+            `[BLACKLIST ALERT] Inquilino VETADO intenta aplicar: ${documentNumber} para propiedad ${createApplicationDto.property_id}`,
+          );
+        }
+      } catch (error) {
+        console.error('Error al verificar blacklist:', error);
+        // No bloquear la solicitud si hay error en blacklist check
+      }
+    }
+
+    // 3. Crear la solicitud
     const result = await this.dataSource.query<ApplicationResult[]>(
       `INSERT INTO rental_applications 
        (property_id, applicant_id, status, personal_data, employment_data, rental_history, "references", documents, additional_notes, created_at, updated_at)
@@ -233,8 +274,11 @@ export class ApplicationsService {
     );
 
     const application = result[0];
+    if (blacklistAlert) {
+      application.blacklist_alert = blacklistAlert;
+    }
 
-    // Notificar a los administradores
+    // 4. Notificar a los administradores
     try {
       const admins = await (
         this.usersService as unknown as {
@@ -244,14 +288,24 @@ export class ApplicationsService {
       const adminIds = admins.map((admin) => Number(admin.id));
 
       if (adminIds.length > 0) {
+        // Mensaje diferente si hay alerta de blacklist
+        const title = blacklistAlert
+          ? '⚠️ ALERTA: Solicitud de inquilino VETADO'
+          : 'Nueva solicitud de alquiler';
+        
+        const description = blacklistAlert
+          ? `⚠️ ALERTA: Inquilino en lista negra - ${blacklistAlert.reason} (reportado por: ${blacklistAlert.reported_by}). Solicitud para propiedad: ${String(property.title)}`
+          : `Se ha recibido una nueva solicitud para la propiedad: ${String(property.title)}`;
+
         await this.notificationsService.notifyAdmins(
           adminIds,
           'application.created' as NotificationEventType,
-          'Nueva solicitud de alquiler',
-          `Se ha recibido una nueva solicitud para la propiedad: ${String(property.title)}`,
+          title,
+          description,
           {
             applicationId: Number(application.id),
             propertyId: Number(property.id),
+            blacklist_alert: blacklistAlert,
           },
         );
       }

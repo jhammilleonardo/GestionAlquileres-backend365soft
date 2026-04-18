@@ -9,17 +9,23 @@ import {
   Query,
   ParseIntPipe,
   HttpCode,
+  UploadedFiles,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ApplicationsService } from './applications.service';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationStatusDto } from './dto/update-application-status.dto';
 import { ApproveApplicationDto } from './dto/approve-application.dto';
+import { UpdateScreeningDto } from './dto/update-screening.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ApplicationStatus } from './enums/application-status.enum';
+import { applicationDocumentMulterConfig } from '../common/utils/multer.config';
 
 @ApiTags('Rental Applications')
 @ApiBearerAuth()
@@ -96,5 +102,62 @@ export class ApplicationsController {
     @Body() updateDto: UpdateApplicationStatusDto,
   ): Promise<any> {
     return this.applicationsService.updateStatus(id, updateDto);
+  }
+
+  @Post(':id/documents')
+  @HttpCode(200)
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPERADMIN')
+  @UseInterceptors(FilesInterceptor('files', 10, applicationDocumentMulterConfig))
+  @ApiOperation({
+    summary: 'Subir documentos a una solicitud (Admin)',
+    description:
+      'Acepta hasta 10 archivos (carnet anverso, reverso, boletas de sueldo, comprobante de domicilio). ' +
+      'Enviar un campo "types" como array paralelo a "files" para indicar el tipo de cada documento.',
+  })
+  async uploadDocuments(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body('types') rawTypes: string | string[],
+  ): Promise<any> {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('Se requiere al menos un archivo');
+    }
+    const types = Array.isArray(rawTypes) ? rawTypes : rawTypes ? [rawTypes] : [];
+    return this.applicationsService.uploadDocuments(id, files, types, slug);
+  }
+
+  @Patch(':id/screening')
+  @HttpCode(200)
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPERADMIN')
+  @ApiOperation({
+    summary: 'Completar checklist de screening de una solicitud (Admin)',
+    description:
+      'Upsert del checklist de verificación. Cuando final_status es APPROVED, genera el contrato automáticamente. ' +
+      'Cuando es REJECTED o REQUIRES_COSIGNER, notifica al inquilino.',
+  })
+  async completeScreening(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() screeningDto: UpdateScreeningDto,
+    @CurrentUser() user: { userId: number },
+  ): Promise<any> {
+    return this.applicationsService.completeScreening(id, screeningDto, user.userId);
+  }
+
+  @Patch(':id/screening-fee')
+  @HttpCode(200)
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'SUPERADMIN')
+  @ApiOperation({
+    summary: 'Registrar pago del fee de screening (Admin)',
+    description:
+      'Marca screening_fee_paid = true. Para EE.UU.: el admin confirma que cobró los $50 antes de proceder.',
+  })
+  async markScreeningFeePaid(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.applicationsService.markScreeningFeePaid(id);
   }
 }

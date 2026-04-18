@@ -1,6 +1,6 @@
 # API Documentation - Sistema de Solicitudes de Alquiler
 
-Esta documentación cubre el sistema completo de solicitudes de alquiler. Los inquilinos pueden enviar solicitudes para propiedades y los administradores pueden revisarlas, aprobarlas o rechazarlas. Al aprobar una solicitud se auto-genera un contrato de alquiler.
+Esta documentación cubre el sistema completo de solicitudes de alquiler. Los inquilinos envían solicitudes para propiedades; los administradores las revisan con un proceso formal de screening (verificación de documentos, llamadas al empleador, consulta de lista negra) y las aprueban, rechazan o piden co-firmante. Al aprobar se auto-genera un contrato.
 
 **Base URL:** `http://localhost:3000`
 
@@ -12,9 +12,10 @@ Esta documentación cubre el sistema completo de solicitudes de alquiler. Los in
 
 1. [Portal de Inquilinos - Solicitudes de Alquiler](#1-portal-de-inquilinos---solicitudes-de-alquiler)
 2. [Panel de Administración - Solicitudes de Alquiler](#2-panel-de-administración---solicitudes-de-alquiler)
-3. [Estados de Solicitud](#3-estados-de-solicitud)
-4. [Flujo Completo de Solicitud a Contrato](#4-flujo-completo-de-solicitud-a-contrato)
-5. [Validaciones y Errores](#5-validaciones-y-errores)
+3. [Screening (Verificación de Inquilinos)](#3-screening-verificación-de-inquilinos)
+4. [Estados de Solicitud](#4-estados-de-solicitud)
+5. [Flujo Completo de Solicitud a Contrato](#5-flujo-completo-de-solicitud-a-contrato)
+6. [Validaciones y Errores](#6-validaciones-y-errores)
 
 ---
 
@@ -643,114 +644,401 @@ El administrador puede rechazar una solicitud o cambiar su estado con un feedbac
 
 ---
 
-## 3. Estados de Solicitud
+## 3. Screening (Verificación de Inquilinos)
+
+El screening es el proceso de verificación formal que realiza el admin antes de aprobar una solicitud. Incluye validación de documentos, llamadas al empleador, contacto con arrendador anterior y consulta de lista negra.
+
+> **Para EE.UU.:** el admin debe registrar primero el pago del fee de screening ($50) antes de proceder con la verificación.
+
+---
+
+### 3.1 Subir Documentos a una Solicitud
+
+Permite al admin subir los archivos físicos del solicitante (carnet, boletas de pago, comprobante de domicilio). Los archivos se almacenan localmente en `storage/applications/{slug}/{id}/` y sus referencias se agregan al array `documents` de la solicitud.
+
+**Endpoint:** `POST /:slug/applications/:id/documents`
+**Auth:** Requerida — `ADMIN` / `SUPERADMIN`
+**HTTP Code:** 200
+**Content-Type:** `multipart/form-data`
+
+**URL Params:**
+- `slug` — Slug de la inmobiliaria
+- `id` — ID de la solicitud
+
+**Form Fields:**
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `files` | `File[]` | Hasta 10 archivos (JPEG, PNG, WebP, PDF — máx 10 MB c/u) |
+| `types` | `string[]` | Array paralelo a `files` con el tipo de cada documento |
+
+**Tipos de documento recomendados:**
+- `carnet_anverso`
+- `carnet_reverso`
+- `boleta_sueldo`
+- `comprobante_domicilio`
+- `otros`
+
+**Ejemplo con curl:**
+```bash
+curl -X POST http://localhost:3000/empresa1/applications/5/documents \
+  -H "Authorization: Bearer <token>" \
+  -F "files=@/path/carnet_anverso.jpg" \
+  -F "types=carnet_anverso" \
+  -F "files=@/path/boleta_enero.pdf" \
+  -F "types=boleta_sueldo"
+```
+
+**Response (200):**
+```json
+{
+  "message": "Documentos subidos correctamente",
+  "documents": [
+    {
+      "type": "carnet_anverso",
+      "url": "/storage/applications/empresa1/5/a1b2c3d4e5f6.jpg",
+      "name": "carnet_anverso.jpg"
+    },
+    {
+      "type": "boleta_sueldo",
+      "url": "/storage/applications/empresa1/5/9f8e7d6c5b4a.pdf",
+      "name": "boleta_enero.pdf"
+    }
+  ]
+}
+```
+
+**Errores:**
+- `400` — No se envió ningún archivo
+- `404` — Solicitud no encontrada
+
+---
+
+### 3.2 Registrar Pago del Fee de Screening (EE.UU.)
+
+Marca que el admin cobró los $50 de fee de screening antes de iniciar el proceso. Campo informativo — no procesa cobros automáticos.
+
+**Endpoint:** `PATCH /:slug/applications/:id/screening-fee`
+**Auth:** Requerida — `ADMIN` / `SUPERADMIN`
+**HTTP Code:** 200
+
+**URL Params:**
+- `slug` — Slug de la inmobiliaria
+- `id` — ID de la solicitud
+
+**Request Body:** *(vacío)*
+
+**Response (200):**
+```json
+{
+  "message": "Pago de screening registrado"
+}
+```
+
+---
+
+### 3.3 Completar Checklist de Screening
+
+Endpoint principal del proceso de screening. Puede llamarse múltiples veces (upsert) para ir completando el checklist a medida que el admin avanza en las verificaciones.
+
+Cuando se envía `final_status`, el sistema ejecuta la acción correspondiente de forma automática:
+
+| `final_status` | Acción automática |
+|---|---|
+| `APPROVED` | Actualiza solicitud → `APROBADA` + genera contrato en `BORRADOR` |
+| `REJECTED` | Actualiza solicitud → `RECHAZADA` + notifica al inquilino |
+| `REQUIRES_COSIGNER` | Actualiza solicitud → `EN_REVISION` + notifica al inquilino |
+| *(omitido)* | Solo guarda el checklist, sin efectos en la solicitud |
+
+**Endpoint:** `PATCH /:slug/applications/:id/screening`
+**Auth:** Requerida — `ADMIN` / `SUPERADMIN`
+**HTTP Code:** 200
+
+**URL Params:**
+- `slug` — Slug de la inmobiliaria
+- `id` — ID de la solicitud
+
+**Request Body:**
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `documents_verified` | `boolean` | Los documentos del solicitante fueron verificados |
+| `employer_call_name` | `string` | Nombre del contacto en la empresa del solicitante |
+| `employer_call_phone` | `string` | Teléfono de la empresa |
+| `employer_call_result` | `string` | Resultado de la llamada (`confirmado`, `no contestó`, etc.) |
+| `previous_landlord_name` | `string` | Nombre del arrendador anterior |
+| `previous_landlord_phone` | `string` | Teléfono del arrendador anterior |
+| `previous_landlord_result` | `string` | Resultado del contacto (`buenas referencias`, etc.) |
+| `blacklist_checked` | `boolean` | Se consultó la lista negra |
+| `blacklist_result` | `string` | Resultado de la consulta (`limpio`, `encontrado`, etc.) |
+| `notes` | `string` | Notas adicionales del proceso |
+| `final_status` | `string` | `APPROVED` \| `REJECTED` \| `REQUIRES_COSIGNER` |
+| `monthly_rent` | `number` | **Requerido si `final_status = APPROVED`** — renta mensual del contrato |
+| `currency` | `string` | Moneda del contrato (default: `BOB`) |
+| `payment_day` | `number` | Día de pago mensual, 1–31 (default: `5`) |
+| `deposit_amount` | `number` | Depósito (default: igual a `monthly_rent`) |
+| `admin_feedback` | `string` | Mensaje visible para el inquilino |
+
+**Ejemplo — guardar progreso parcial:**
+```json
+{
+  "documents_verified": true,
+  "employer_call_name": "ACME Bolivia S.A.",
+  "employer_call_phone": "60012345",
+  "employer_call_result": "confirmado — Pedro trabaja allí desde 2021"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Checklist de screening actualizado",
+  "screening": {
+    "id": 1,
+    "application_id": 5,
+    "documents_verified": true,
+    "employer_call_name": "ACME Bolivia S.A.",
+    "employer_call_phone": "60012345",
+    "employer_call_result": "confirmado — Pedro trabaja allí desde 2021",
+    "previous_landlord_name": null,
+    "previous_landlord_phone": null,
+    "previous_landlord_result": null,
+    "blacklist_checked": false,
+    "blacklist_result": null,
+    "notes": null,
+    "final_status": null,
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "created_at": "2026-04-18T10:00:00Z",
+    "updated_at": "2026-04-18T10:15:00Z"
+  }
+}
+```
+
+**Ejemplo — aprobar con generación de contrato:**
+```json
+{
+  "blacklist_checked": true,
+  "blacklist_result": "limpio",
+  "notes": "Excelente perfil. Ingresos verificados 3:1 respecto a la renta.",
+  "final_status": "APPROVED",
+  "monthly_rent": 3500,
+  "currency": "BOB",
+  "payment_day": 5,
+  "deposit_amount": 3500,
+  "admin_feedback": "Solicitud aprobada. El contrato está disponible para firma."
+}
+```
+
+**Response (200) — APPROVED:**
+```json
+{
+  "message": "Solicitud aprobada: contrato generado automáticamente",
+  "screening": {
+    "id": 1,
+    "application_id": 5,
+    "documents_verified": true,
+    "blacklist_checked": true,
+    "blacklist_result": "limpio",
+    "final_status": "APPROVED",
+    "reviewed_by": 99,
+    "reviewed_at": "2026-04-18T11:30:00Z",
+    "updated_at": "2026-04-18T11:30:00Z"
+  },
+  "contract": {
+    "id": 42,
+    "number": "CTR-2026-0042",
+    "status": "BORRADOR",
+    "monthly_rent": 3500,
+    "currency": "BOB",
+    "deposit_amount": 3500,
+    "message": "Se ha creado un borrador de contrato automáticamente. El inquilino podrá firmarlo desde su portal."
+  }
+}
+```
+
+**Ejemplo — rechazar:**
+```json
+{
+  "notes": "Ingresos insuficientes. Relación 1.5:1, mínimo requerido 3:1.",
+  "final_status": "REJECTED",
+  "admin_feedback": "Tu solicitud no cumple los requisitos mínimos de ingresos."
+}
+```
+
+**Response (200) — REJECTED:**
+```json
+{
+  "message": "Solicitud rechazada. Inquilino notificado.",
+  "screening": {
+    "id": 1,
+    "application_id": 5,
+    "final_status": "REJECTED",
+    "reviewed_by": 99,
+    "reviewed_at": "2026-04-18T11:30:00Z"
+  }
+}
+```
+
+**Ejemplo — requiere co-firmante:**
+```json
+{
+  "notes": "Ingresos borderline. Se puede aprobar con co-firmante solvente.",
+  "final_status": "REQUIRES_COSIGNER",
+  "admin_feedback": "Tu perfil requiere un co-firmante. Comunícate con la administración."
+}
+```
+
+**Response (200) — REQUIRES_COSIGNER:**
+```json
+{
+  "message": "Solicitud marcada como requiere co-firmante. Inquilino notificado.",
+  "screening": {
+    "id": 1,
+    "application_id": 5,
+    "final_status": "REQUIRES_COSIGNER",
+    "reviewed_by": 99,
+    "reviewed_at": "2026-04-18T11:30:00Z"
+  }
+}
+```
+
+**Errores:**
+- `400` — `final_status = APPROVED` enviado sin `monthly_rent`
+- `404` — Solicitud no encontrada
+
+---
+
+## 4. Estados de Solicitud
 
 ```
-┌─────────────────────────────────────────────────────┐
-│ SOLICITUD NUEVA                                      │
-└────────────┬────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ SOLICITUD NUEVA                                                   │
+└────────────┬─────────────────────────────────────────────────────┘
              │
              ▼
         ┌────────────┐
         │ PENDIENTE  │ ◄── Estado inicial, enviada por inquilino
         └────┬───────┘
-             │
-        ┌────┴────────────────────┐
-        ▼                          ▼
-   ┌─────────────┐         ┌────────────┐
-   │  APROBADA   │         │ RECHAZADA  │
-   │ Contrato    │         │ Feedback   │
-   │ generado    │         │ del admin  │
-   └─────────────┘         └────────────┘
+             │ Admin inicia screening
+             ▼
+        ┌─────────────┐
+        │ EN_REVISION │ ◄── Admin completando checklist de screening
+        └──────┬──────┘    (también cuando se requiere co-firmante)
+               │
+      ┌────────┴──────────────────────┐
+      ▼                                ▼
+ ┌──────────┐                   ┌────────────────────┐
+ │ APROBADA │                   │     RECHAZADA      │
+ │ Contrato │                   │ Inquilino notificado│
+ │ generado │                   └────────────────────┘
+ └──────────┘
 ```
 
-**Estados Posibles:**
+**Estados posibles:**
 
-| Estado | Descripción | Quién Puede Cambiar | Acción Automática |
-|--------|-------------|-------------------|-------------------|
-| `PENDIENTE` | Solicitud enviada, esperando revisión | Admin | Notificación al inquilino |
-| `APROBADA` | Solicitud aprobada para alquiler | Admin | Auto-genera contrato, notifica inquilino |
-| `RECHAZADA` | Solicitud rechazada | Admin | Notifica inquilino con feedback |
+| Estado | Descripción | Quién cambia | Acción automática |
+|---|---|---|---|
+| `PENDIENTE` | Enviada por el inquilino, sin revisar | — | Notifica admins |
+| `EN_REVISION` | Admin analizando / pendiente de co-firmante | Admin / screening | Notifica inquilino si es REQUIRES_COSIGNER |
+| `APROBADA` | Aprobada tras screening satisfactorio | Admin / screening APPROVED | Genera contrato, notifica inquilino |
+| `RECHAZADA` | Rechazada tras screening | Admin / screening REJECTED | Notifica inquilino con feedback |
+| `CANCELADA` | Cancelada por el inquilino | Inquilino | — |
+| `BORRADOR` | Guardada sin enviar | Inquilino | — |
+
+**Estados de `screening_checklist.final_status`:**
+
+| Valor | Efecto en la solicitud |
+|---|---|
+| `APPROVED` | → `APROBADA` + contrato generado |
+| `REJECTED` | → `RECHAZADA` + notificación al inquilino |
+| `REQUIRES_COSIGNER` | → `EN_REVISION` + notificación al inquilino |
 
 ---
 
-## 4. Flujo Completo de Solicitud a Contrato
+## 5. Flujo Completo de Solicitud a Contrato (con Screening)
 
-### Escenario: Un inquilino solicita una propiedad y es aprobado
+### Escenario: Un inquilino solicita una propiedad y es aprobado tras verificación
 
 ```
 PASO 1: Inquilino envía solicitud
 ┌────────────────────────────────────────────────────┐
 │ POST /:slug/applications                           │
-│ {                                                   │
-│   "property_id": 1,                                │
-│   "personal_data": {...},                          │
-│   "employment_data": {...}                         │
-│ }                                                   │
+│ { "property_id": 1, "personal_data": {...}, ... }  │
 └────────────────┬─────────────────────────────────┘
-                 │
                  ▼
-NOTIFICACIÓN: Todos los admins reciben alerta
-             "Nueva solicitud para Chalet Moderno"
+NOTIFICACIÓN: Admins reciben "Nueva solicitud — Chalet Moderno"
 
 ────────────────────────────────────────────────────
 
-PASO 2: Admin revisa solicitud
+PASO 2: Admin revisa la solicitud
 ┌────────────────────────────────────────────────────┐
 │ GET /:slug/applications/:id                        │
-│ Admin ve todos los detalles del solicitante        │
+│ Ve datos personales, laborales, referencias        │
 └────────────────────────────────────────────────────┘
 
 ────────────────────────────────────────────────────
 
-PASO 3: Admin aprueba solicitud
+PASO 3 (EE.UU. solamente): Admin registra el pago del fee
 ┌────────────────────────────────────────────────────┐
-│ PATCH /:slug/applications/:id/approve              │
-│ {                                                   │
-│   "admin_feedback": "Aprobado. Excelente perfil"  │
-│ }                                                   │
+│ PATCH /:slug/applications/:id/screening-fee        │
+│ Confirma que cobró los $50 de screening            │
+└────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────
+
+PASO 4: Admin sube documentos físicos
+┌────────────────────────────────────────────────────┐
+│ POST /:slug/applications/:id/documents             │
+│ Carnet anverso, reverso, boletas, comprobante domicilio│
+└────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────
+
+PASO 5: Admin completa el checklist de screening (puede ser incremental)
+┌────────────────────────────────────────────────────┐
+│ PATCH /:slug/applications/:id/screening            │
+│ { "documents_verified": true,                      │
+│   "employer_call_result": "confirmado",            │
+│   "blacklist_checked": true,                       │
+│   "blacklist_result": "limpio" }                   │
+└────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────
+
+PASO 6: Admin emite resultado final del screening
+┌────────────────────────────────────────────────────┐
+│ PATCH /:slug/applications/:id/screening            │
+│ { "final_status": "APPROVED",                      │
+│   "monthly_rent": 3500,                            │
+│   "currency": "BOB" }                              │
 └────────────────┬─────────────────────────────────┘
-                 │
                  ▼
 AUTO-GENERACIÓN: Sistema crea contrato CTR-2026-XXXX
-                 en estado BORRADOR
-                 
-NOTIFICACIÓN: Inquilino recibe
-             "¡Tu solicitud fue aprobada!"
-             "Contrato generado. Revisa los términos"
+                 en estado BORRADOR, vinculado a la solicitud
+
+NOTIFICACIÓN: Inquilino recibe "Solicitud aprobada"
 
 ────────────────────────────────────────────────────
 
-PASO 4: Admin prepara contrato
+PASO 7: Admin ajusta contrato (opcional)
 ┌────────────────────────────────────────────────────┐
 │ PATCH /:slug/admin/contracts/:id                   │
-│ Admin puede editar términos, montos, etc.          │
+│ Puede editar términos, cláusulas, fechas           │
 └────────────────────────────────────────────────────┘
 
 ────────────────────────────────────────────────────
 
-PASO 5: Admin pide firma al inquilino
+PASO 8: Inquilino firma desde su portal
 ┌────────────────────────────────────────────────────┐
-│ GET /:slug/contracts/:id                           │
-│ Inquilino puede ver contrato desde su portal       │
-│                                                     │
 │ PATCH /:slug/contracts/:id/sign                    │
-│ Inquilino firma digitalmente                       │
-└────────────────────────────────────────────────────┘
-
-────────────────────────────────────────────────────
-
-PASO 6: Contrato activo
-┌────────────────────────────────────────────────────┐
-│ Estado del Contrato: ACTIVO                        │
-│ Ambas partes han firmado                           │
-│ Ahora aplican términos de pago, mantenimiento, etc │
+│ Estado del contrato → ACTIVO                       │
+│ Estado de la propiedad → OCUPADO                   │
 └────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 5. Validaciones y Errores
+## 6. Validaciones y Errores
 
 ### Errores Comunes en Solicitudes
 
@@ -814,36 +1102,42 @@ PASO 6: Contrato activo
 
 ### Para Inquilinos
 | Método | Endpoint | Descripción |
-|--------|----------|-------------|
+|---|---|---|
 | `POST` | `/:slug/applications` | Enviar nueva solicitud |
 | `GET` | `/:slug/applications/my-applications` | Ver mis solicitudes |
 | `GET` | `/:slug/applications/:id` | Ver detalle de solicitud |
 
-### Para Administradores
+### Para Administradores — Solicitudes
 | Método | Endpoint | Descripción |
-|--------|----------|-------------|
+|---|---|---|
 | `GET` | `/:slug/applications` | Listar todas las solicitudes |
 | `GET` | `/:slug/applications/:id` | Ver detalle de solicitud |
-| `PATCH` | `/:slug/applications/:id/approve` | Aprobar y generar contrato |
-| `PATCH` | `/:slug/applications/:id/status` | Cambiar estado o rechazar |
+| `PATCH` | `/:slug/applications/:id/approve` | Aprobar directamente y generar contrato |
+| `PATCH` | `/:slug/applications/:id/status` | Cambiar estado manualmente |
 
-### Endpoints Adicionales
+### Para Administradores — Screening
 | Método | Endpoint | Descripción |
-|--------|----------|-------------|
+|---|---|---|
+| `POST` | `/:slug/applications/:id/documents` | Subir archivos físicos del solicitante |
+| `PATCH` | `/:slug/applications/:id/screening-fee` | Registrar pago del fee (EE.UU.) |
+| `PATCH` | `/:slug/applications/:id/screening` | Completar checklist; emite resultado final |
+
+### Relacionados
+| Método | Endpoint | Descripción |
+|---|---|---|
 | `GET` | `/:slug/users/tenants` | Listar todos los inquilinos |
-| `GET` | `/:slug/users/tenants?status=approved` | Listar inquilinos con solicitud aprobada |
-| `GET` | `/:slug/users/tenants?hasActiveContract=false` | Listar inquilinos sin contrato activo |
 | `GET` | `/:slug/users/tenants/:id` | Ver detalle de un inquilino |
 
 ---
 
 ## Notas Importantes
 
-- ✅ **Notificaciones Automáticas:** El sistema notifica automáticamente a admins e inquilinos en cada cambio de estado
-- ✅ **Auto-generación de Contratos:** Al aprobar una solicitud se crea automáticamente un borrador de contrato
-- ✅ **Multi-tenant:** Cada inmobiliaria tiene sus propias solicitudes aisladas
-- ✅ **Validación de Datos:** Se valida formato de email, teléfono, fechas y relación salario/renta
-- ✅ **Feedback:** Los administradores pueden dejar feedback visible para el inquilino
-- ⚠️ **Una solicitud por propiedad:** Un inquilino no puede tener 2+ solicitudes PENDIENTES para la misma propiedad
-- ⚠️ **Auditoria:** Todos los cambios quedan registrados con timestamp
+- **Notificaciones automáticas:** El sistema notifica a admins e inquilinos en cada cambio de estado
+- **Auto-generación de contratos:** Tanto `/approve` como `/screening` (con `final_status: APPROVED`) generan el contrato en `BORRADOR`
+- **Screening es upsert:** Llamar `PATCH /screening` múltiples veces actualiza el mismo checklist, no crea duplicados
+- **Documentos acumulativos:** Cada llamada a `/documents` agrega archivos sin eliminar los existentes
+- **Almacenamiento de archivos:** Local en desarrollo (`storage/applications/{slug}/{id}/`), migrar a S3 en producción (ADR-004)
+- **Multi-tenant:** Cada inmobiliaria tiene sus propias solicitudes y checklist aislados
+- **Fee de screening:** Campo informativo — no procesa cobros automáticos; el admin lo registra manualmente
+- **Una sola fila de checklist por solicitud:** `screening_checklist.application_id` tiene restricción `UNIQUE`
 

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApplicationsService } from './applications.service';
 import { ApplicationsController } from './applications.controller';
 import { RentalApplication } from './entities/application.entity';
+import { ScreeningChecklist } from './entities/screening-checklist.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
 import { ContractsModule } from '../contracts/contracts.module';
@@ -11,7 +12,7 @@ import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([RentalApplication]),
+    TypeOrmModule.forFeature([RentalApplication, ScreeningChecklist]),
     NotificationsModule,
     UsersModule,
     ContractsModule,

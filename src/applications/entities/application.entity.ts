@@ -85,6 +85,9 @@ export class RentalApplication {
   @Column({ type: 'text', nullable: true })
   admin_feedback: string;
 
+  @Column({ default: false })
+  screening_fee_paid: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

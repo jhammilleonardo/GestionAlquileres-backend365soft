@@ -24,7 +24,7 @@ export class OwnerStatement {
   @Column()
   property_id: number;
 
-  @Column({ nullable: true })
+  @Column({ type: 'integer', nullable: true })
   unit_id: number | null;
 
   @Column()

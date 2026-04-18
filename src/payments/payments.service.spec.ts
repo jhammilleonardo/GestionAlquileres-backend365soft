@@ -2,6 +2,8 @@ import { PaymentsService } from './payments.service';
 import { DataSource } from 'typeorm';
 import { TenantsService } from '../tenants/tenants.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
+import { SplitPaymentService } from '../split-payment/split-payment.service';
 
 /**
  * Tests unitarios para la lógica de negocio de PaymentsService.
@@ -17,6 +19,8 @@ describe('PaymentsService — lógica de negocio', () => {
       {} as DataSource,
       {} as TenantsService,
       {} as NotificationsService,
+      {} as OwnerStatementsService,
+      {} as SplitPaymentService,
     );
   });
 

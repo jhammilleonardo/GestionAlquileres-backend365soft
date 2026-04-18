@@ -368,6 +368,29 @@ export class TenantsService implements OnModuleInit {
    *   - transferred_at (timestamp nullable)
    */
   private async migrateOwnerStatementsFields(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.owner_statements (
+        id                    SERIAL PRIMARY KEY,
+        rental_owner_id       INTEGER NOT NULL,
+        property_id           INTEGER NOT NULL,
+        unit_id               INTEGER REFERENCES ${schemaName}.units(id) ON DELETE SET NULL,
+        period_month          INTEGER NOT NULL,
+        period_year           INTEGER NOT NULL,
+        gross_rent            NUMERIC(12,2) NOT NULL,
+        maintenance_deduction NUMERIC(12,2) NOT NULL DEFAULT 0,
+        management_commission NUMERIC(12,2) NOT NULL,
+        net_amount            NUMERIC(12,2) NOT NULL,
+        currency              VARCHAR(3) NOT NULL DEFAULT 'BOB',
+        payment_count         INTEGER NOT NULL DEFAULT 0,
+        status                VARCHAR(20) NOT NULL DEFAULT 'pending',
+        transferred_at        TIMESTAMP,
+        generated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (rental_owner_id, property_id, period_year, period_month)
+      )
+    `);
+
     await this.dataSource.query(
       `ALTER TABLE ${schemaName}.owner_statements
          ADD COLUMN IF NOT EXISTS unit_id INTEGER

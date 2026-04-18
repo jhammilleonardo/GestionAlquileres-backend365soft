@@ -5,15 +5,15 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-  ManyToOne,
-  JoinColumn,
 } from 'typeorm';
+
+export type OwnerStatementStatus = 'pending' | 'transferred';
 
 @Entity('owner_statements')
 @Index(['rental_owner_id'])
 @Index(['property_id'])
 @Index(['period_year', 'period_month'])
-@Index(['rental_owner_id', 'period_year', 'period_month'], { unique: true })
+@Index(['rental_owner_id', 'property_id', 'period_year', 'period_month'], { unique: true })
 export class OwnerStatement {
   @PrimaryGeneratedColumn()
   id: number;
@@ -23,6 +23,9 @@ export class OwnerStatement {
 
   @Column()
   property_id: number;
+
+  @Column({ nullable: true })
+  unit_id: number | null;
 
   @Column()
   period_month: number;
@@ -47,6 +50,12 @@ export class OwnerStatement {
 
   @Column({ default: 0 })
   payment_count: number;
+
+  @Column({ length: 20, default: 'pending' })
+  status: OwnerStatementStatus;
+
+  @Column({ type: 'timestamp', nullable: true })
+  transferred_at: Date | null;
 
   @CreateDateColumn()
   generated_at: Date;

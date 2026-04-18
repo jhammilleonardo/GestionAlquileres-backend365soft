@@ -109,6 +109,9 @@ export class OwnerStatementResponseDto {
   @ApiProperty({ example: 10 })
   property_id: number;
 
+  @ApiPropertyOptional({ example: 3, nullable: true })
+  unit_id: number | null;
+
   @ApiProperty({ example: 4 })
   period_month: number;
 
@@ -132,6 +135,12 @@ export class OwnerStatementResponseDto {
 
   @ApiProperty({ example: 1 })
   payment_count: number;
+
+  @ApiProperty({ example: 'pending', enum: ['pending', 'transferred'] })
+  status: 'pending' | 'transferred';
+
+  @ApiPropertyOptional({ nullable: true })
+  transferred_at: Date | null;
 
   @ApiProperty()
   generated_at: Date;

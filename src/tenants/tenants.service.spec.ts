@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TenantsService } from './tenants.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Tenant } from './metadata/tenant.entity';
 import { DataSource } from 'typeorm';
+import { Tenant } from './metadata/tenant.entity';
 
 describe('TenantsService', () => {
   let service: TenantsService;
@@ -16,8 +16,8 @@ describe('TenantsService', () => {
           useValue: {
             find: jest.fn(),
             findOne: jest.fn(),
-            save: jest.fn(),
             create: jest.fn(),
+            save: jest.fn(),
             update: jest.fn(),
             delete: jest.fn(),
           },

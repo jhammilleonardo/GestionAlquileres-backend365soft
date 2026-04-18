@@ -64,6 +64,7 @@ export class TenantsService implements OnModuleInit {
         await this.createScreeningChecklistTable(schema_name);
         await this.migrateMaintenanceStageFields(schema_name);
         await this.createMaintenanceStageHistoryTable(schema_name);
+        await this.migrateOwnerStatementsFields(schema_name);
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -358,6 +359,35 @@ export class TenantsService implements OnModuleInit {
         `ALTER TABLE ${schemaName}.rental_owners ADD COLUMN IF NOT EXISTS ${col} ${def}`,
       );
     }
+  }
+
+  /**
+   * Agrega los campos nuevos a owner_statements para schemas existentes:
+   *   - unit_id        (nullable FK a units)
+   *   - status         ('pending' | 'transferred', default 'pending')
+   *   - transferred_at (timestamp nullable)
+   */
+  private async migrateOwnerStatementsFields(schemaName: string): Promise<void> {
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.owner_statements
+         ADD COLUMN IF NOT EXISTS unit_id INTEGER
+           REFERENCES ${schemaName}.units(id) ON DELETE SET NULL`,
+    );
+
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.owner_statements
+         ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'pending'`,
+    );
+
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.owner_statements
+         ADD COLUMN IF NOT EXISTS transferred_at TIMESTAMP`,
+    );
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_owner_statements_status
+        ON ${schemaName}.owner_statements(status);
+    `);
   }
 
   /** Agrega screening_fee_paid a rental_applications para schemas existentes. */

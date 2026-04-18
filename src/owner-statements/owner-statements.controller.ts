@@ -132,6 +132,31 @@ export class AdminOwnerStatementsController {
   }
 
   /**
+   * PATCH /:slug/admin/owner-statements/:id/mark-transferred
+   * Marcar un estado de cuenta como transferido manualmente al propietario
+   */
+  @Patch(':id/mark-transferred')
+  @ApiOperation({
+    summary: 'Marcar estado de cuenta como transferido',
+    description:
+      'El admin confirma que el monto neto fue transferido al propietario. ' +
+      'Cambia status → transferred y registra transferred_at con la fecha actual.',
+  })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number, description: 'ID del estado de cuenta' })
+  @ApiOkResponse({
+    description: 'Estado de cuenta marcado como transferido',
+    type: OwnerStatementResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'Estado de cuenta no encontrado' })
+  async markTransferred(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.ownerStatementsService.markTransferred(id);
+  }
+
+  /**
    * DELETE /:slug/admin/owner-statements/:id
    * Eliminar un estado de cuenta
    */

@@ -17,6 +17,7 @@ interface OwnerStatementRow {
   id: number;
   rental_owner_id: number;
   property_id: number;
+  unit_id: number | null;
   period_month: number;
   period_year: number;
   gross_rent: string;
@@ -25,6 +26,8 @@ interface OwnerStatementRow {
   net_amount: string;
   currency: string;
   payment_count: number;
+  status: 'pending' | 'transferred';
+  transferred_at: Date | null;
   generated_at: Date;
   created_at: Date;
   updated_at: Date;
@@ -337,11 +340,31 @@ export class OwnerStatementsService {
     return this.toDto(result[0]);
   }
 
+  /**
+   * Marcar un estado de cuenta como transferido manualmente.
+   * Registra la fecha exacta de transferencia.
+   */
+  async markTransferred(id: number): Promise<OwnerStatementResponseDto> {
+    await this.findOne(id); // lanza NotFoundException si no existe
+
+    const result = await this.dataSource.query<OwnerStatementRow[]>(
+      `UPDATE owner_statements
+       SET status = 'transferred', transferred_at = NOW(), updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id],
+    );
+
+    this.logger.log(`Estado de cuenta #${id} marcado como transferido`);
+    return this.toDto(result[0]);
+  }
+
   private toDto(row: OwnerStatementRow): OwnerStatementResponseDto {
     return {
       id: row.id,
       rental_owner_id: row.rental_owner_id,
       property_id: row.property_id,
+      unit_id: row.unit_id,
       period_month: row.period_month,
       period_year: row.period_year,
       gross_rent: Number(row.gross_rent),
@@ -350,6 +373,8 @@ export class OwnerStatementsService {
       net_amount: Number(row.net_amount),
       currency: row.currency,
       payment_count: row.payment_count,
+      status: row.status,
+      transferred_at: row.transferred_at,
       generated_at: row.generated_at,
       created_at: row.created_at,
       updated_at: row.updated_at,

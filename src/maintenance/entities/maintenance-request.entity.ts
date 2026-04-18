@@ -115,6 +115,18 @@ export class MaintenanceRequest {
   )
   attachments: MaintenanceAttachment[];
 
+  @Column({
+    type: 'varchar',
+    default: 'REPORTED',
+  })
+  current_stage: string;
+
+  @Column({ default: false })
+  owner_authorized: boolean;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  completed_at: Date | null;
+
   @CreateDateColumn()
   created_at: Date;
 

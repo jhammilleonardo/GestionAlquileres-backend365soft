@@ -62,6 +62,8 @@ export class TenantsService implements OnModuleInit {
         await this.migrateRentalOwnersBankFields(schema_name);
         await this.migrateApplicationsScreeningFields(schema_name);
         await this.createScreeningChecklistTable(schema_name);
+        await this.migrateMaintenanceStageFields(schema_name);
+        await this.createMaintenanceStageHistoryTable(schema_name);
         await this.migrateOwnerStatementsFields(schema_name);
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } catch (error: unknown) {
@@ -1068,6 +1070,9 @@ export class TenantsService implements OnModuleInit {
         tenant_id integer NOT NULL,
         contract_id integer NOT NULL,
         property_id integer NOT NULL,
+        current_stage VARCHAR(30) NOT NULL DEFAULT 'REPORTED',
+        owner_authorized BOOLEAN NOT NULL DEFAULT FALSE,
+        completed_at TIMESTAMPTZ,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_maintenance_requests_contract FOREIGN KEY (contract_id)
@@ -1121,6 +1126,23 @@ export class TenantsService implements OnModuleInit {
       CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_MESSAGES_REQUEST ON ${schemaName}.maintenance_messages(maintenance_request_id);
       CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_ATTACHMENTS_REQUEST ON ${schemaName}.maintenance_attachments(maintenance_request_id);
       CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_ATTACHMENTS_MESSAGE ON ${schemaName}.maintenance_attachments(message_id);
+    `);
+
+    // Tabla: maintenance_stage_history
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.maintenance_stage_history (
+        id                   SERIAL PRIMARY KEY,
+        request_id           INTEGER NOT NULL
+          REFERENCES ${schemaName}.maintenance_requests(id) ON DELETE CASCADE,
+        from_stage           VARCHAR(30),
+        to_stage             VARCHAR(30) NOT NULL,
+        changed_by_user_id   INTEGER NOT NULL,
+        notes                TEXT,
+        photos               JSONB NOT NULL DEFAULT '[]',
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_STAGE_HISTORY_REQUEST
+        ON ${schemaName}.maintenance_stage_history(request_id);
     `);
   }
 
@@ -1374,6 +1396,46 @@ export class TenantsService implements OnModuleInit {
           BEFORE UPDATE ON ${schemaName}.payment_schedules
           FOR EACH ROW
           EXECUTE FUNCTION ${schemaName}.update_updated_at_column();
+    `);
+  }
+
+  /** Agrega current_stage, owner_authorized y completed_at a maintenance_requests. */
+  private async migrateMaintenanceStageFields(schemaName: string): Promise<void> {
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.maintenance_requests
+         ADD COLUMN IF NOT EXISTS current_stage VARCHAR(30) NOT NULL DEFAULT 'REPORTED'`,
+    );
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.maintenance_requests
+         ADD COLUMN IF NOT EXISTS owner_authorized BOOLEAN NOT NULL DEFAULT FALSE`,
+    );
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.maintenance_requests
+         ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`,
+    );
+  }
+
+  /** Crea la tabla maintenance_stage_history si no existe. */
+  private async createMaintenanceStageHistoryTable(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.maintenance_stage_history (
+        id                   SERIAL PRIMARY KEY,
+        request_id           INTEGER NOT NULL
+          REFERENCES ${schemaName}.maintenance_requests(id) ON DELETE CASCADE,
+        from_stage           VARCHAR(30),
+        to_stage             VARCHAR(30) NOT NULL,
+        changed_by_user_id   INTEGER NOT NULL,
+        notes                TEXT,
+        photos               JSONB NOT NULL DEFAULT '[]',
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_maintenance_stage_history_request_id
+        ON ${schemaName}.maintenance_stage_history(request_id);
+      CREATE INDEX IF NOT EXISTS idx_maintenance_stage_history_created_at
+        ON ${schemaName}.maintenance_stage_history(created_at DESC);
     `);
   }
 

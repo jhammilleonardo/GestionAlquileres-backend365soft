@@ -253,3 +253,63 @@ export const applicationDocumentMulterConfig = {
     fileSize: 10 * 1024 * 1024, // 10MB max
   },
 };
+
+// ──────────────────────────────────────────────────────────────
+// Fotos de etapas de mantenimiento — solo imágenes, máx 10 MB
+// Almacenadas en: storage/maintenance/{slug}/{requestId}/stage/
+// ──────────────────────────────────────────────────────────────
+
+export const stagePhotoStorage = diskStorage({
+  destination: (req: Request, file: Express.Multer.File, cb) => {
+    const tenantSlug =
+      (req as any).tenant?.slug || (req.params as any).slug || 'temp';
+    const requestId = (req.params as any).id || 'temp';
+
+    const uploadPath = path.join(
+      process.cwd(),
+      'storage',
+      'maintenance',
+      tenantSlug,
+      requestId,
+      'stage',
+    );
+    ensureDirExists(uploadPath);
+
+    cb(null, uploadPath);
+  },
+  filename: (req: Request, file: Express.Multer.File, cb) => {
+    const randomName = Array(32)
+      .fill(null)
+      .map(() => Math.round(Math.random() * 16).toString(16))
+      .join('');
+    const extension = extname(file.originalname);
+    cb(null, `${randomName}${extension}`);
+  },
+});
+
+export const stagePhotoFileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  cb: (error: Error | null, acceptFile: boolean) => void,
+) => {
+  const allowedMimes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+  ];
+
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Solo se permiten imágenes (JPEG, PNG, WebP)'), false);
+  }
+};
+
+export const stagePhotoMulterConfig = {
+  storage: stagePhotoStorage,
+  fileFilter: stagePhotoFileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max
+  },
+};

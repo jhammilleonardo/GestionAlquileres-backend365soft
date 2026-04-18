@@ -59,7 +59,7 @@ export class ScreeningChecklist {
   })
   final_status: ScreeningFinalStatus | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'integer', nullable: true })
   reviewed_by: number | null;
 
   @Column({ type: 'timestamp', nullable: true })

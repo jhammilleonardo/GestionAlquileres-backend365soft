@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
@@ -16,9 +17,15 @@ import { UpdateMaintenanceDto } from './dto/update-maintenance.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
+import {
+  STAGE_ORDER,
+  TECHNICIAN_ALLOWED_TARGET_STAGES,
+} from './enums/maintenance-stage.enum';
 
 @Injectable()
 export class MaintenanceService {
+  private readonly logger = new Logger(MaintenanceService.name);
+
   constructor(
     @InjectRepository(MaintenanceRequest)
     private maintenanceRepository: Repository<MaintenanceRequest>,
@@ -258,6 +265,7 @@ export class MaintenanceService {
     tenant_id?: number;
     property_id?: number;
     contract_id?: number;
+    assigned_to?: number;
   }): Promise<any[]> {
     let query = `
       SELECT
@@ -302,6 +310,11 @@ export class MaintenanceService {
     if (filters?.contract_id) {
       query += ` AND mr.contract_id = $${paramIndex++}`;
       params.push(filters.contract_id);
+    }
+
+    if (filters?.assigned_to) {
+      query += ` AND mr.assigned_to = $${paramIndex++}`;
+      params.push(filters.assigned_to);
     }
 
     query += ` ORDER BY mr.updated_at DESC`;
@@ -791,6 +804,228 @@ export class MaintenanceService {
     }
 
     return savedFiles;
+  }
+
+  // ─── Stage Pipeline ─────────────────────────────────────────────────────────
+
+  /**
+   * Valida si la transición de etapas sigue el orden secuencial definido.
+   * Solo permite avanzar una etapa a la vez.
+   */
+  isValidStageTransition(from: string, to: string): boolean {
+    const fromIndex = STAGE_ORDER.indexOf(from as any);
+    const toIndex = STAGE_ORDER.indexOf(to as any);
+    if (fromIndex === -1 || toIndex === -1) return false;
+    return toIndex === fromIndex + 1;
+  }
+
+  /**
+   * Valida si una etapa es permitida para que un técnico la establezca.
+   */
+  isTechnicianAllowedTarget(toStage: string): boolean {
+    return TECHNICIAN_ALLOWED_TARGET_STAGES.includes(toStage as any);
+  }
+
+  /**
+   * Retorna el historial de etapas de una solicitud, ordenado cronológicamente.
+   */
+  async getStageHistory(requestId: number): Promise<any[]> {
+    return this.dataSource.query(
+      `SELECT msh.*, u.name AS changed_by_name
+       FROM maintenance_stage_history msh
+       LEFT JOIN "user" u ON u.id = msh.changed_by_user_id
+       WHERE msh.request_id = $1
+       ORDER BY msh.created_at ASC`,
+      [requestId],
+    );
+  }
+
+  /**
+   * Cambia la etapa de una solicitud validando la secuencia y reglas de negocio.
+   * Bolivia-only: para avanzar a IN_PROGRESS el propietario debe haber autorizado.
+   */
+  async changeStage(
+    requestId: number,
+    toStage: string,
+    userId: number,
+    notes?: string,
+  ): Promise<any> {
+    const request = await this.findOne(requestId);
+    const fromStage = request.current_stage ?? 'REPORTED';
+
+    if (!this.isValidStageTransition(fromStage, toStage)) {
+      throw new BadRequestException(
+        `Transición inválida: ${fromStage} → ${toStage}. Solo se permite avanzar una etapa a la vez.`,
+      );
+    }
+
+    if (toStage === 'IN_PROGRESS') {
+      await this.validateBoliviaAuthorization(requestId, request);
+    }
+
+    const completedAt = toStage === 'COMPLETED' ? 'NOW()' : null;
+    const completedAtClause = completedAt
+      ? `, completed_at = NOW()`
+      : '';
+
+    await this.dataSource.query(
+      `UPDATE maintenance_requests
+       SET current_stage = $1${completedAtClause}, updated_at = NOW()
+       WHERE id = $2`,
+      [toStage, requestId],
+    );
+
+    await this.dataSource.query(
+      `INSERT INTO maintenance_stage_history
+         (request_id, from_stage, to_stage, changed_by_user_id, notes, photos)
+       VALUES ($1, $2, $3, $4, $5, '[]')`,
+      [requestId, fromStage, toStage, userId, notes ?? null],
+    );
+
+    if (toStage === 'COMPLETED') {
+      await this.notifyCompletedStage(requestId, request);
+    }
+
+    return this.findOne(requestId);
+  }
+
+  /**
+   * Variante restringida para técnicos: solo IN_PROGRESS y COMPLETED permitidos.
+   */
+  async changeStageAsTechnician(
+    requestId: number,
+    toStage: string,
+    userId: number,
+    notes?: string,
+  ): Promise<any> {
+    if (!this.isTechnicianAllowedTarget(toStage)) {
+      throw new BadRequestException(
+        `Los técnicos solo pueden avanzar a IN_PROGRESS o COMPLETED. Etapa solicitada: ${toStage}`,
+      );
+    }
+    return this.changeStage(requestId, toStage, userId, notes);
+  }
+
+  /**
+   * Guarda fotos del trabajo técnico y las adjunta al último registro del historial.
+   */
+  async saveStagePhotos(
+    requestId: number,
+    files: Express.Multer.File[],
+    userId: number,
+    slug: string,
+  ): Promise<any[]> {
+    const photoUrls: string[] = [];
+
+    for (const file of files) {
+      const fileUrl = `/storage/maintenance/${slug}/${requestId}/stage/${file.filename}`;
+      await this.dataSource.query(
+        `INSERT INTO maintenance_attachments
+           (maintenance_request_id, file_url, file_name, file_type, file_size, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [requestId, fileUrl, file.originalname, 'image', file.size, userId],
+      );
+      photoUrls.push(fileUrl);
+    }
+
+    // Append URLs to the latest stage history record for this request
+    if (photoUrls.length > 0) {
+      await this.dataSource.query(
+        `UPDATE maintenance_stage_history
+         SET photos = photos || $1::jsonb
+         WHERE id = (
+           SELECT id FROM maintenance_stage_history
+           WHERE request_id = $2
+           ORDER BY created_at DESC
+           LIMIT 1
+         )`,
+        [JSON.stringify(photoUrls), requestId],
+      );
+    }
+
+    return photoUrls.map((url) => ({ file_url: url }));
+  }
+
+  /**
+   * Propietario autoriza el gasto de mantenimiento antes de IN_PROGRESS.
+   * Requerido solo en Bolivia (validado en changeStage).
+   */
+  async authorizeWork(requestId: number, ownerId: number): Promise<void> {
+    await this.findOne(requestId); // ensures existence
+
+    await this.dataSource.query(
+      `UPDATE maintenance_requests
+       SET owner_authorized = TRUE, updated_at = NOW()
+       WHERE id = $1`,
+      [requestId],
+    );
+
+    this.logger.log(
+      `Mantenimiento ${requestId} autorizado por propietario ${ownerId}`,
+    );
+  }
+
+  private async validateBoliviaAuthorization(
+    requestId: number,
+    request: any,
+  ): Promise<void> {
+    let country = 'XX';
+    try {
+      const config = await this.dataSource.query(
+        `SELECT country FROM tenant_config LIMIT 1`,
+      );
+      country = config[0]?.country ?? 'XX';
+    } catch {
+      return; // No tenant_config → skip Bolivia check
+    }
+
+    if (country === 'BO' && !request.owner_authorized) {
+      throw new BadRequestException(
+        `El propietario debe autorizar el gasto antes de iniciar el trabajo (requerido en Bolivia). Use PATCH /:slug/owner/maintenance/${requestId}/authorize`,
+      );
+    }
+  }
+
+  private async notifyCompletedStage(
+    requestId: number,
+    request: any,
+  ): Promise<void> {
+    try {
+      const history = await this.dataSource.query(
+        `SELECT photos FROM maintenance_stage_history
+         WHERE request_id = $1 AND to_stage = 'COMPLETED'
+         ORDER BY created_at DESC LIMIT 1`,
+        [requestId],
+      );
+
+      const photos: string[] = history[0]?.photos ?? [];
+      const completedAt = new Date().toISOString();
+
+      // Notify all admins since owner portal is not yet implemented
+      const admins = await this.dataSource.query(
+        `SELECT id FROM "user" WHERE role = 'ADMIN'`,
+      );
+
+      for (const admin of admins) {
+        await this.notificationsService.createForUser(
+          admin.id,
+          NotificationEventType.MAINTENANCE_COMPLETED,
+          'Mantenimiento completado',
+          `La solicitud ${request.ticket_number} ha sido completada por el técnico.`,
+          {
+            ticket_number: request.ticket_number,
+            maintenance_request_id: requestId,
+            property_id: request.property_id,
+            completed_at: completedAt,
+            photos,
+          },
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error al notificar COMPLETED para solicitud ${requestId}: ${(error as Error).message}`,
+      );
+    }
   }
 
   /**

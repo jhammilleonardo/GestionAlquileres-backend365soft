@@ -14,7 +14,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { maintenanceMulterConfig } from '../common/utils/multer.config';
+import {
+  maintenanceMulterConfig,
+  stagePhotoMulterConfig,
+} from '../common/utils/multer.config';
 import {
   ApiTags,
   ApiOperation,
@@ -26,6 +29,7 @@ import { MaintenanceService } from './maintenance.service';
 import { CreateMaintenanceDto } from './dto/create-maintenance.dto';
 import { UpdateMaintenanceDto } from './dto/update-maintenance.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { UpdateStageDto } from './dto/update-stage.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -188,6 +192,48 @@ export class AdminMaintenanceController {
       slug,
     );
   }
+
+  @Get(':id/stage-history')
+  @Roles('ADMIN', 'TECNICO')
+  @ApiOperation({ summary: 'Historial de etapas de una solicitud' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async getStageHistory(@Param('slug') _slug: string, @Param('id') id: string) {
+    return this.maintenanceService.getStageHistory(+id);
+  }
+
+  @Patch(':id/stage')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Cambiar etapa (admin — cualquier transición válida)' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async changeStage(
+    @Param('slug') _slug: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateStageDto,
+    @Request() req,
+  ) {
+    return this.maintenanceService.changeStage(
+      +id,
+      dto.to_stage,
+      req.user.userId,
+      dto.notes,
+    );
+  }
+
+  @Patch(':id/authorize')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Admin autoriza el gasto en nombre del propietario' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async authorizeWork(
+    @Param('slug') _slug: string,
+    @Param('id') id: string,
+    @Request() req,
+  ) {
+    await this.maintenanceService.authorizeWork(+id, req.user.userId);
+    return { message: 'Trabajo autorizado correctamente' };
+  }
 }
 
 @ApiTags('Maintenance - Tenant')
@@ -315,5 +361,101 @@ export class TenantMaintenanceController {
       req.user.userId,
       slug,
     );
+  }
+}
+
+@ApiTags('Maintenance - Técnico')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('TECNICO', 'ADMIN')
+@Controller(':slug/tecnico/maintenance')
+export class TecnicoMaintenanceController {
+  constructor(private readonly maintenanceService: MaintenanceService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Solicitudes asignadas al técnico' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  async findAssigned(@Param('slug') _slug: string, @Request() req) {
+    return this.maintenanceService.findAll({ assigned_to: req.user.userId });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Detalle de una solicitud asignada' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async findOne(@Param('slug') _slug: string, @Param('id') id: string) {
+    return this.maintenanceService.findOne(+id);
+  }
+
+  @Get(':id/stage-history')
+  @ApiOperation({ summary: 'Historial de etapas' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async getStageHistory(@Param('slug') _slug: string, @Param('id') id: string) {
+    return this.maintenanceService.getStageHistory(+id);
+  }
+
+  @Patch(':id/stage')
+  @ApiOperation({ summary: 'Avanzar etapa (técnico — solo IN_PROGRESS o COMPLETED)' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async changeStage(
+    @Param('slug') _slug: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateStageDto,
+    @Request() req,
+  ) {
+    return this.maintenanceService.changeStageAsTechnician(
+      +id,
+      dto.to_stage,
+      req.user.userId,
+      dto.notes,
+    );
+  }
+
+  @Post(':id/photos')
+  @ApiOperation({ summary: 'Subir fotos del trabajo (máx. 5, solo imágenes)' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @UseInterceptors(FilesInterceptor('files', 5, stagePhotoMulterConfig))
+  async uploadStagePhotos(
+    @Param('slug') slug: string,
+    @Param('id') id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Request() req,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se enviaron fotos');
+    }
+    return this.maintenanceService.saveStagePhotos(
+      +id,
+      files,
+      req.user.userId,
+      slug,
+    );
+  }
+}
+
+@ApiTags('Maintenance - Propietario')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN')
+@Controller(':slug/owner/maintenance')
+export class OwnerMaintenanceController {
+  constructor(private readonly maintenanceService: MaintenanceService) {}
+
+  @Patch(':id/authorize')
+  @ApiOperation({
+    summary: 'Propietario autoriza el costo del mantenimiento (Bolivia)',
+  })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async authorizeWork(
+    @Param('slug') _slug: string,
+    @Param('id') id: string,
+    @Request() req,
+  ) {
+    await this.maintenanceService.authorizeWork(+id, req.user.userId);
+    return { message: 'Costo autorizado. El técnico puede iniciar el trabajo.' };
   }
 }

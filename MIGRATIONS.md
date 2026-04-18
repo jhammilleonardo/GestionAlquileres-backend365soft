@@ -57,15 +57,89 @@ ORDER BY table_name;
 ## Entidades Sincronizadas
 
 | Módulo | Entidad | Estado |
-|--------|---------|--------|
+|---|---|---|
 | properties | Property, PropertyAddress, RentalOwner, PropertyOwner | ✅ Sincronizado |
 | users | User | ✅ Sincronizado |
 | contracts | Contract | ✅ Sincronizado |
 | maintenance | MaintenanceRequest | ✅ Sincronizado |
 | notifications | Notification | ✅ Sincronizado |
-| applications | Application | ✅ Sincronizado |
+| applications | RentalApplication | ✅ Sincronizado |
+| applications | **ScreeningChecklist** | **✅ F2-BE-SCREENING Sincronizado** |
 | units | Unit | ✅ Sincronizado |
-| **owner-statements** | **OwnerStatement** | **✅ F2-BE-07 Sincronizado** |
+| owner-statements | OwnerStatement | ✅ F2-BE-07 Sincronizado |
+
+---
+
+## Recent Changes (F2-BE-SCREENING — Screening de Inquilinos)
+
+### Nuevos Archivos
+- `src/applications/enums/screening-final-status.enum.ts` — Enum `APPROVED | REJECTED | REQUIRES_COSIGNER`
+- `src/applications/entities/screening-checklist.entity.ts` — Entidad TypeORM para el checklist
+- `src/applications/dto/update-screening.dto.ts` — DTO validado para el endpoint de screening
+- `src/applications/applications.service.spec.ts` — 10 tests unitarios del flujo de screening
+
+### Archivos Modificados
+- `src/applications/entities/application.entity.ts` — Campo `screening_fee_paid: boolean`
+- `src/applications/applications.module.ts` — Registra `ScreeningChecklist` en TypeORM
+- `src/applications/applications.service.ts` — Métodos `uploadDocuments`, `completeScreening`, `markScreeningFeePaid`
+- `src/applications/applications.controller.ts` — 3 endpoints nuevos (documents, screening, screening-fee)
+- `src/common/utils/multer.config.ts` — `applicationDocumentMulterConfig` para archivos de solicitudes
+- `src/tenants/tenants.service.ts` — 2 migraciones idempotentes en `runStartupMigrations`
+
+### Base de Datos — Startup Migrations (idempotentes)
+
+**Columna nueva en `rental_applications`:**
+```sql
+ALTER TABLE {schema}.rental_applications
+  ADD COLUMN IF NOT EXISTS screening_fee_paid BOOLEAN NOT NULL DEFAULT FALSE;
+```
+
+**Nuevo tipo enum:**
+```sql
+CREATE TYPE {schema}.screening_final_status_enum AS ENUM (
+  'APPROVED', 'REJECTED', 'REQUIRES_COSIGNER'
+);
+```
+
+**Nueva tabla `screening_checklist`:**
+```sql
+CREATE TABLE IF NOT EXISTS {schema}.screening_checklist (
+  id                       SERIAL PRIMARY KEY,
+  application_id           INTEGER NOT NULL UNIQUE
+    REFERENCES {schema}.rental_applications(id) ON DELETE CASCADE,
+  documents_verified       BOOLEAN NOT NULL DEFAULT FALSE,
+  employer_call_name       VARCHAR(150),
+  employer_call_phone      VARCHAR(30),
+  employer_call_result     VARCHAR(50),
+  previous_landlord_name   VARCHAR(150),
+  previous_landlord_phone  VARCHAR(30),
+  previous_landlord_result VARCHAR(50),
+  blacklist_checked        BOOLEAN NOT NULL DEFAULT FALSE,
+  blacklist_result         VARCHAR(50),
+  notes                    TEXT,
+  final_status             {schema}.screening_final_status_enum,
+  reviewed_by              INTEGER REFERENCES {schema}."user"(id) ON DELETE SET NULL,
+  reviewed_at              TIMESTAMP,
+  created_at               TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at               TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+**Restricción clave:** `application_id UNIQUE` — una sola fila de checklist por solicitud (upsert garantizado).
+
+### Almacenamiento de Archivos
+```
+storage/
+└── applications/
+    └── {tenant_slug}/
+        └── {application_id}/
+            ├── a1b2c3.jpg   ← carnet_anverso
+            ├── d4e5f6.jpg   ← carnet_reverso
+            ├── 7g8h9i.pdf   ← boleta_sueldo
+            └── ...
+```
+
+Formatos aceptados: JPEG, PNG, WebP, PDF — máx 10 MB por archivo, hasta 10 archivos por llamada.
 
 ---
 

@@ -60,6 +60,8 @@ export class TenantsService implements OnModuleInit {
         await this.createUnitsTables(schema_name);
         await this.migrateContractsUnitId(schema_name);
         await this.migrateRentalOwnersBankFields(schema_name);
+        await this.migrateApplicationsScreeningFields(schema_name);
+        await this.createScreeningChecklistTable(schema_name);
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -354,6 +356,54 @@ export class TenantsService implements OnModuleInit {
         `ALTER TABLE ${schemaName}.rental_owners ADD COLUMN IF NOT EXISTS ${col} ${def}`,
       );
     }
+  }
+
+  /** Agrega screening_fee_paid a rental_applications para schemas existentes. */
+  private async migrateApplicationsScreeningFields(schemaName: string): Promise<void> {
+    await this.dataSource.query(
+      `ALTER TABLE ${schemaName}.rental_applications ADD COLUMN IF NOT EXISTS screening_fee_paid BOOLEAN NOT NULL DEFAULT FALSE`,
+    );
+  }
+
+  /** Crea la tabla screening_checklist si no existe. */
+  private async createScreeningChecklistTable(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        CREATE TYPE ${schemaName}.screening_final_status_enum AS ENUM (
+          'APPROVED', 'REJECTED', 'REQUIRES_COSIGNER'
+        );
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${schemaName}.screening_checklist (
+        id                       SERIAL PRIMARY KEY,
+        application_id           INTEGER NOT NULL UNIQUE
+          REFERENCES ${schemaName}.rental_applications(id) ON DELETE CASCADE,
+        documents_verified       BOOLEAN NOT NULL DEFAULT FALSE,
+        employer_call_name       VARCHAR(150),
+        employer_call_phone      VARCHAR(30),
+        employer_call_result     VARCHAR(50),
+        previous_landlord_name   VARCHAR(150),
+        previous_landlord_phone  VARCHAR(30),
+        previous_landlord_result VARCHAR(50),
+        blacklist_checked        BOOLEAN NOT NULL DEFAULT FALSE,
+        blacklist_result         VARCHAR(50),
+        notes                    TEXT,
+        final_status             ${schemaName}.screening_final_status_enum,
+        reviewed_by              INTEGER REFERENCES ${schemaName}."user"(id) ON DELETE SET NULL,
+        reviewed_at              TIMESTAMP,
+        created_at               TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at               TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_screening_checklist_application_id
+        ON ${schemaName}.screening_checklist(application_id);
+    `);
   }
 
   /** Agrega unit_id nullable FK a contracts para schemas existentes. */

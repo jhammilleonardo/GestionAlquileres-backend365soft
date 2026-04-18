@@ -191,3 +191,65 @@ export const receiptMulterConfig = {
     fileSize: 10 * 1024 * 1024, // 10MB max
   },
 };
+
+// ──────────────────────────────────────────────────────────────
+// Documentos de solicitud de alquiler (imágenes + PDF, máx 10 MB)
+// ──────────────────────────────────────────────────────────────
+
+export const applicationDocumentStorage = diskStorage({
+  destination: (req: Request, file: Express.Multer.File, cb) => {
+    const tenantSlug =
+      (req as any).tenant?.slug || (req.params as any).slug || 'temp';
+    const applicationId = (req.params as any).id || 'temp';
+
+    const uploadPath = path.join(
+      process.cwd(),
+      'storage',
+      'applications',
+      tenantSlug,
+      applicationId,
+    );
+    ensureDirExists(uploadPath);
+
+    cb(null, uploadPath);
+  },
+  filename: (req: Request, file: Express.Multer.File, cb) => {
+    const randomName = Array(32)
+      .fill(null)
+      .map(() => Math.round(Math.random() * 16).toString(16))
+      .join('');
+    const extension = extname(file.originalname);
+    cb(null, `${randomName}${extension}`);
+  },
+});
+
+export const applicationDocumentFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  cb: (error: Error | null, acceptFile: boolean) => void,
+) => {
+  const allowedMimes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+    'application/pdf',
+  ];
+
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error('Solo se permiten imágenes (JPEG, PNG, WebP) y documentos PDF'),
+      false,
+    );
+  }
+};
+
+export const applicationDocumentMulterConfig = {
+  storage: applicationDocumentStorage,
+  fileFilter: applicationDocumentFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max
+  },
+};

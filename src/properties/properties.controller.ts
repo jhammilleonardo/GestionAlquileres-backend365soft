@@ -34,6 +34,8 @@ import { UpdatePropertyDto } from './dto/update-property.dto';
 import { UpdatePropertyDetailsDto } from './dto/update-property-details.dto';
 import { FilterPropertiesDto } from './dto/filter-properties.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { multerConfig } from '../common/utils/multer.config';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 
@@ -41,7 +43,8 @@ import type { TenantRequest } from '../common/middleware/tenant-context.middlewa
 @ApiTags('Properties - Admin')
 @ApiBearerAuth()
 @Controller(':slug/admin')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN', 'EMPLEADO')
 export class AdminPropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
 

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { quoteIdent } from '../common/utils/sql-identifier';
 
 export interface SplitCalculation {
   grossRent: number;
@@ -95,11 +96,11 @@ export class SplitPaymentService {
     await queryRunner.startTransaction();
 
     try {
-      await queryRunner.query(`SET search_path TO ${schemaName}, public`);
+      await queryRunner.query(`SET search_path TO ${quoteIdent(schemaName)}, public`);
 
       // 1. Leer commission_percentage del tenant
       const configRows: { commission_percentage: number }[] = await queryRunner.query(
-        `SELECT commission_percentage FROM ${schemaName}.tenant_config LIMIT 1`,
+        `SELECT commission_percentage FROM ${quoteIdent(schemaName)}.tenant_config LIMIT 1`,
       );
       const commissionPercentage = configRows.length > 0
         ? Number(configRows[0].commission_percentage ?? 0)
@@ -119,8 +120,8 @@ export class SplitPaymentService {
       const owners: { rental_owner_id: number; owner_name: string; ownership_percentage: number }[] =
         await queryRunner.query(
           `SELECT po.rental_owner_id, ro.name AS owner_name, po.ownership_percentage
-           FROM ${schemaName}.property_owners po
-           JOIN ${schemaName}.rental_owners ro ON ro.id = po.rental_owner_id
+           FROM ${quoteIdent(schemaName)}.property_owners po
+           JOIN ${quoteIdent(schemaName)}.rental_owners ro ON ro.id = po.rental_owner_id
            WHERE po.property_id = $1
              AND po.ownership_percentage > 0`,
           [propertyId],
@@ -139,7 +140,7 @@ export class SplitPaymentService {
 
         // 4a. Registrar en payment_splits
         await queryRunner.query(
-          `INSERT INTO ${schemaName}.payment_splits
+          `INSERT INTO ${quoteIdent(schemaName)}.payment_splits
              (payment_id, rental_owner_id, owner_name, ownership_pct, amount)
            VALUES ($1, $2, $3, $4, $5)`,
           [
@@ -190,7 +191,7 @@ export class SplitPaymentService {
     try {
       const rows: { total: string }[] = await queryRunner.query(
         `SELECT COALESCE(SUM(estimated_cost), 0) AS total
-         FROM ${schemaName}.maintenance_requests
+         FROM ${quoteIdent(schemaName)}.maintenance_requests
          WHERE property_id = $1
            AND status = 'COMPLETED'
            AND EXTRACT(MONTH FROM updated_at) = $2
@@ -222,7 +223,7 @@ export class SplitPaymentService {
 
     // Verificar si ya existe un statement para este propietario/propiedad/período
     const existing: { id: number }[] = await queryRunner.query(
-      `SELECT id FROM ${schemaName}.owner_statements
+      `SELECT id FROM ${quoteIdent(schemaName)}.owner_statements
        WHERE rental_owner_id = $1
          AND property_id     = $2
          AND period_month    = $3
@@ -233,7 +234,7 @@ export class SplitPaymentService {
     if (existing && existing.length > 0) {
       // Acumular: sumar al registro existente
       await queryRunner.query(
-        `UPDATE ${schemaName}.owner_statements SET
+        `UPDATE ${quoteIdent(schemaName)}.owner_statements SET
            gross_rent             = gross_rent             + $1,
            management_commission  = management_commission  + $2,
            maintenance_deduction  = maintenance_deduction  + $3,
@@ -251,7 +252,7 @@ export class SplitPaymentService {
       );
     } else {
       await queryRunner.query(
-        `INSERT INTO ${schemaName}.owner_statements (
+        `INSERT INTO ${quoteIdent(schemaName)}.owner_statements (
            rental_owner_id, property_id, unit_id, period_month, period_year,
            gross_rent, management_commission, maintenance_deduction, net_amount,
            currency, payment_count, status,

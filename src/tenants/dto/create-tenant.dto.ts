@@ -4,7 +4,9 @@ import {
   IsOptional,
   IsNotEmpty,
   IsEnum,
+  Matches,
 } from 'class-validator';
+import { TENANT_SLUG_REGEX } from '../../common/utils/tenant-slug';
 
 export enum TenantCountry {
   US = 'US',
@@ -16,6 +18,10 @@ export enum TenantCountry {
 export class CreateTenantDto {
   @IsString()
   @IsNotEmpty()
+  @Matches(TENANT_SLUG_REGEX, {
+    message:
+      'El slug debe empezar con letra minúscula y contener sólo letras minúsculas, dígitos y guiones (3-50 caracteres).',
+  })
   slug: string;
 
   @IsString()

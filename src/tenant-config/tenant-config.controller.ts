@@ -8,11 +8,14 @@ import {
 import { TenantConfigService } from './tenant-config.service';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @ApiTags('Tenant Config')
 @ApiBearerAuth()
 @Controller(':slug/admin/config')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN')
 export class TenantConfigController {
   constructor(private readonly tenantConfigService: TenantConfigService) {}
 

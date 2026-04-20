@@ -21,11 +21,14 @@ import { UnitsService } from './units.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @ApiTags('Units - Admin')
 @ApiBearerAuth()
 @Controller(':slug/admin/properties/:propertyId/units')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN', 'EMPLEADO')
 export class AdminUnitsController {
   constructor(private readonly unitsService: UnitsService) {}
 

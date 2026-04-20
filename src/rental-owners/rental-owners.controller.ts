@@ -32,11 +32,14 @@ import { OwnerStatementsService } from '../owner-statements/owner-statements.ser
 import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @ApiTags('Rental Owners')
 @ApiBearerAuth()
 @Controller(':slug/admin/rental-owners')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN', 'EMPLEADO')
 export class RentalOwnersController {
   constructor(
     private readonly rentalOwnersService: RentalOwnersService,

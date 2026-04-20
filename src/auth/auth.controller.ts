@@ -50,6 +50,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 3600000 } }) // 5 registros por hora por IP
   @Post(':slug/register')
   async register(
     @Param('slug') slug: string,

@@ -10,6 +10,7 @@ import {
 import { Property } from '../../properties/entities/property.entity';
 import { UnitStatus } from '../enums/unit-status.enum';
 import { RentalType } from '../enums/rental-type.enum';
+import { decimalTransformer } from '../../common/utils/decimal.transformer';
 
 @Entity('units')
 export class Unit {
@@ -35,7 +36,7 @@ export class Unit {
   @Column({ type: 'int', nullable: true })
   bathrooms: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
   square_meters: number;
 
   @Column({
@@ -52,13 +53,13 @@ export class Unit {
   })
   rental_type: RentalType;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
   price_per_month: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
   price_per_night: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
   deposit_amount: number;
 
   // Amenidades específicas de la unidad (distinto a las de la propiedad)

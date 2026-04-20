@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { quoteIdent } from '../common/utils/sql-identifier';
 
 export interface User {
   id: number;
@@ -23,7 +24,7 @@ export class UsersService {
   async findAll(schemaName: string): Promise<UserWithoutPassword[]> {
     const result = await this.dataSource.query(
       `SELECT id, email, name, phone, role, is_active, created_at, updated_at
-       FROM "${schemaName}"."user"
+       FROM ${quoteIdent(schemaName)}."user"
        ORDER BY created_at DESC`,
     );
 

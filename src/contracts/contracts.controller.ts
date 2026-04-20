@@ -17,13 +17,16 @@ import { ContractsService, ContractResult } from './contracts.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { ContractStatus } from './enums/contract-status.enum';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 
 @ApiTags('Contracts - Admin')
 @ApiBearerAuth()
 @Controller(':slug/admin/contracts')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN', 'EMPLEADO')
 export class AdminContractsController {
   constructor(private readonly contractsService: ContractsService) {}
 

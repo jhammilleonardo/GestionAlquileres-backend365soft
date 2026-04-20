@@ -18,6 +18,7 @@ import { FilterPropertiesDto } from './dto/filter-properties.dto';
 import { FilterCatalogPropertiesDto } from './dto/filter-catalog-properties.dto';
 import { CreatePropertyContactDto } from './dto/create-property-contact.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { quoteIdent } from '../common/utils/sql-identifier';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 
 @Injectable()
@@ -66,7 +67,7 @@ export class PropertiesService {
     }
 
     // Establecer el search_path
-    await this.dataSource.query(`SET search_path TO ${tenants[0].schema_name}`);
+    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenants[0].schema_name)}`);
   }
 
   async create(createPropertyDto: CreatePropertyDto) {

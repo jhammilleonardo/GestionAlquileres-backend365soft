@@ -3,12 +3,19 @@ import { extname } from 'path';
 import { Request } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomBytes } from 'crypto';
 
 // Asegurar que el directorio de storage existe
 const ensureDirExists = (dir: string) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
+};
+
+// Genera un nombre de archivo seguro usando el PRNG criptográfico del sistema
+const generateSecureFilename = (originalName: string): string => {
+  const randomName = randomBytes(16).toString('hex'); // 32 chars hex
+  return `${randomName}${extname(originalName)}`;
 };
 
 // Configuración de Multer para propiedades
@@ -31,13 +38,7 @@ export const propertyImageStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    // Generar nombre único
-    const randomName = Array(32)
-      .fill(null)
-      .map(() => Math.round(Math.random() * 16).toString(16))
-      .join('');
-    const extension = extname(file.originalname);
-    cb(null, `${randomName}${extension}`);
+    cb(null, generateSecureFilename(file.originalname));
   },
 });
 
@@ -90,12 +91,7 @@ export const maintenanceFileStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    const randomName = Array(32)
-      .fill(null)
-      .map(() => Math.round(Math.random() * 16).toString(16))
-      .join('');
-    const extension = extname(file.originalname);
-    cb(null, `${randomName}${extension}`);
+    cb(null, generateSecureFilename(file.originalname));
   },
 });
 
@@ -152,12 +148,7 @@ export const receiptFileStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    const randomName = Array(32)
-      .fill(null)
-      .map(() => Math.round(Math.random() * 16).toString(16))
-      .join('');
-    const extension = extname(file.originalname);
-    cb(null, `${randomName}${extension}`);
+    cb(null, generateSecureFilename(file.originalname));
   },
 });
 
@@ -214,12 +205,7 @@ export const applicationDocumentStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    const randomName = Array(32)
-      .fill(null)
-      .map(() => Math.round(Math.random() * 16).toString(16))
-      .join('');
-    const extension = extname(file.originalname);
-    cb(null, `${randomName}${extension}`);
+    cb(null, generateSecureFilename(file.originalname));
   },
 });
 
@@ -278,12 +264,7 @@ export const stagePhotoStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    const randomName = Array(32)
-      .fill(null)
-      .map(() => Math.round(Math.random() * 16).toString(16))
-      .join('');
-    const extension = extname(file.originalname);
-    cb(null, `${randomName}${extension}`);
+    cb(null, generateSecureFilename(file.originalname));
   },
 });
 

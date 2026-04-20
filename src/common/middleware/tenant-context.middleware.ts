@@ -9,6 +9,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { quoteIdent } from '../utils/sql-identifier';
 
 export interface TenantRequest extends Request {
   tenant?: {
@@ -50,11 +51,11 @@ export class TenantContextMiddleware implements NestMiddleware {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       try {
         const token = authHeader.substring(7);
-        const payload = this.jwtService.verify(token, {
-          secret:
-            this.configService.get<string>('JWT_SECRET') ||
-            'your-secret-key-change-in-production',
-        });
+        const secret = this.configService.get<string>('JWT_SECRET');
+        if (!secret || secret.length < 32) {
+          throw new Error('JWT_SECRET no configurado correctamente');
+        }
+        const payload = this.jwtService.verify(token, { secret });
 
         if (payload.tenantSlug) {
           tenantSlug = payload.tenantSlug;
@@ -103,8 +104,10 @@ export class TenantContextMiddleware implements NestMiddleware {
 
       // Cambiar al esquema del tenant
       // Esto asegura que cualquier query posterior solo vea los datos de ESTE tenant
+      // `quoteIdent` valida y escapa el nombre del schema para prevenir
+      // inyección SQL si la fila de `public.tenant` estuviese corrupta.
       await this.dataSource.query(
-        `SET search_path TO ${tenant[0].schema_name}, public`,
+        `SET search_path TO ${quoteIdent(tenant[0].schema_name)}, public`,
       );
 
       // VERIFICACIÓN ADICIONAL: Si hay un usuario logueado, verificar que EXISTA en este esquema
@@ -153,13 +156,24 @@ export class TenantContextMiddleware implements NestMiddleware {
     const firstSegment = urlParts[0];
 
     // Palabras reservadas que NO son slugs de tenant
+    // Debe mantenerse sincronizado con RESERVED_TENANT_SLUGS de tenant-slug.ts
     const reservedWords = [
+      'admin',
       'api',
-      'health',
-      'docs',
+      'assets',
       'auth',
+      'docs',
+      'health',
+      'i18n',
       'login',
+      'portal',
+      'public',
+      'publico',
       'register',
+      'static',
+      'storage',
+      'uploads',
+      'www',
     ];
 
     if (reservedWords.includes(firstSegment)) {

@@ -10,6 +10,8 @@ import { Repository, DataSource } from 'typeorm';
 import { Tenant } from './metadata/tenant.entity';
 import { CreateTenantDto, TenantCountry } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { quoteIdent, schemaNameFromSlug } from '../common/utils/sql-identifier';
+import { isValidTenantSlug } from '../common/utils/tenant-slug';
 
 @Injectable()
 export class TenantsService implements OnModuleInit {
@@ -96,7 +98,7 @@ export class TenantsService implements OnModuleInit {
 
     for (const [col, def] of columns) {
       await this.dataSource.query(
-        `ALTER TABLE ${schemaName}.properties ADD COLUMN IF NOT EXISTS ${col} ${def}`,
+        `ALTER TABLE ${quoteIdent(schemaName)}.properties ADD COLUMN IF NOT EXISTS ${col} ${def}`,
       );
     }
   }
@@ -121,25 +123,25 @@ export class TenantsService implements OnModuleInit {
       return; // Ya es json o la columna no existe
     }
 
-    this.logger.log(`Migrating images column (text[] → json) in ${schemaName}`);
+    this.logger.log(`Migrating images column (text[] → json) in ${quoteIdent(schemaName)}`);
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.properties ADD COLUMN IF NOT EXISTS images_json json DEFAULT '[]'`,
+      `ALTER TABLE ${quoteIdent(schemaName)}.properties ADD COLUMN IF NOT EXISTS images_json json DEFAULT '[]'`,
     );
     await this.dataSource.query(
-      `UPDATE ${schemaName}.properties SET images_json = to_json(images) WHERE images IS NOT NULL`,
+      `UPDATE ${quoteIdent(schemaName)}.properties SET images_json = to_json(images) WHERE images IS NOT NULL`,
     );
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.properties DROP COLUMN images`,
+      `ALTER TABLE ${quoteIdent(schemaName)}.properties DROP COLUMN images`,
     );
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.properties RENAME COLUMN images_json TO images`,
+      `ALTER TABLE ${quoteIdent(schemaName)}.properties RENAME COLUMN images_json TO images`,
     );
   }
 
   /** Agrega la columna application_id a la tabla contracts si no existe. */
   private async migrateContractsApplicationId(schemaName: string) {
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.contracts ADD COLUMN IF NOT EXISTS application_id INTEGER REFERENCES ${schemaName}.rental_applications(id) ON DELETE SET NULL`,
+      `ALTER TABLE ${quoteIdent(schemaName)}.contracts ADD COLUMN IF NOT EXISTS application_id INTEGER REFERENCES ${quoteIdent(schemaName)}.rental_applications(id) ON DELETE SET NULL`,
     );
   }
 
@@ -154,7 +156,7 @@ export class TenantsService implements OnModuleInit {
     for (const value of ['EMPLEADO', 'TECNICO']) {
       await this.dataSource.query(`
         DO $$ BEGIN
-          ALTER TYPE ${schemaName}.user_role_enum ADD VALUE IF NOT EXISTS '${value}';
+          ALTER TYPE ${quoteIdent(schemaName)}.user_role_enum ADD VALUE IF NOT EXISTS '${value}';
         EXCEPTION
           WHEN others THEN null;
         END $$;
@@ -163,7 +165,7 @@ export class TenantsService implements OnModuleInit {
 
     // Agregar columna last_connection si no existe
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}."user" ADD COLUMN IF NOT EXISTS last_connection TIMESTAMP`,
+      `ALTER TABLE ${quoteIdent(schemaName)}."user" ADD COLUMN IF NOT EXISTS last_connection TIMESTAMP`,
     );
 
     // Crear la tabla employee_permissions
@@ -172,7 +174,7 @@ export class TenantsService implements OnModuleInit {
 
   private async createEmployeePermissionsTable(schemaName: string) {
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.employee_permissions (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.employee_permissions (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
         module character varying NOT NULL,
@@ -183,14 +185,14 @@ export class TenantsService implements OnModuleInit {
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_employee_permissions_user FOREIGN KEY (user_id)
-          REFERENCES ${schemaName}."user"(id) ON DELETE CASCADE,
+          REFERENCES ${quoteIdent(schemaName)}."user"(id) ON DELETE CASCADE,
         CONSTRAINT uq_employee_permissions_user_module UNIQUE (user_id, module)
       );
     `);
 
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS IDX_EMPLOYEE_PERMISSIONS_USER_ID
-        ON ${schemaName}.employee_permissions(user_id);
+        ON ${quoteIdent(schemaName)}.employee_permissions(user_id);
     `);
   }
 
@@ -261,9 +263,9 @@ export class TenantsService implements OnModuleInit {
 
   private async createPropertyLeadsTable(schemaName: string) {
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.property_leads (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.property_leads (
         id SERIAL PRIMARY KEY,
-        property_id INT NOT NULL REFERENCES ${schemaName}.properties(id) ON DELETE CASCADE,
+        property_id INT NOT NULL REFERENCES ${quoteIdent(schemaName)}.properties(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         email VARCHAR(255) NOT NULL,
         phone VARCHAR(20) NOT NULL,
@@ -272,17 +274,17 @@ export class TenantsService implements OnModuleInit {
         availability VARCHAR(50),
         status VARCHAR(50) DEFAULT 'PENDING',
         user_ip VARCHAR(45),
-        assigned_to INT REFERENCES ${schemaName}."user"(id) ON DELETE SET NULL,
+        assigned_to INT REFERENCES ${quoteIdent(schemaName)}."user"(id) ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
 
     await this.dataSource.query(`
-      CREATE INDEX IF NOT EXISTS idx_property_leads_property_id ON ${schemaName}.property_leads(property_id);
-      CREATE INDEX IF NOT EXISTS idx_property_leads_email ON ${schemaName}.property_leads(email);
-      CREATE INDEX IF NOT EXISTS idx_property_leads_status ON ${schemaName}.property_leads(status);
-      CREATE INDEX IF NOT EXISTS idx_property_leads_created_at ON ${schemaName}.property_leads(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_property_id ON ${quoteIdent(schemaName)}.property_leads(property_id);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_email ON ${quoteIdent(schemaName)}.property_leads(email);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_status ON ${quoteIdent(schemaName)}.property_leads(status);
+      CREATE INDEX IF NOT EXISTS idx_property_leads_created_at ON ${quoteIdent(schemaName)}.property_leads(created_at DESC);
     `);
   }
 
@@ -290,7 +292,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de unit_status
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.unit_status_enum AS ENUM (
+        CREATE TYPE ${quoteIdent(schemaName)}.unit_status_enum AS ENUM (
           'available', 'occupied', 'maintenance', 'reserved'
         );
       EXCEPTION
@@ -301,7 +303,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de rental_type (si no existe ya)
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.unit_rental_type_enum AS ENUM (
+        CREATE TYPE ${quoteIdent(schemaName)}.unit_rental_type_enum AS ENUM (
           'SHORT_TERM', 'LONG_TERM', 'BOTH'
         );
       EXCEPTION
@@ -310,7 +312,7 @@ export class TenantsService implements OnModuleInit {
     `);
 
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.units (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.units (
         id             SERIAL PRIMARY KEY,
         property_id    INTEGER NOT NULL,
         unit_number    VARCHAR(50) NOT NULL,
@@ -318,8 +320,8 @@ export class TenantsService implements OnModuleInit {
         bedrooms       INTEGER,
         bathrooms      INTEGER,
         square_meters  NUMERIC(10,2),
-        status         ${schemaName}.unit_status_enum NOT NULL DEFAULT 'available',
-        rental_type    ${schemaName}.unit_rental_type_enum,
+        status         ${quoteIdent(schemaName)}.unit_status_enum NOT NULL DEFAULT 'available',
+        rental_type    ${quoteIdent(schemaName)}.unit_rental_type_enum,
         price_per_month  NUMERIC(10,2),
         price_per_night  NUMERIC(10,2),
         deposit_amount   NUMERIC(10,2),
@@ -327,7 +329,7 @@ export class TenantsService implements OnModuleInit {
         created_at     TIMESTAMP NOT NULL DEFAULT now(),
         updated_at     TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_units_property
-          FOREIGN KEY (property_id) REFERENCES ${schemaName}.properties(id) ON DELETE CASCADE,
+          FOREIGN KEY (property_id) REFERENCES ${quoteIdent(schemaName)}.properties(id) ON DELETE CASCADE,
         CONSTRAINT uq_units_property_number
           UNIQUE (property_id, unit_number)
       );
@@ -335,9 +337,9 @@ export class TenantsService implements OnModuleInit {
 
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS idx_units_property_id
-        ON ${schemaName}.units(property_id);
+        ON ${quoteIdent(schemaName)}.units(property_id);
       CREATE INDEX IF NOT EXISTS idx_units_status
-        ON ${schemaName}.units(status);
+        ON ${quoteIdent(schemaName)}.units(status);
     `);
   }
 
@@ -356,7 +358,7 @@ export class TenantsService implements OnModuleInit {
 
     for (const [col, def] of columns) {
       await this.dataSource.query(
-        `ALTER TABLE ${schemaName}.rental_owners ADD COLUMN IF NOT EXISTS ${col} ${def}`,
+        `ALTER TABLE ${quoteIdent(schemaName)}.rental_owners ADD COLUMN IF NOT EXISTS ${col} ${def}`,
       );
     }
   }
@@ -392,31 +394,31 @@ export class TenantsService implements OnModuleInit {
     `);
 
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.owner_statements
+      `ALTER TABLE ${quoteIdent(schemaName)}.owner_statements
          ADD COLUMN IF NOT EXISTS unit_id INTEGER
-           REFERENCES ${schemaName}.units(id) ON DELETE SET NULL`,
+           REFERENCES ${quoteIdent(schemaName)}.units(id) ON DELETE SET NULL`,
     );
 
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.owner_statements
+      `ALTER TABLE ${quoteIdent(schemaName)}.owner_statements
          ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'pending'`,
     );
 
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.owner_statements
+      `ALTER TABLE ${quoteIdent(schemaName)}.owner_statements
          ADD COLUMN IF NOT EXISTS transferred_at TIMESTAMP`,
     );
 
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS idx_owner_statements_status
-        ON ${schemaName}.owner_statements(status);
+        ON ${quoteIdent(schemaName)}.owner_statements(status);
     `);
   }
 
   /** Agrega screening_fee_paid a rental_applications para schemas existentes. */
   private async migrateApplicationsScreeningFields(schemaName: string): Promise<void> {
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.rental_applications ADD COLUMN IF NOT EXISTS screening_fee_paid BOOLEAN NOT NULL DEFAULT FALSE`,
+      `ALTER TABLE ${quoteIdent(schemaName)}.rental_applications ADD COLUMN IF NOT EXISTS screening_fee_paid BOOLEAN NOT NULL DEFAULT FALSE`,
     );
   }
 
@@ -424,7 +426,7 @@ export class TenantsService implements OnModuleInit {
   private async createScreeningChecklistTable(schemaName: string): Promise<void> {
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.screening_final_status_enum AS ENUM (
+        CREATE TYPE ${quoteIdent(schemaName)}.screening_final_status_enum AS ENUM (
           'APPROVED', 'REJECTED', 'REQUIRES_COSIGNER'
         );
       EXCEPTION
@@ -433,10 +435,10 @@ export class TenantsService implements OnModuleInit {
     `);
 
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.screening_checklist (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.screening_checklist (
         id                       SERIAL PRIMARY KEY,
         application_id           INTEGER NOT NULL UNIQUE
-          REFERENCES ${schemaName}.rental_applications(id) ON DELETE CASCADE,
+          REFERENCES ${quoteIdent(schemaName)}.rental_applications(id) ON DELETE CASCADE,
         documents_verified       BOOLEAN NOT NULL DEFAULT FALSE,
         employer_call_name       VARCHAR(150),
         employer_call_phone      VARCHAR(30),
@@ -447,8 +449,8 @@ export class TenantsService implements OnModuleInit {
         blacklist_checked        BOOLEAN NOT NULL DEFAULT FALSE,
         blacklist_result         VARCHAR(50),
         notes                    TEXT,
-        final_status             ${schemaName}.screening_final_status_enum,
-        reviewed_by              INTEGER REFERENCES ${schemaName}."user"(id) ON DELETE SET NULL,
+        final_status             ${quoteIdent(schemaName)}.screening_final_status_enum,
+        reviewed_by              INTEGER REFERENCES ${quoteIdent(schemaName)}."user"(id) ON DELETE SET NULL,
         reviewed_at              TIMESTAMP,
         created_at               TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at               TIMESTAMP NOT NULL DEFAULT NOW()
@@ -457,21 +459,21 @@ export class TenantsService implements OnModuleInit {
 
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS idx_screening_checklist_application_id
-        ON ${schemaName}.screening_checklist(application_id);
+        ON ${quoteIdent(schemaName)}.screening_checklist(application_id);
     `);
   }
 
   /** Agrega unit_id nullable FK a contracts para schemas existentes. */
   private async migrateContractsUnitId(schemaName: string): Promise<void> {
     await this.dataSource.query(`
-      ALTER TABLE ${schemaName}.contracts
+      ALTER TABLE ${quoteIdent(schemaName)}.contracts
         ADD COLUMN IF NOT EXISTS unit_id INTEGER
-          REFERENCES ${schemaName}.units(id) ON DELETE SET NULL;
+          REFERENCES ${quoteIdent(schemaName)}.units(id) ON DELETE SET NULL;
     `);
 
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS idx_contracts_unit_id
-        ON ${schemaName}.contracts(unit_id);
+        ON ${quoteIdent(schemaName)}.contracts(unit_id);
     `);
   }
 
@@ -480,7 +482,7 @@ export class TenantsService implements OnModuleInit {
     country: TenantCountry = TenantCountry.BO,
   ) {
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.tenant_config (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.tenant_config (
         id SERIAL PRIMARY KEY,
         country VARCHAR(2) NOT NULL,
         currency VARCHAR(3) NOT NULL,
@@ -504,13 +506,13 @@ export class TenantsService implements OnModuleInit {
     // Insertar fila inicial solo si la tabla está vacía
     await this.dataSource.query(
       `
-      INSERT INTO ${schemaName}.tenant_config (
+      INSERT INTO ${quoteIdent(schemaName)}.tenant_config (
         country, currency, language, timezone, date_format,
         rental_type, payment_methods, notification_channels,
         commission_percentage, grace_days_late_fee, late_fee_percentage, setup_completed
       )
       SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false
-      WHERE NOT EXISTS (SELECT 1 FROM ${schemaName}.tenant_config);
+      WHERE NOT EXISTS (SELECT 1 FROM ${quoteIdent(schemaName)}.tenant_config);
       `,
       [
         country,
@@ -529,6 +531,14 @@ export class TenantsService implements OnModuleInit {
   }
 
   async create(createTenantDto: CreateTenantDto) {
+    // Defensa en profundidad: aunque el DTO valida el slug con class-validator,
+    // rechazar aquí cualquier valor que no cumpla el formato o sea reservado.
+    if (!isValidTenantSlug(createTenantDto.slug)) {
+      throw new BadRequestException(
+        `Invalid or reserved tenant slug: '${createTenantDto.slug}'`,
+      );
+    }
+
     // Verificar si ya existe el slug
     const existingSlug = await this.tenantRepository.findOne({
       where: { slug: createTenantDto.slug },
@@ -540,8 +550,8 @@ export class TenantsService implements OnModuleInit {
       );
     }
 
-    // Generar schema_name a partir del slug
-    const schema_name = `tenant_${createTenantDto.slug.replace(/-/g, '_')}`;
+    // Generar schema_name a partir del slug (usa el derivador canónico)
+    const schema_name = schemaNameFromSlug(createTenantDto.slug);
 
     // Verificar si ya existe el schema_name
     const existingSchema = await this.tenantRepository.findOne({
@@ -602,7 +612,12 @@ export class TenantsService implements OnModuleInit {
     const updateData: Partial<Tenant> = { ...updateTenantDto };
 
     if (updateTenantDto.slug) {
-      updateData.schema_name = `tenant_${updateTenantDto.slug.replace(/-/g, '_')}`;
+      if (!isValidTenantSlug(updateTenantDto.slug)) {
+        throw new BadRequestException(
+          `Invalid or reserved tenant slug: '${updateTenantDto.slug}'`,
+        );
+      }
+      updateData.schema_name = schemaNameFromSlug(updateTenantDto.slug);
     }
 
     await this.tenantRepository.update(id, updateData);
@@ -624,14 +639,14 @@ export class TenantsService implements OnModuleInit {
     try {
       // 1. Crear el schema en PostgreSQL
       await this.dataSource.query(
-        `CREATE SCHEMA IF NOT EXISTS ${tenant.schema_name}`,
+        `CREATE SCHEMA IF NOT EXISTS ${quoteIdent(tenant.schema_name)}`,
       );
 
       // 2. Crear ENUMs necesarios
       // ENUM de user_role
       await this.dataSource.query(`
         DO $$ BEGIN
-          CREATE TYPE ${tenant.schema_name}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO');
+          CREATE TYPE ${quoteIdent(tenant.schema_name)}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO');
         EXCEPTION
           WHEN duplicate_object THEN null;
         END $$;
@@ -639,13 +654,13 @@ export class TenantsService implements OnModuleInit {
 
       // 3. Crear la tabla user
       await this.dataSource.query(`
-        CREATE TABLE IF NOT EXISTS ${tenant.schema_name}."user" (
+        CREATE TABLE IF NOT EXISTS ${quoteIdent(tenant.schema_name)}."user" (
           id SERIAL PRIMARY KEY,
           email character varying NOT NULL UNIQUE,
           password character varying NOT NULL,
           name character varying NOT NULL,
           phone character varying,
-          role ${tenant.schema_name}.user_role_enum NOT NULL DEFAULT 'INQUILINO',
+          role ${quoteIdent(tenant.schema_name)}.user_role_enum NOT NULL DEFAULT 'INQUILINO',
           is_active boolean NOT NULL DEFAULT true,
           last_connection TIMESTAMP,
           created_at TIMESTAMP NOT NULL DEFAULT now(),
@@ -655,7 +670,7 @@ export class TenantsService implements OnModuleInit {
 
       // 4. Crear índices en user
       await this.dataSource.query(`
-        CREATE INDEX IF NOT EXISTS IDX_USER_EMAIL ON ${tenant.schema_name}."user"(email);
+        CREATE INDEX IF NOT EXISTS IDX_USER_EMAIL ON ${quoteIdent(tenant.schema_name)}."user"(email);
       `);
 
       // 5. Crear tablas de Properties
@@ -707,17 +722,17 @@ export class TenantsService implements OnModuleInit {
 
     // Otorgar permisos de uso del schema
     await this.dataSource.query(
-      `GRANT USAGE ON SCHEMA ${schemaName} TO ${dbUser}`,
+      `GRANT USAGE ON SCHEMA ${quoteIdent(schemaName)} TO ${quoteIdent(dbUser)}`,
     );
 
     // Otorgar todos los privilegios sobre todas las tablas existentes
     await this.dataSource.query(
-      `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ${schemaName} TO ${dbUser}`,
+      `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ${quoteIdent(schemaName)} TO ${quoteIdent(dbUser)}`,
     );
 
     // Otorgar todos los privilegios sobre todas las secuencias existentes
     await this.dataSource.query(
-      `GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ${schemaName} TO ${dbUser}`,
+      `GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ${quoteIdent(schemaName)} TO ${quoteIdent(dbUser)}`,
     );
 
     // NOTA: Los permisos USAGE sobre el schema son suficientes para usar los tipos (ENUMs)
@@ -725,19 +740,19 @@ export class TenantsService implements OnModuleInit {
 
     // Configurar permisos por defecto para futuras tablas
     await this.dataSource.query(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON TABLES TO ${dbUser}`,
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quoteIdent(schemaName)} GRANT ALL ON TABLES TO ${quoteIdent(dbUser)}`,
     );
 
     // Configurar permisos por defecto para futuras secuencias
     await this.dataSource.query(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON SEQUENCES TO ${dbUser}`,
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quoteIdent(schemaName)} GRANT ALL ON SEQUENCES TO ${quoteIdent(dbUser)}`,
     );
   }
 
   private async createPropertiesTables(schemaName: string) {
     // Tabla: property_types
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.property_types (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.property_types (
         id SERIAL PRIMARY KEY,
         name character varying NOT NULL,
         code character varying NOT NULL UNIQUE,
@@ -749,7 +764,7 @@ export class TenantsService implements OnModuleInit {
 
     // Tabla: property_subtypes
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.property_subtypes (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.property_subtypes (
         id SERIAL PRIMARY KEY,
         property_type_id integer NOT NULL,
         name character varying NOT NULL,
@@ -758,13 +773,13 @@ export class TenantsService implements OnModuleInit {
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_property_subtypes_type FOREIGN KEY (property_type_id)
-          REFERENCES ${schemaName}.property_types(id)
+          REFERENCES ${quoteIdent(schemaName)}.property_types(id)
       );
     `);
 
     // Tabla: rental_owners
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.rental_owners (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.rental_owners (
         id SERIAL PRIMARY KEY,
         name character varying NOT NULL,
         company_name character varying,
@@ -787,7 +802,7 @@ export class TenantsService implements OnModuleInit {
 
     // Tabla: properties
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.properties (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.properties (
         id SERIAL PRIMARY KEY,
         title character varying NOT NULL,
         description character varying,
@@ -818,9 +833,9 @@ export class TenantsService implements OnModuleInit {
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_properties_type FOREIGN KEY (property_type_id)
-          REFERENCES ${schemaName}.property_types(id),
+          REFERENCES ${quoteIdent(schemaName)}.property_types(id),
         CONSTRAINT fk_properties_subtype FOREIGN KEY (property_subtype_id)
-          REFERENCES ${schemaName}.property_subtypes(id),
+          REFERENCES ${quoteIdent(schemaName)}.property_subtypes(id),
         CONSTRAINT chk_properties_status
           CHECK (status IN ('DISPONIBLE', 'OCUPADO', 'MANTENIMIENTO', 'RESERVADO', 'INACTIVO'))
       );
@@ -828,7 +843,7 @@ export class TenantsService implements OnModuleInit {
 
     // Tabla: property_addresses
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.property_addresses (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.property_addresses (
         id SERIAL PRIMARY KEY,
         property_id integer NOT NULL,
         address_type character varying NOT NULL,
@@ -839,7 +854,7 @@ export class TenantsService implements OnModuleInit {
         country character varying NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_property_addresses_property FOREIGN KEY (property_id)
-          REFERENCES ${schemaName}.properties(id) ON DELETE CASCADE,
+          REFERENCES ${quoteIdent(schemaName)}.properties(id) ON DELETE CASCADE,
         CONSTRAINT chk_property_addresses_type
           CHECK (address_type IN ('address_1', 'address_2', 'address_3'))
       );
@@ -847,7 +862,7 @@ export class TenantsService implements OnModuleInit {
 
     // Tabla: property_owners
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.property_owners (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.property_owners (
         id SERIAL PRIMARY KEY,
         property_id integer NOT NULL,
         rental_owner_id integer NOT NULL,
@@ -855,9 +870,9 @@ export class TenantsService implements OnModuleInit {
         is_primary boolean NOT NULL DEFAULT true,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_property_owners_property FOREIGN KEY (property_id)
-          REFERENCES ${schemaName}.properties(id) ON DELETE CASCADE,
+          REFERENCES ${quoteIdent(schemaName)}.properties(id) ON DELETE CASCADE,
         CONSTRAINT fk_property_owners_owner FOREIGN KEY (rental_owner_id)
-          REFERENCES ${schemaName}.rental_owners(id),
+          REFERENCES ${quoteIdent(schemaName)}.rental_owners(id),
         CONSTRAINT chk_ownership_percentage
           CHECK (ownership_percentage >= 0 AND ownership_percentage <= 100)
       );
@@ -865,12 +880,12 @@ export class TenantsService implements OnModuleInit {
 
     // Crear índices para optimizar consultas
     await this.dataSource.query(`
-      CREATE INDEX IF NOT EXISTS IDX_PROPERTIES_TYPE ON ${schemaName}.properties(property_type_id);
-      CREATE INDEX IF NOT EXISTS IDX_PROPERTIES_SUBTYPE ON ${schemaName}.properties(property_subtype_id);
-      CREATE INDEX IF NOT EXISTS IDX_PROPERTIES_STATUS ON ${schemaName}.properties(status);
-      CREATE INDEX IF NOT EXISTS IDX_PROPERTY_ADDRESSES_PROPERTY ON ${schemaName}.property_addresses(property_id);
-      CREATE INDEX IF NOT EXISTS IDX_PROPERTY_OWNERS_PROPERTY ON ${schemaName}.property_owners(property_id);
-      CREATE INDEX IF NOT EXISTS IDX_PROPERTY_OWNERS_OWNER ON ${schemaName}.property_owners(rental_owner_id);
+      CREATE INDEX IF NOT EXISTS IDX_PROPERTIES_TYPE ON ${quoteIdent(schemaName)}.properties(property_type_id);
+      CREATE INDEX IF NOT EXISTS IDX_PROPERTIES_SUBTYPE ON ${quoteIdent(schemaName)}.properties(property_subtype_id);
+      CREATE INDEX IF NOT EXISTS IDX_PROPERTIES_STATUS ON ${quoteIdent(schemaName)}.properties(status);
+      CREATE INDEX IF NOT EXISTS IDX_PROPERTY_ADDRESSES_PROPERTY ON ${quoteIdent(schemaName)}.property_addresses(property_id);
+      CREATE INDEX IF NOT EXISTS IDX_PROPERTY_OWNERS_PROPERTY ON ${quoteIdent(schemaName)}.property_owners(property_id);
+      CREATE INDEX IF NOT EXISTS IDX_PROPERTY_OWNERS_OWNER ON ${quoteIdent(schemaName)}.property_owners(rental_owner_id);
     `);
   }
 
@@ -878,7 +893,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de contract_status
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.contract_status_enum AS ENUM (
+        CREATE TYPE ${quoteIdent(schemaName)}.contract_status_enum AS ENUM (
           'BORRADOR', 'PENDIENTE', 'FIRMADO', 'ACTIVO', 
           'POR_VENCER', 'VENCIDO', 'RENOVADO', 'FINALIZADO', 
           'CANCELADO', 'SUSPENDIDO'
@@ -890,12 +905,12 @@ export class TenantsService implements OnModuleInit {
 
     // Tabla: contracts
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.contracts (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.contracts (
         id SERIAL PRIMARY KEY,
         contract_number character varying NOT NULL UNIQUE,
         tenant_id integer NOT NULL,
         property_id integer NOT NULL,
-        status ${schemaName}.contract_status_enum NOT NULL DEFAULT 'BORRADOR',
+        status ${quoteIdent(schemaName)}.contract_status_enum NOT NULL DEFAULT 'BORRADOR',
         start_date date NOT NULL,
         end_date date NOT NULL,
         duration_months integer,
@@ -939,17 +954,17 @@ export class TenantsService implements OnModuleInit {
         created_at timestamp with time zone DEFAULT now(),
         updated_at timestamp with time zone DEFAULT now(),
         CONSTRAINT fk_contracts_property FOREIGN KEY (property_id)
-          REFERENCES ${schemaName}.properties(id),
+          REFERENCES ${quoteIdent(schemaName)}.properties(id),
         CONSTRAINT fk_contracts_tenant FOREIGN KEY (tenant_id)
-          REFERENCES ${schemaName}."user"(id),
+          REFERENCES ${quoteIdent(schemaName)}."user"(id),
         CONSTRAINT fk_contracts_application FOREIGN KEY (application_id)
-          REFERENCES ${schemaName}.rental_applications(id) ON DELETE SET NULL
+          REFERENCES ${quoteIdent(schemaName)}.rental_applications(id) ON DELETE SET NULL
       );
     `);
 
     // Tabla: contract_history
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.contract_history (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.contract_history (
         id SERIAL PRIMARY KEY,
         contract_id integer NOT NULL,
         field_modified character varying NOT NULL,
@@ -959,23 +974,23 @@ export class TenantsService implements OnModuleInit {
         reason text,
         change_date timestamp with time zone DEFAULT now(),
         CONSTRAINT fk_history_contract FOREIGN KEY (contract_id)
-          REFERENCES ${schemaName}.contracts(id) ON DELETE CASCADE
+          REFERENCES ${quoteIdent(schemaName)}.contracts(id) ON DELETE CASCADE
       );
     `);
 
     // Índices para contratos
     await this.dataSource.query(`
-      CREATE INDEX IF NOT EXISTS IDX_CONTRACTS_TENANT ON ${schemaName}.contracts(tenant_id);
-      CREATE INDEX IF NOT EXISTS IDX_CONTRACTS_PROPERTY ON ${schemaName}.contracts(property_id);
-      CREATE INDEX IF NOT EXISTS IDX_CONTRACTS_STATUS ON ${schemaName}.contracts(status);
-      CREATE INDEX IF NOT EXISTS IDX_HISTORY_CONTRACT ON ${schemaName}.contract_history(contract_id);
+      CREATE INDEX IF NOT EXISTS IDX_CONTRACTS_TENANT ON ${quoteIdent(schemaName)}.contracts(tenant_id);
+      CREATE INDEX IF NOT EXISTS IDX_CONTRACTS_PROPERTY ON ${quoteIdent(schemaName)}.contracts(property_id);
+      CREATE INDEX IF NOT EXISTS IDX_CONTRACTS_STATUS ON ${quoteIdent(schemaName)}.contracts(status);
+      CREATE INDEX IF NOT EXISTS IDX_HISTORY_CONTRACT ON ${quoteIdent(schemaName)}.contract_history(contract_id);
     `);
   }
 
   private async seedPropertyTypesAndSubtypes(schemaName: string) {
     // Insertar Property Types
     await this.dataSource.query(`
-      INSERT INTO ${schemaName}.property_types (name, code, is_active, created_at, updated_at)
+      INSERT INTO ${quoteIdent(schemaName)}.property_types (name, code, is_active, created_at, updated_at)
       VALUES
         ('Residencial', 'RESIDENTIAL', true, NOW(), NOW()),
         ('Comercial', 'COMMERCIAL', true, NOW(), NOW())
@@ -984,7 +999,7 @@ export class TenantsService implements OnModuleInit {
 
     // Obtener los IDs de los tipos insertados
     const types: { id: number; code: string }[] = await this.dataSource.query(`
-      SELECT id, code FROM ${schemaName}.property_types WHERE code IN ('RESIDENTIAL', 'COMMERCIAL')
+      SELECT id, code FROM ${quoteIdent(schemaName)}.property_types WHERE code IN ('RESIDENTIAL', 'COMMERCIAL')
     `);
 
     const residential = types.find((t) => t.code === 'RESIDENTIAL');
@@ -1000,7 +1015,7 @@ export class TenantsService implements OnModuleInit {
     // Insertar Property Subtypes para RESIDENTIAL
     await this.dataSource.query(
       `
-      INSERT INTO ${schemaName}.property_subtypes (property_type_id, name, code, is_active, created_at, updated_at)
+      INSERT INTO ${quoteIdent(schemaName)}.property_subtypes (property_type_id, name, code, is_active, created_at, updated_at)
       VALUES
         ($1, 'Condominio/Townhouse', 'CONDO_TOWNHOME', true, NOW(), NOW()),
         ($1, 'Multifamiliar', 'MULTI_FAMILY', true, NOW(), NOW()),
@@ -1013,7 +1028,7 @@ export class TenantsService implements OnModuleInit {
     // Insertar Property Subtypes para COMERCIAL
     await this.dataSource.query(
       `
-      INSERT INTO ${schemaName}.property_subtypes (property_type_id, name, code, is_active, created_at, updated_at)
+      INSERT INTO ${quoteIdent(schemaName)}.property_subtypes (property_type_id, name, code, is_active, created_at, updated_at)
       VALUES
         ($1, 'Industrial', 'INDUSTRIAL', true, NOW(), NOW()),
         ($1, 'Oficina', 'OFFICE', true, NOW(), NOW()),
@@ -1032,7 +1047,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de request_type
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.maintenance_request_type_enum AS ENUM ('MAINTENANCE', 'GENERAL');
+        CREATE TYPE ${quoteIdent(schemaName)}.maintenance_request_type_enum AS ENUM ('MAINTENANCE', 'GENERAL');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
@@ -1041,7 +1056,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de maintenance_category
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.maintenance_category_enum AS ENUM ('GENERAL', 'ACCESORIOS', 'ELECTRICO', 'CLIMATIZACION', 'LLAVE_CERRADURA', 'ILUMINACION', 'AFUERA', 'PLOMERIA');
+        CREATE TYPE ${quoteIdent(schemaName)}.maintenance_category_enum AS ENUM ('GENERAL', 'ACCESORIOS', 'ELECTRICO', 'CLIMATIZACION', 'LLAVE_CERRADURA', 'ILUMINACION', 'AFUERA', 'PLOMERIA');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
@@ -1050,7 +1065,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de permission_to_enter
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.permission_to_enter_enum AS ENUM ('YES', 'NO', 'NOT_APPLICABLE');
+        CREATE TYPE ${quoteIdent(schemaName)}.permission_to_enter_enum AS ENUM ('YES', 'NO', 'NOT_APPLICABLE');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
@@ -1059,7 +1074,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de maintenance_status
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.maintenance_status_enum AS ENUM ('NEW', 'IN_PROGRESS', 'COMPLETED', 'DEFERRED', 'CLOSED');
+        CREATE TYPE ${quoteIdent(schemaName)}.maintenance_status_enum AS ENUM ('NEW', 'IN_PROGRESS', 'COMPLETED', 'DEFERRED', 'CLOSED');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
@@ -1068,7 +1083,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de maintenance_priority
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.maintenance_priority_enum AS ENUM ('LOW', 'NORMAL', 'HIGH');
+        CREATE TYPE ${quoteIdent(schemaName)}.maintenance_priority_enum AS ENUM ('LOW', 'NORMAL', 'HIGH');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
@@ -1076,18 +1091,18 @@ export class TenantsService implements OnModuleInit {
 
     // Tabla: maintenance_requests
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.maintenance_requests (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.maintenance_requests (
         id SERIAL PRIMARY KEY,
         ticket_number character varying NOT NULL UNIQUE,
-        request_type ${schemaName}.maintenance_request_type_enum NOT NULL DEFAULT 'MAINTENANCE',
-        category ${schemaName}.maintenance_category_enum,
+        request_type ${quoteIdent(schemaName)}.maintenance_request_type_enum NOT NULL DEFAULT 'MAINTENANCE',
+        category ${quoteIdent(schemaName)}.maintenance_category_enum,
         title character varying NOT NULL,
         description text NOT NULL,
-        permission_to_enter ${schemaName}.permission_to_enter_enum NOT NULL DEFAULT 'NOT_APPLICABLE',
+        permission_to_enter ${quoteIdent(schemaName)}.permission_to_enter_enum NOT NULL DEFAULT 'NOT_APPLICABLE',
         has_pets boolean NOT NULL DEFAULT false,
         entry_notes text,
-        status ${schemaName}.maintenance_status_enum NOT NULL DEFAULT 'NEW',
-        priority ${schemaName}.maintenance_priority_enum NOT NULL DEFAULT 'NORMAL',
+        status ${quoteIdent(schemaName)}.maintenance_status_enum NOT NULL DEFAULT 'NEW',
+        priority ${quoteIdent(schemaName)}.maintenance_priority_enum NOT NULL DEFAULT 'NORMAL',
         due_date date,
         assigned_to integer,
         tenant_id integer NOT NULL,
@@ -1099,15 +1114,15 @@ export class TenantsService implements OnModuleInit {
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_maintenance_requests_contract FOREIGN KEY (contract_id)
-          REFERENCES ${schemaName}.contracts(id),
+          REFERENCES ${quoteIdent(schemaName)}.contracts(id),
         CONSTRAINT fk_maintenance_requests_property FOREIGN KEY (property_id)
-          REFERENCES ${schemaName}.properties(id)
+          REFERENCES ${quoteIdent(schemaName)}.properties(id)
       );
     `);
 
     // Tabla: maintenance_messages
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.maintenance_messages (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.maintenance_messages (
         id SERIAL PRIMARY KEY,
         maintenance_request_id integer NOT NULL,
         user_id integer NOT NULL,
@@ -1115,13 +1130,13 @@ export class TenantsService implements OnModuleInit {
         send_to_resident boolean NOT NULL DEFAULT true,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_maintenance_messages_request FOREIGN KEY (maintenance_request_id)
-          REFERENCES ${schemaName}.maintenance_requests(id) ON DELETE CASCADE
+          REFERENCES ${quoteIdent(schemaName)}.maintenance_requests(id) ON DELETE CASCADE
       );
     `);
 
     // Tabla: maintenance_attachments
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.maintenance_attachments (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.maintenance_attachments (
         id SERIAL PRIMARY KEY,
         maintenance_request_id integer,
         message_id integer,
@@ -1132,31 +1147,31 @@ export class TenantsService implements OnModuleInit {
         uploaded_by integer NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_maintenance_attachments_request FOREIGN KEY (maintenance_request_id)
-          REFERENCES ${schemaName}.maintenance_requests(id) ON DELETE CASCADE,
+          REFERENCES ${quoteIdent(schemaName)}.maintenance_requests(id) ON DELETE CASCADE,
         CONSTRAINT fk_maintenance_attachments_message FOREIGN KEY (message_id)
-          REFERENCES ${schemaName}.maintenance_messages(id) ON DELETE CASCADE
+          REFERENCES ${quoteIdent(schemaName)}.maintenance_messages(id) ON DELETE CASCADE
       );
     `);
 
     // Crear índices para optimizar consultas
     await this.dataSource.query(`
-      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_TENANT ON ${schemaName}.maintenance_requests(tenant_id);
-      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_CONTRACT ON ${schemaName}.maintenance_requests(contract_id);
-      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_PROPERTY ON ${schemaName}.maintenance_requests(property_id);
-      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_STATUS ON ${schemaName}.maintenance_requests(status);
-      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_PRIORITY ON ${schemaName}.maintenance_requests(priority);
-      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_TYPE ON ${schemaName}.maintenance_requests(request_type);
-      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_MESSAGES_REQUEST ON ${schemaName}.maintenance_messages(maintenance_request_id);
-      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_ATTACHMENTS_REQUEST ON ${schemaName}.maintenance_attachments(maintenance_request_id);
-      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_ATTACHMENTS_MESSAGE ON ${schemaName}.maintenance_attachments(message_id);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_TENANT ON ${quoteIdent(schemaName)}.maintenance_requests(tenant_id);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_CONTRACT ON ${quoteIdent(schemaName)}.maintenance_requests(contract_id);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_PROPERTY ON ${quoteIdent(schemaName)}.maintenance_requests(property_id);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_STATUS ON ${quoteIdent(schemaName)}.maintenance_requests(status);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_PRIORITY ON ${quoteIdent(schemaName)}.maintenance_requests(priority);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_TYPE ON ${quoteIdent(schemaName)}.maintenance_requests(request_type);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_MESSAGES_REQUEST ON ${quoteIdent(schemaName)}.maintenance_messages(maintenance_request_id);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_ATTACHMENTS_REQUEST ON ${quoteIdent(schemaName)}.maintenance_attachments(maintenance_request_id);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_ATTACHMENTS_MESSAGE ON ${quoteIdent(schemaName)}.maintenance_attachments(message_id);
     `);
 
     // Tabla: maintenance_stage_history
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.maintenance_stage_history (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.maintenance_stage_history (
         id                   SERIAL PRIMARY KEY,
         request_id           INTEGER NOT NULL
-          REFERENCES ${schemaName}.maintenance_requests(id) ON DELETE CASCADE,
+          REFERENCES ${quoteIdent(schemaName)}.maintenance_requests(id) ON DELETE CASCADE,
         from_stage           VARCHAR(30),
         to_stage             VARCHAR(30) NOT NULL,
         changed_by_user_id   INTEGER NOT NULL,
@@ -1165,7 +1180,7 @@ export class TenantsService implements OnModuleInit {
         created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_STAGE_HISTORY_REQUEST
-        ON ${schemaName}.maintenance_stage_history(request_id);
+        ON ${quoteIdent(schemaName)}.maintenance_stage_history(request_id);
     `);
   }
 
@@ -1173,7 +1188,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de notification_event_type
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.notification_event_type_enum AS ENUM (
+        CREATE TYPE ${quoteIdent(schemaName)}.notification_event_type_enum AS ENUM (
           'maintenance.request.created',
           'maintenance.status.changed',
           'maintenance.message.received',
@@ -1193,10 +1208,10 @@ export class TenantsService implements OnModuleInit {
 
     // Tabla: notifications
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.notifications (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.notifications (
         id SERIAL PRIMARY KEY,
         user_id integer NOT NULL,
-        event_type ${schemaName}.notification_event_type_enum NOT NULL,
+        event_type ${quoteIdent(schemaName)}.notification_event_type_enum NOT NULL,
         title character varying(255) NOT NULL,
         message text NOT NULL,
         metadata jsonb DEFAULT '{}',
@@ -1209,9 +1224,9 @@ export class TenantsService implements OnModuleInit {
 
     // Tabla: notification_templates
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.notification_templates (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.notification_templates (
         id SERIAL PRIMARY KEY,
-        event_type ${schemaName}.notification_event_type_enum NOT NULL UNIQUE,
+        event_type ${quoteIdent(schemaName)}.notification_event_type_enum NOT NULL UNIQUE,
         title_template character varying(255) NOT NULL,
         message_template text NOT NULL,
         variables text[] DEFAULT '{}',
@@ -1223,10 +1238,10 @@ export class TenantsService implements OnModuleInit {
 
     // Crear índices para optimizar consultas
     await this.dataSource.query(`
-      CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_USER_ID ON ${schemaName}.notifications(user_id);
-      CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_EVENT_TYPE ON ${schemaName}.notifications(event_type);
-      CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_IS_READ ON ${schemaName}.notifications(is_read);
-      CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_CREATED_AT ON ${schemaName}.notifications(created_at DESC);
+      CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_USER_ID ON ${quoteIdent(schemaName)}.notifications(user_id);
+      CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_EVENT_TYPE ON ${quoteIdent(schemaName)}.notifications(event_type);
+      CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_IS_READ ON ${quoteIdent(schemaName)}.notifications(is_read);
+      CREATE INDEX IF NOT EXISTS IDX_NOTIFICATIONS_CREATED_AT ON ${quoteIdent(schemaName)}.notifications(created_at DESC);
     `);
   }
 
@@ -1234,7 +1249,7 @@ export class TenantsService implements OnModuleInit {
     // ENUM de application_status
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${schemaName}.application_status_enum AS ENUM (
+        CREATE TYPE ${quoteIdent(schemaName)}.application_status_enum AS ENUM (
           'BORRADOR', 'PENDIENTE', 'EN_REVISION', 'APROBADA', 'RECHAZADA', 'CANCELADA'
         );
       EXCEPTION
@@ -1244,11 +1259,11 @@ export class TenantsService implements OnModuleInit {
 
     // Tabla: rental_applications
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.rental_applications (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.rental_applications (
         id SERIAL PRIMARY KEY,
         property_id integer NOT NULL,
         applicant_id integer NOT NULL,
-        status ${schemaName}.application_status_enum NOT NULL DEFAULT 'PENDIENTE',
+        status ${quoteIdent(schemaName)}.application_status_enum NOT NULL DEFAULT 'PENDIENTE',
         personal_data jsonb,
         employment_data jsonb,
         rental_history jsonb,
@@ -1259,24 +1274,24 @@ export class TenantsService implements OnModuleInit {
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_rental_applications_property FOREIGN KEY (property_id)
-          REFERENCES ${schemaName}.properties(id),
+          REFERENCES ${quoteIdent(schemaName)}.properties(id),
         CONSTRAINT fk_rental_applications_applicant FOREIGN KEY (applicant_id)
-          REFERENCES ${schemaName}."user"(id)
+          REFERENCES ${quoteIdent(schemaName)}."user"(id)
       );
     `);
 
     // Crear índices
     await this.dataSource.query(`
-      CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_PROPERTY ON ${schemaName}.rental_applications(property_id);
-      CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_APPLICANT ON ${schemaName}.rental_applications(applicant_id);
-      CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_STATUS ON ${schemaName}.rental_applications(status);
+      CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_PROPERTY ON ${quoteIdent(schemaName)}.rental_applications(property_id);
+      CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_APPLICANT ON ${quoteIdent(schemaName)}.rental_applications(applicant_id);
+      CREATE INDEX IF NOT EXISTS IDX_APPLICATIONS_STATUS ON ${quoteIdent(schemaName)}.rental_applications(status);
     `);
   }
 
   private async createPaymentsTables(schemaName: string) {
     // Tabla: payments
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.payments (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.payments (
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER NOT NULL,
         contract_id INTEGER NOT NULL,
@@ -1300,7 +1315,7 @@ export class TenantsService implements OnModuleInit {
         admin_notes TEXT,
         rejection_reason TEXT,
         is_partial_payment BOOLEAN DEFAULT false,
-        parent_payment_id INTEGER REFERENCES ${schemaName}.payments(id) ON DELETE SET NULL,
+        parent_payment_id INTEGER REFERENCES ${quoteIdent(schemaName)}.payments(id) ON DELETE SET NULL,
         is_recurring BOOLEAN DEFAULT false,
         recurring_schedule_id INTEGER,
         is_autopay BOOLEAN DEFAULT false,
@@ -1311,15 +1326,15 @@ export class TenantsService implements OnModuleInit {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_payments_contract FOREIGN KEY (contract_id)
-          REFERENCES ${schemaName}.contracts(id),
+          REFERENCES ${quoteIdent(schemaName)}.contracts(id),
         CONSTRAINT fk_payments_property FOREIGN KEY (property_id)
-          REFERENCES ${schemaName}.properties(id)
+          REFERENCES ${quoteIdent(schemaName)}.properties(id)
       );
     `);
 
     // Tabla: payment_schedules
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.payment_schedules (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.payment_schedules (
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER NOT NULL,
         contract_id INTEGER NOT NULL,
@@ -1341,17 +1356,17 @@ export class TenantsService implements OnModuleInit {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_payment_schedules_contract FOREIGN KEY (contract_id)
-          REFERENCES ${schemaName}.contracts(id),
+          REFERENCES ${quoteIdent(schemaName)}.contracts(id),
         CONSTRAINT fk_payment_schedules_property FOREIGN KEY (property_id)
-          REFERENCES ${schemaName}.properties(id)
+          REFERENCES ${quoteIdent(schemaName)}.properties(id)
       );
     `);
 
     // Tabla: payment_refunds
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.payment_refunds (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.payment_refunds (
         id SERIAL PRIMARY KEY,
-        payment_id INTEGER NOT NULL REFERENCES ${schemaName}.payments(id) ON DELETE CASCADE,
+        payment_id INTEGER NOT NULL REFERENCES ${quoteIdent(schemaName)}.payments(id) ON DELETE CASCADE,
         amount DECIMAL(12, 2) NOT NULL CHECK (amount > 0),
         reason TEXT,
         refund_method VARCHAR(50),
@@ -1364,26 +1379,26 @@ export class TenantsService implements OnModuleInit {
 
     // Crear índices para optimizar consultas
     await this.dataSource.query(`
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_TENANT ON ${schemaName}.payments(tenant_id);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_CONTRACT ON ${schemaName}.payments(contract_id);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_PROPERTY ON ${schemaName}.payments(property_id);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_STATUS ON ${schemaName}.payments(status);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_DATE ON ${schemaName}.payments(payment_date);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_CREATED_AT ON ${schemaName}.payments(created_at);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_TYPE ON ${schemaName}.payments(payment_type);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_METHOD ON ${schemaName}.payments(payment_method);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_TENANT ON ${schemaName}.payment_schedules(tenant_id);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_CONTRACT ON ${schemaName}.payment_schedules(contract_id);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_ACTIVE ON ${schemaName}.payment_schedules(is_active);
-      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_REFUNDS_PAYMENT ON ${schemaName}.payment_refunds(payment_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_TENANT ON ${quoteIdent(schemaName)}.payments(tenant_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_CONTRACT ON ${quoteIdent(schemaName)}.payments(contract_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_PROPERTY ON ${quoteIdent(schemaName)}.payments(property_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_STATUS ON ${quoteIdent(schemaName)}.payments(status);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_DATE ON ${quoteIdent(schemaName)}.payments(payment_date);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_CREATED_AT ON ${quoteIdent(schemaName)}.payments(created_at);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_TYPE ON ${quoteIdent(schemaName)}.payments(payment_type);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENTS_METHOD ON ${quoteIdent(schemaName)}.payments(payment_method);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_TENANT ON ${quoteIdent(schemaName)}.payment_schedules(tenant_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_CONTRACT ON ${quoteIdent(schemaName)}.payment_schedules(contract_id);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SCHEDULES_ACTIVE ON ${quoteIdent(schemaName)}.payment_schedules(is_active);
+      CREATE INDEX IF NOT EXISTS IDX_PAYMENT_REFUNDS_PAYMENT ON ${quoteIdent(schemaName)}.payment_refunds(payment_id);
     `);
 
     // Tabla: payment_splits — distribución del pago entre propietarios
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.payment_splits (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.payment_splits (
         id               SERIAL PRIMARY KEY,
         payment_id       INTEGER NOT NULL
-          REFERENCES ${schemaName}.payments(id) ON DELETE CASCADE,
+          REFERENCES ${quoteIdent(schemaName)}.payments(id) ON DELETE CASCADE,
         rental_owner_id  INTEGER NOT NULL,
         owner_name       VARCHAR(255),
         ownership_pct    INTEGER NOT NULL,
@@ -1391,12 +1406,12 @@ export class TenantsService implements OnModuleInit {
         created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS IDX_PAYMENT_SPLITS_PAYMENT
-        ON ${schemaName}.payment_splits(payment_id);
+        ON ${quoteIdent(schemaName)}.payment_splits(payment_id);
     `);
 
     // Crear trigger para updated_at (si no existe)
     await this.dataSource.query(`
-      CREATE OR REPLACE FUNCTION ${schemaName}.update_updated_at_column()
+      CREATE OR REPLACE FUNCTION ${quoteIdent(schemaName)}.update_updated_at_column()
       RETURNS TRIGGER AS $$
       BEGIN
           NEW.updated_at = CURRENT_TIMESTAMP;
@@ -1406,34 +1421,34 @@ export class TenantsService implements OnModuleInit {
     `);
 
     await this.dataSource.query(`
-      DROP TRIGGER IF EXISTS update_payments_updated_at ON ${schemaName}.payments;
+      DROP TRIGGER IF EXISTS update_payments_updated_at ON ${quoteIdent(schemaName)}.payments;
       CREATE TRIGGER update_payments_updated_at
-          BEFORE UPDATE ON ${schemaName}.payments
+          BEFORE UPDATE ON ${quoteIdent(schemaName)}.payments
           FOR EACH ROW
-          EXECUTE FUNCTION ${schemaName}.update_updated_at_column();
+          EXECUTE FUNCTION ${quoteIdent(schemaName)}.update_updated_at_column();
     `);
 
     await this.dataSource.query(`
-      DROP TRIGGER IF EXISTS update_payment_schedules_updated_at ON ${schemaName}.payment_schedules;
+      DROP TRIGGER IF EXISTS update_payment_schedules_updated_at ON ${quoteIdent(schemaName)}.payment_schedules;
       CREATE TRIGGER update_payment_schedules_updated_at
-          BEFORE UPDATE ON ${schemaName}.payment_schedules
+          BEFORE UPDATE ON ${quoteIdent(schemaName)}.payment_schedules
           FOR EACH ROW
-          EXECUTE FUNCTION ${schemaName}.update_updated_at_column();
+          EXECUTE FUNCTION ${quoteIdent(schemaName)}.update_updated_at_column();
     `);
   }
 
   /** Agrega current_stage, owner_authorized y completed_at a maintenance_requests. */
   private async migrateMaintenanceStageFields(schemaName: string): Promise<void> {
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.maintenance_requests
+      `ALTER TABLE ${quoteIdent(schemaName)}.maintenance_requests
          ADD COLUMN IF NOT EXISTS current_stage VARCHAR(30) NOT NULL DEFAULT 'REPORTED'`,
     );
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.maintenance_requests
+      `ALTER TABLE ${quoteIdent(schemaName)}.maintenance_requests
          ADD COLUMN IF NOT EXISTS owner_authorized BOOLEAN NOT NULL DEFAULT FALSE`,
     );
     await this.dataSource.query(
-      `ALTER TABLE ${schemaName}.maintenance_requests
+      `ALTER TABLE ${quoteIdent(schemaName)}.maintenance_requests
          ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`,
     );
   }
@@ -1441,10 +1456,10 @@ export class TenantsService implements OnModuleInit {
   /** Crea la tabla maintenance_stage_history si no existe. */
   private async createMaintenanceStageHistoryTable(schemaName: string): Promise<void> {
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.maintenance_stage_history (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.maintenance_stage_history (
         id                   SERIAL PRIMARY KEY,
         request_id           INTEGER NOT NULL
-          REFERENCES ${schemaName}.maintenance_requests(id) ON DELETE CASCADE,
+          REFERENCES ${quoteIdent(schemaName)}.maintenance_requests(id) ON DELETE CASCADE,
         from_stage           VARCHAR(30),
         to_stage             VARCHAR(30) NOT NULL,
         changed_by_user_id   INTEGER NOT NULL,
@@ -1456,9 +1471,9 @@ export class TenantsService implements OnModuleInit {
 
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS idx_maintenance_stage_history_request_id
-        ON ${schemaName}.maintenance_stage_history(request_id);
+        ON ${quoteIdent(schemaName)}.maintenance_stage_history(request_id);
       CREATE INDEX IF NOT EXISTS idx_maintenance_stage_history_created_at
-        ON ${schemaName}.maintenance_stage_history(created_at DESC);
+        ON ${quoteIdent(schemaName)}.maintenance_stage_history(created_at DESC);
     `);
   }
 
@@ -1466,7 +1481,7 @@ export class TenantsService implements OnModuleInit {
     try {
       // Eliminar el schema de PostgreSQL (CASCADE elimina todas las tablas)
       await this.dataSource.query(
-        `DROP SCHEMA IF EXISTS ${tenant.schema_name} CASCADE`,
+        `DROP SCHEMA IF EXISTS ${quoteIdent(tenant.schema_name)} CASCADE`,
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

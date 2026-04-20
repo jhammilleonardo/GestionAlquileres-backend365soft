@@ -21,6 +21,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
 import { SplitPaymentService } from '../split-payment/split-payment.service';
+import { quoteIdent } from '../common/utils/sql-identifier';
 
 @Injectable()
 export class PaymentsService {
@@ -60,7 +61,7 @@ export class PaymentsService {
       // CRITICAL: Establecer el schema correcto del tenant
       if (tenantSlug) {
         const tenant = await this.tenantsService.findBySlug(tenantSlug);
-        await queryRunner.query(`SET search_path TO ${tenant.schema_name}`);
+        await queryRunner.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
       }
 
       // Si no se proporciona contractId, obtener el contrato activo del tenant
@@ -121,7 +122,7 @@ export class PaymentsService {
       try {
         const tenant = await this.tenantsService.findBySlug(tenantSlug!);
         const admins = await this.dataSource.query(
-          `SELECT id FROM ${tenant.schema_name}."user" WHERE role = 'ADMIN' AND is_active = true LIMIT 5`,
+          `SELECT id FROM ${quoteIdent(tenant.schema_name)}."user" WHERE role = 'ADMIN' AND is_active = true LIMIT 5`,
         );
         const adminIds = admins.map((a: { id: number }) => a.id);
         if (adminIds.length > 0) {
@@ -161,7 +162,7 @@ export class PaymentsService {
   ): Promise<Payment[]> {
     // Establecer el schema correcto del tenant
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
-    await this.dataSource.query(`SET search_path TO ${tenant.schema_name}`);
+    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
 
     const payments = await this.dataSource.query(
       `SELECT
@@ -197,7 +198,7 @@ export class PaymentsService {
   ): Promise<PaymentStats> {
     // Establecer el schema correcto del tenant
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
-    await this.dataSource.query(`SET search_path TO ${tenant.schema_name}`);
+    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
 
     const stats = await this.dataSource.query(
       `SELECT
@@ -390,7 +391,7 @@ export class PaymentsService {
     try {
       // Establecer el schema del tenant en esta conexión
       if (schemaName) {
-        await queryRunner.query(`SET search_path TO ${schemaName}, public`);
+        await queryRunner.query(`SET search_path TO ${quoteIdent(schemaName)}, public`);
       }
 
       // Verificar que el contrato existe y pertenece al tenant
@@ -691,7 +692,7 @@ export class PaymentsService {
   ): Promise<Payment> {
     // Usar nombre de tabla calificado para evitar depender de search_path
     const schema = schemaName || 'public';
-    const table = `${schema}.payments`;
+    const table = `${quoteIdent(schema)}.payments`;
 
     try {
       // Verificar que el pago existe
@@ -769,7 +770,7 @@ export class PaymentsService {
    */
   async deletePayment(id: number, schemaName?: string): Promise<void> {
     if (schemaName) {
-      await this.dataSource.query(`SET search_path TO ${schemaName}, public`);
+      await this.dataSource.query(`SET search_path TO ${quoteIdent(schemaName)}, public`);
     }
     const result = await this.dataSource.query(
       'DELETE FROM payments WHERE id = $1',
@@ -857,7 +858,7 @@ export class PaymentsService {
     schemaName: string,
   ): Promise<Payment> {
     const schema = schemaName;
-    const table = `${schema}.payments`;
+    const table = `${quoteIdent(schema)}.payments`;
 
     const rows = await this.dataSource.query(
       `SELECT * FROM ${table} WHERE id = $1`,
@@ -929,7 +930,7 @@ export class PaymentsService {
     schemaName: string,
   ): Promise<Payment> {
     const schema = schemaName;
-    const table = `${schema}.payments`;
+    const table = `${quoteIdent(schema)}.payments`;
 
     const rows = await this.dataSource.query(
       `SELECT * FROM ${table} WHERE id = $1`,
@@ -989,7 +990,7 @@ export class PaymentsService {
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
 
     const config = await this.dataSource.query(
-      `SELECT payment_methods FROM ${tenant.schema_name}.tenant_config LIMIT 1`,
+      `SELECT payment_methods FROM ${quoteIdent(tenant.schema_name)}.tenant_config LIMIT 1`,
     );
 
     if (!config || config.length === 0 || !config[0].payment_methods) {

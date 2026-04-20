@@ -4,6 +4,7 @@ import { IPaymentProcessor } from './processors/payment-processor.interface';
 import { ManualPaymentProcessor } from './processors/manual.processor';
 import { StripeProcessor } from './processors/stripe.processor';
 import { QRBoliviaProcessor } from './processors/qr-bolivia.processor';
+import { quoteIdent } from '../common/utils/sql-identifier';
 
 /** Métodos de pago que usan Stripe como procesador subyacente */
 const STRIPE_METHODS = new Set(['stripe', 'ach', 'paypal']);
@@ -72,7 +73,7 @@ export class PaymentProcessorFactory {
 
       const rows: { payment_methods: string[] | string }[] =
         await this.dataSource.query(
-          `SELECT payment_methods FROM ${schemaName}.tenant_config LIMIT 1`,
+          `SELECT payment_methods FROM ${quoteIdent(schemaName)}.tenant_config LIMIT 1`,
         );
 
       if (rows.length === 0) return [];

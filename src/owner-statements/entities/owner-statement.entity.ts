@@ -9,6 +9,11 @@ import {
 
 export type OwnerStatementStatus = 'pending' | 'transferred';
 
+const numericTransformer = {
+  to: (value: number) => value,
+  from: (value: string) => parseFloat(value),
+};
+
 @Entity('owner_statements')
 @Index(['rental_owner_id'])
 @Index(['property_id'])
@@ -33,16 +38,16 @@ export class OwnerStatement {
   @Column()
   period_year: number;
 
-  @Column('numeric', { precision: 12, scale: 2 })
+  @Column('numeric', { precision: 12, scale: 2, transformer: numericTransformer })
   gross_rent: number;
 
-  @Column('numeric', { precision: 12, scale: 2, default: 0 })
+  @Column('numeric', { precision: 12, scale: 2, default: 0, transformer: numericTransformer })
   maintenance_deduction: number;
 
-  @Column('numeric', { precision: 12, scale: 2 })
+  @Column('numeric', { precision: 12, scale: 2, transformer: numericTransformer })
   management_commission: number;
 
-  @Column('numeric', { precision: 12, scale: 2 })
+  @Column('numeric', { precision: 12, scale: 2, transformer: numericTransformer })
   net_amount: number;
 
   @Column({ length: 3, default: 'BOB' })
@@ -57,7 +62,7 @@ export class OwnerStatement {
   @Column({ type: 'timestamp', nullable: true })
   transferred_at: Date | null;
 
-  @CreateDateColumn()
+  @Column({ type: 'timestamptz', default: () => 'NOW()' })
   generated_at: Date;
 
   @CreateDateColumn()

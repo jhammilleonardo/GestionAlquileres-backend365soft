@@ -12,6 +12,7 @@ import { firstValueFrom } from 'rxjs';
 import { randomBytes } from 'crypto';
 import { GenerateQrDto, VerifyQrDto, QrCallbackDto } from './dto';
 import { TenantsService } from '../../tenants/tenants.service';
+import { quoteIdent } from '../../common/utils/sql-identifier';
 
 /**
  * Estados del QR (equivalente al modelo Qr de Laravel)
@@ -148,7 +149,7 @@ export class QrPaymentService {
     if (this.initializedSchemas.has(schemaName)) return;
 
     await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS ${schemaName}.qr_payments (
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.qr_payments (
         id           SERIAL PRIMARY KEY,
         alias        VARCHAR(80)    NOT NULL UNIQUE,
         estado       VARCHAR(20)    NOT NULL DEFAULT '${QR_ESTADO.PENDIENTE}',
@@ -166,16 +167,16 @@ export class QrPaymentService {
       );
     `);
     await this.dataSource.query(`
-      ALTER TABLE ${schemaName}.qr_payments ADD COLUMN IF NOT EXISTS currency VARCHAR(10) NOT NULL DEFAULT 'BOB';
-      ALTER TABLE ${schemaName}.qr_payments ADD COLUMN IF NOT EXISTS payment_type VARCHAR(30) NOT NULL DEFAULT 'RENT';
+      ALTER TABLE ${quoteIdent(schemaName)}.qr_payments ADD COLUMN IF NOT EXISTS currency VARCHAR(10) NOT NULL DEFAULT 'BOB';
+      ALTER TABLE ${quoteIdent(schemaName)}.qr_payments ADD COLUMN IF NOT EXISTS payment_type VARCHAR(30) NOT NULL DEFAULT 'RENT';
     `);
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS IDX_QR_PAYMENTS_ALIAS
-        ON ${schemaName}.qr_payments(alias);
+        ON ${quoteIdent(schemaName)}.qr_payments(alias);
       CREATE INDEX IF NOT EXISTS IDX_QR_PAYMENTS_TENANT
-        ON ${schemaName}.qr_payments(tenant_id);
+        ON ${quoteIdent(schemaName)}.qr_payments(tenant_id);
       CREATE INDEX IF NOT EXISTS IDX_QR_PAYMENTS_ESTADO
-        ON ${schemaName}.qr_payments(estado);
+        ON ${quoteIdent(schemaName)}.qr_payments(estado);
     `);
 
     this.initializedSchemas.add(schemaName);
@@ -194,7 +195,7 @@ export class QrPaymentService {
 
     // Obtener datos del tenant/inquilino
     const tenantRows = await this.dataSource.query(
-      `SELECT id, name FROM ${schemaName}."user" WHERE id = $1 LIMIT 1`,
+      `SELECT id, name FROM ${quoteIdent(schemaName)}."user" WHERE id = $1 LIMIT 1`,
       [dto.tenant_id],
     );
 
@@ -211,7 +212,7 @@ export class QrPaymentService {
     let detalleGlosa = 'Alquiler';
     if (dto.contract_id) {
       const contrato = await this.dataSource.query(
-        `SELECT id FROM ${schemaName}.contracts WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        `SELECT id FROM ${quoteIdent(schemaName)}.contracts WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
         [dto.contract_id, dto.tenant_id],
       );
       if (contrato && contrato.length > 0) {
@@ -294,7 +295,7 @@ export class QrPaymentService {
 
     // Guardar en BD
     const rows = await this.dataSource.query(
-      `INSERT INTO ${schemaName}.qr_payments
+      `INSERT INTO ${quoteIdent(schemaName)}.qr_payments
          (alias, estado, tenant_id, contract_id, monto, currency, payment_type, detalle_glosa, imagen_qr, fecha_vencimiento, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
        RETURNING *`,
@@ -334,7 +335,7 @@ export class QrPaymentService {
     let qr: any;
     if (dto.qr_id) {
       const rows = await this.dataSource.query(
-        `SELECT * FROM ${schemaName}.qr_payments WHERE id = $1 LIMIT 1`,
+        `SELECT * FROM ${quoteIdent(schemaName)}.qr_payments WHERE id = $1 LIMIT 1`,
         [dto.qr_id],
       );
       if (!rows || rows.length === 0) {
@@ -343,7 +344,7 @@ export class QrPaymentService {
       qr = rows[0];
     } else {
       const rows = await this.dataSource.query(
-        `SELECT * FROM ${schemaName}.qr_payments WHERE alias = $1 LIMIT 1`,
+        `SELECT * FROM ${quoteIdent(schemaName)}.qr_payments WHERE alias = $1 LIMIT 1`,
         [dto.alias],
       );
       if (!rows || rows.length === 0) {
@@ -399,7 +400,7 @@ export class QrPaymentService {
 
     // Actualizar estado en BD
     await this.dataSource.query(
-      `UPDATE ${schemaName}.qr_payments
+      `UPDATE ${quoteIdent(schemaName)}.qr_payments
        SET estado = $1, updated_at = NOW()
        WHERE id = $2`,
       [estadoActual, qr.id],
@@ -407,7 +408,7 @@ export class QrPaymentService {
 
     // Refrescar registro
     const [qrActualizado] = await this.dataSource.query(
-      `SELECT * FROM ${schemaName}.qr_payments WHERE id = $1`,
+      `SELECT * FROM ${quoteIdent(schemaName)}.qr_payments WHERE id = $1`,
       [qr.id],
     );
 
@@ -436,7 +437,7 @@ export class QrPaymentService {
     await queryRunner.startTransaction();
 
     try {
-      await queryRunner.query(`SET search_path TO ${schemaName}`);
+      await queryRunner.query(`SET search_path TO ${quoteIdent(schemaName)}`);
 
       let contractId: number = qr.contract_id;
       let propertyId: number | null = null;
@@ -535,7 +536,7 @@ export class QrPaymentService {
     await this.ensureQrTable(schemaName);
 
     const rows = await this.dataSource.query(
-      `SELECT * FROM ${schemaName}.qr_payments WHERE alias = $1 LIMIT 1`,
+      `SELECT * FROM ${quoteIdent(schemaName)}.qr_payments WHERE alias = $1 LIMIT 1`,
       [dto.alias],
     );
 
@@ -578,7 +579,7 @@ export class QrPaymentService {
     await this.ensureQrTable(schemaName);
 
     const rows = await this.dataSource.query(
-      `SELECT * FROM ${schemaName}.qr_payments WHERE id = $1 LIMIT 1`,
+      `SELECT * FROM ${quoteIdent(schemaName)}.qr_payments WHERE id = $1 LIMIT 1`,
       [qrId],
     );
 
@@ -600,12 +601,12 @@ export class QrPaymentService {
     }
 
     await this.dataSource.query(
-      `UPDATE ${schemaName}.qr_payments SET estado = $1, updated_at = NOW() WHERE id = $2`,
+      `UPDATE ${quoteIdent(schemaName)}.qr_payments SET estado = $1, updated_at = NOW() WHERE id = $2`,
       [QR_ESTADO.CANCELADO, qrId],
     );
 
     const [updated] = await this.dataSource.query(
-      `SELECT * FROM ${schemaName}.qr_payments WHERE id = $1`,
+      `SELECT * FROM ${quoteIdent(schemaName)}.qr_payments WHERE id = $1`,
       [qrId],
     );
     return this._mapQrRecord(updated);
@@ -620,13 +621,13 @@ export class QrPaymentService {
 
     if (tenantId) {
       return this.dataSource.query(
-        `SELECT * FROM ${schemaName}.qr_payments WHERE tenant_id = $1 ORDER BY created_at DESC`,
+        `SELECT * FROM ${quoteIdent(schemaName)}.qr_payments WHERE tenant_id = $1 ORDER BY created_at DESC`,
         [tenantId],
       );
     }
 
     return this.dataSource.query(
-      `SELECT * FROM ${schemaName}.qr_payments ORDER BY created_at DESC`,
+      `SELECT * FROM ${quoteIdent(schemaName)}.qr_payments ORDER BY created_at DESC`,
     );
   }
 
@@ -638,7 +639,7 @@ export class QrPaymentService {
     await this.ensureQrTable(schemaName);
 
     const rows = await this.dataSource.query(
-      `SELECT * FROM ${schemaName}.qr_payments WHERE tenant_id = $1 ORDER BY created_at DESC`,
+      `SELECT * FROM ${quoteIdent(schemaName)}.qr_payments WHERE tenant_id = $1 ORDER BY created_at DESC`,
       [tenantId],
     );
     return rows.map((r: any) => this._mapQrRecord(r));

@@ -6,6 +6,7 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import { BCRYPT_SALT_ROUNDS } from '../common/constants/security.constants';
 import {
   CreateEmployeeDto,
   ModulePermissionsDto,
@@ -13,6 +14,7 @@ import {
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
+import { quoteIdent } from '../common/utils/sql-identifier';
 
 @Injectable()
 export class EmployeesService {
@@ -49,8 +51,8 @@ export class EmployeesService {
            ) FILTER (WHERE ep.id IS NOT NULL),
            '[]'::json
          ) AS permissions
-       FROM "${schemaName}"."user" u
-       LEFT JOIN "${schemaName}".employee_permissions ep ON ep.user_id = u.id
+       FROM ${quoteIdent(schemaName)}."user" u
+       LEFT JOIN ${quoteIdent(schemaName)}.employee_permissions ep ON ep.user_id = u.id
        WHERE u.role = 'EMPLEADO'
        GROUP BY u.id
        ORDER BY u.created_at DESC`,
@@ -72,18 +74,18 @@ export class EmployeesService {
 
     // Verificar que el email no esté ya en uso
     const existing = await this.dataSource.query(
-      `SELECT id FROM "${schemaName}"."user" WHERE email = $1`,
+      `SELECT id FROM ${quoteIdent(schemaName)}."user" WHERE email = $1`,
       [email],
     );
     if (existing.length > 0) {
       throw new ConflictException('El email ya está registrado en este tenant');
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
     // Crear el usuario con rol EMPLEADO
     const result = await this.dataSource.query(
-      `INSERT INTO "${schemaName}"."user" (email, password, name, phone, role, is_active, created_at, updated_at)
+      `INSERT INTO ${quoteIdent(schemaName)}."user" (email, password, name, phone, role, is_active, created_at, updated_at)
        VALUES ($1, $2, $3, $4, 'EMPLEADO', true, NOW(), NOW())
        RETURNING id, email, name, phone, role, is_active, created_at, updated_at`,
       [email, hashedPassword, name, phone || null],
@@ -163,8 +165,8 @@ export class EmployeesService {
            ) FILTER (WHERE ep.id IS NOT NULL),
            '[]'::json
          ) AS permissions
-       FROM "${schemaName}"."user" u
-       LEFT JOIN "${schemaName}".employee_permissions ep ON ep.user_id = u.id
+       FROM ${quoteIdent(schemaName)}."user" u
+       LEFT JOIN ${quoteIdent(schemaName)}.employee_permissions ep ON ep.user_id = u.id
        WHERE u.id = $1 AND u.role = 'EMPLEADO'
        GROUP BY u.id`,
       [id],
@@ -214,7 +216,7 @@ export class EmployeesService {
     params.push(id);
 
     await this.dataSource.query(
-      `UPDATE "${schemaName}"."user"
+      `UPDATE ${quoteIdent(schemaName)}."user"
        SET ${setClauses.join(', ')}
        WHERE id = $${paramIndex}`,
       params,
@@ -243,7 +245,7 @@ export class EmployeesService {
     await this.findOne(schemaName, id);
 
     await this.dataSource.query(
-      `UPDATE "${schemaName}"."user"
+      `UPDATE ${quoteIdent(schemaName)}."user"
        SET is_active = false, updated_at = NOW()
        WHERE id = $1`,
       [id],
@@ -278,7 +280,7 @@ export class EmployeesService {
 
     if (user.role === 'EMPLEADO') {
       const rows: Array<{ module: string }> = await this.dataSource.query(
-        `SELECT module FROM "${schemaName}".employee_permissions
+        `SELECT module FROM ${quoteIdent(schemaName)}.employee_permissions
          WHERE user_id = $1 AND can_view = true`,
         [user.userId],
       );
@@ -298,7 +300,7 @@ export class EmployeesService {
   ): Promise<void> {
     for (const perm of permissions) {
       await this.dataSource.query(
-        `INSERT INTO "${schemaName}".employee_permissions
+        `INSERT INTO ${quoteIdent(schemaName)}.employee_permissions
            (user_id, module, can_view, can_create, can_edit, can_delete, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
          ON CONFLICT (user_id, module)

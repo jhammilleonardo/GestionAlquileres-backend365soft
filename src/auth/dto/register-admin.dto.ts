@@ -1,10 +1,27 @@
-import { IsEmail, IsString, MinLength, IsOptional, IsEnum } from 'class-validator';
+import {
+  IsEmail,
+  IsString,
+  MinLength,
+  IsOptional,
+  IsEnum,
+  Matches,
+} from 'class-validator';
 import { TenantCountry } from '../../tenants/dto/create-tenant.dto';
+import { TENANT_SLUG_REGEX } from '../../common/utils/tenant-slug';
+import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_STRENGTH_REGEX,
+  PASSWORD_STRENGTH_MESSAGE,
+} from '../../common/constants/security.constants';
 
 export class RegisterAdminDto {
   // Datos del Tenant
   @IsOptional()
   @IsString()
+  @Matches(TENANT_SLUG_REGEX, {
+    message:
+      'El slug debe empezar con letra minúscula y contener sólo letras minúsculas, dígitos y guiones (3-50 caracteres).',
+  })
   slug?: string; // Opcional: si no se proporciona, se genera a partir de company_name
 
   @IsString()
@@ -30,7 +47,8 @@ export class RegisterAdminDto {
   email: string;
 
   @IsString()
-  @MinLength(6)
+  @MinLength(PASSWORD_MIN_LENGTH)
+  @Matches(PASSWORD_STRENGTH_REGEX, { message: PASSWORD_STRENGTH_MESSAGE })
   password: string;
 
   @IsOptional()

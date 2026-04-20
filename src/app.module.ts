@@ -24,6 +24,8 @@ import { RentalOwnersModule } from './rental-owners/rental-owners.module';
 import { OwnerStatementsModule } from './owner-statements/owner-statements.module';
 import { BlacklistModule } from './blacklist/blacklist.module';
 import { DevSeedModule } from './common/seed/dev-seed.module';
+import { StorageModule } from './common/storage/storage.module';
+import { TenantModule } from './common/tenant/tenant.module';
 
 @Module({
   imports: [
@@ -91,6 +93,8 @@ import { DevSeedModule } from './common/seed/dev-seed.module';
     OwnerStatementsModule,
     BlacklistModule,
     DevSeedModule,
+    StorageModule,
+    TenantModule,
   ],
   controllers: [AppController],
   providers: [
@@ -110,6 +114,8 @@ export class AppModule {
         // Rutas de health check y endpoints públicos sin tenant
         { path: 'health', method: RequestMethod.GET },
         { path: 'auth/register-admin', method: RequestMethod.POST }, // Crear tenant + admin no requiere tenant context
+        // /storage/* se sirve por StorageController con autorización propia
+        { path: 'storage/(.*)', method: RequestMethod.ALL },
         // NOTA: auth/:slug/login y auth/:slug/register NO se excluyen porque necesitan detectar el tenant
       )
       .forRoutes('*');

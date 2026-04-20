@@ -36,7 +36,6 @@ export class DevSeedService implements OnModuleInit {
   }
 
   private async seedDevTenant() {
-    // Verificar si el tenant demo ya existe — evitar duplicados
     const existing: { id: number }[] = await this.dataSource.query(
       `SELECT id FROM public.tenant WHERE slug = 'demo' LIMIT 1`,
     );
@@ -46,6 +45,9 @@ export class DevSeedService implements OnModuleInit {
       return;
     }
 
+    const seedEmail = process.env.DEV_SEED_EMAIL ?? 'admin@365soft.com';
+    const seedPassword = process.env.DEV_SEED_PASSWORD ?? 'Admin365!';
+
     this.logger.log('Dev seed: creando tenant "demo" con admin inicial...');
 
     await this.authService.registerAdmin({
@@ -53,16 +55,16 @@ export class DevSeedService implements OnModuleInit {
       company_name: '365Soft Demo',
       country: TenantCountry.BO,
       name: 'Admin Demo',
-      email: 'admin@365soft.com',
-      password: 'Admin365!',
+      email: seedEmail,
+      password: seedPassword,
       currency: 'BOB',
       locale: 'es-BO',
     });
 
     this.logger.log('✔ Dev seed completado.');
     this.logger.log('  → Slug:     demo');
-    this.logger.log('  → Email:    admin@365soft.com');
-    this.logger.log('  → Password: Admin365!');
+    this.logger.log(`  → Email:    ${seedEmail}`);
+    this.logger.log('  → Password: (ver DEV_SEED_PASSWORD en .env)');
     this.logger.log('  → Login:    POST /auth/demo/login');
   }
 }

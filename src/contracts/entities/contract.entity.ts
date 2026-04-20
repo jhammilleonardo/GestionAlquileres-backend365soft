@@ -9,6 +9,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Property } from '../../properties/entities/property.entity';
+import { decimalTransformer } from '../../common/utils/decimal.transformer';
 import { ContractStatus } from '../enums/contract-status.enum';
 import { MaintenanceRequest } from '../../maintenance/entities/maintenance-request.entity';
 import { RentalApplication } from '../../applications/entities/application.entity';
@@ -78,7 +79,7 @@ export class Contract {
   actual_termination_date: Date;
 
   // Términos financieros
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: decimalTransformer })
   monthly_rent: number;
 
   @Column({ default: 'BOB' })
@@ -87,13 +88,13 @@ export class Contract {
   @Column({ type: 'int', default: 5 })
   payment_day: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, transformer: decimalTransformer })
   deposit_amount: number;
 
   @Column({ nullable: true })
   payment_method: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, transformer: decimalTransformer })
   late_fee_percentage: number;
 
   @Column({ type: 'int', default: 0 })
@@ -154,7 +155,7 @@ export class Contract {
   @Column({ type: 'int', default: 30 })
   renewal_notice_days: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, transformer: decimalTransformer })
   auto_increase_percentage: number;
 
   @Column({ nullable: true })
@@ -171,10 +172,10 @@ export class Contract {
   @Column({ nullable: true })
   termination_reason: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
   applied_penalty: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
   returned_deposit: number;
 
   @Column({ nullable: true })

@@ -16,6 +16,7 @@ import {
 // Módulos que TECNICO puede acceder (hardcodeado por requerimiento del negocio)
 const TECNICO_ALLOWED: Record<string, PermissionAction[]> = {
   maintenance: ['view', 'create', 'edit'],
+  inspections: ['view', 'create', 'edit'],
 };
 
 @Injectable()

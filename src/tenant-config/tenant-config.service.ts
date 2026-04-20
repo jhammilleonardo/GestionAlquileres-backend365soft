@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
+import { quoteIdent } from '../common/utils/sql-identifier';
 
 @Injectable()
 export class TenantConfigService {
@@ -10,9 +11,9 @@ export class TenantConfigService {
     private dataSource: DataSource,
   ) {}
 
-  async getConfig() {
+  async getConfig(schemaName: string) {
     const rows = await this.dataSource.query(
-      'SELECT * FROM tenant_config LIMIT 1',
+      `SELECT * FROM ${quoteIdent(schemaName)}.tenant_config LIMIT 1`,
     );
 
     if (!rows || rows.length === 0) {
@@ -22,8 +23,8 @@ export class TenantConfigService {
     return rows[0];
   }
 
-  async updateConfig(dto: UpdateTenantConfigDto) {
-    const config = await this.getConfig();
+  async updateConfig(schemaName: string, dto: UpdateTenantConfigDto) {
+    const config = await this.getConfig(schemaName);
 
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -82,18 +83,18 @@ export class TenantConfigService {
     values.push(config.id);
 
     const rows = await this.dataSource.query(
-      `UPDATE tenant_config SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      `UPDATE ${quoteIdent(schemaName)}.tenant_config SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
       values,
     );
 
     return rows[0];
   }
 
-  async markSetupComplete() {
-    const config = await this.getConfig();
+  async markSetupComplete(schemaName: string) {
+    const config = await this.getConfig(schemaName);
 
     const rows = await this.dataSource.query(
-      'UPDATE tenant_config SET setup_completed = true, updated_at = now() WHERE id = $1 RETURNING *',
+      `UPDATE ${quoteIdent(schemaName)}.tenant_config SET setup_completed = true, updated_at = now() WHERE id = $1 RETURNING *`,
       [config.id],
     );
 

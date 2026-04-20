@@ -26,6 +26,7 @@ import { BlacklistModule } from './blacklist/blacklist.module';
 import { DevSeedModule } from './common/seed/dev-seed.module';
 import { StorageModule } from './common/storage/storage.module';
 import { TenantModule } from './common/tenant/tenant.module';
+import { InspectionsModule } from './inspections/inspections.module';
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { TenantModule } from './common/tenant/tenant.module';
     DevSeedModule,
     StorageModule,
     TenantModule,
+    InspectionsModule,
   ],
   controllers: [AppController],
   providers: [

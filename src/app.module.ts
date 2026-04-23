@@ -26,12 +26,9 @@ import { BlacklistModule } from './blacklist/blacklist.module';
 import { DevSeedModule } from './common/seed/dev-seed.module';
 import { StorageModule } from './common/storage/storage.module';
 import { TenantModule } from './common/tenant/tenant.module';
-<<<<<<< Updated upstream
-=======
 import { InspectionsModule } from './inspections/inspections.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { OwnerPortalModule } from './owner-portal/owner-portal.module';
->>>>>>> Stashed changes
 
 @Module({
   imports: [
@@ -73,6 +70,7 @@ import { OwnerPortalModule } from './owner-portal/owner-portal.module';
           __dirname + '/units/entities/*.entity{.ts,.js}',
           __dirname + '/owner-statements/entities/*.entity{.ts,.js}',
           __dirname + '/blacklist/entities/*.entity{.ts,.js}',
+          __dirname + '/expenses/entities/*.entity{.ts,.js}',
         ],
         // Sincronizar automáticamente en desarrollo - crea/actualiza tablas desde las entidades
         synchronize: configService.app.nodeEnv === 'development',
@@ -101,12 +99,9 @@ import { OwnerPortalModule } from './owner-portal/owner-portal.module';
     DevSeedModule,
     StorageModule,
     TenantModule,
-<<<<<<< Updated upstream
-=======
     InspectionsModule,
     ExpensesModule,
     OwnerPortalModule,
->>>>>>> Stashed changes
   ],
   controllers: [AppController],
   providers: [

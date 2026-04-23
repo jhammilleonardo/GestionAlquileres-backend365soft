@@ -281,8 +281,25 @@ export class OwnerStatementsService {
       paymentCount: number;
     }
   ): Promise<OwnerStatementResponseDto> {
+    // 1. Obtener el rango de fechas del período (mes completo)
+    const startDate = new Date(paymentData.periodYear, paymentData.periodMonth - 1, 1);
+    const endDate = new Date(paymentData.periodYear, paymentData.periodMonth, 0); // Último día del mes
+
+    // 2. Consultar gastos automáticos desde la tabla expenses
+    // Nota: Usamos query directo para evitar dependencias circulares con ExpensesService
+    const expensesResult = await this.dataSource.query(
+      `SELECT SUM(amount) as total FROM expenses 
+       WHERE property_id = $1 
+       AND date BETWEEN $2 AND $3`,
+      [paymentData.propertyId, startDate, endDate]
+    );
+
+    const automaticExpenses = parseFloat(expensesResult[0]?.total || '0');
+
+    // 3. Calcular comisión y monto neto
+    const maintenanceDeduction = automaticExpenses;
     const managementCommission = (paymentData.grossRent * paymentData.commissionPercentage) / 100;
-    const netAmount = paymentData.grossRent - paymentData.maintenanceDeduction - managementCommission;
+    const netAmount = paymentData.grossRent - maintenanceDeduction - managementCommission;
 
     const dto: CreateOwnerStatementDto = {
       rental_owner_id: paymentData.rentalOwnerId,
@@ -290,7 +307,7 @@ export class OwnerStatementsService {
       period_month: paymentData.month,
       period_year: paymentData.year,
       gross_rent: paymentData.grossRent,
-      maintenance_deduction: paymentData.maintenanceDeduction,
+      maintenance_deduction: maintenanceDeduction,
       management_commission: managementCommission,
       net_amount: netAmount,
       currency: paymentData.currency,

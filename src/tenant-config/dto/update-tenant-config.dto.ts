@@ -112,4 +112,10 @@ export class UpdateTenantConfigDto {
   @Min(0)
   @Max(100)
   late_fee_percentage?: number;
+
+  @ApiPropertyOptional({ example: ['Jardinería', 'Reparaciones Menores'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  custom_expense_categories?: string[];
 }

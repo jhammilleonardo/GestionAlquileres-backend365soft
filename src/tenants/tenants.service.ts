@@ -51,24 +51,6 @@ export class TenantsService implements OnModuleInit {
 
     for (const { schema_name } of rows) {
       this.logger.log(`Migrating schema: ${schema_name}`);
-<<<<<<< Updated upstream
-      try {
-        await this.migratePropertyColumns(schema_name);
-        await this.migrateImagesToJson(schema_name);
-        await this.createPaymentsTables(schema_name);
-        await this.migrateContractsApplicationId(schema_name);
-        await this.migrateEmployeeTables(schema_name);
-        await this.createTenantConfigTable(schema_name);
-        await this.createPropertyLeadsTable(schema_name);
-        await this.createUnitsTables(schema_name);
-        await this.migrateContractsUnitId(schema_name);
-        await this.migrateRentalOwnersBankFields(schema_name);
-        await this.migrateApplicationsScreeningFields(schema_name);
-        await this.createScreeningChecklistTable(schema_name);
-        await this.migrateMaintenanceStageFields(schema_name);
-        await this.createMaintenanceStageHistoryTable(schema_name);
-        await this.migrateOwnerStatementsFields(schema_name);
-=======
       let stepsFailed = 0;
 
       const steps: Array<[string, () => Promise<void>]> = [
@@ -103,13 +85,9 @@ export class TenantsService implements OnModuleInit {
       }
 
       if (stepsFailed === 0) {
->>>>>>> Stashed changes
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `Failed to migrate schema ${schema_name}: ${message}`,
-        );
+      } else {
+        this.logger.warn(`Schema ${schema_name} migrated with ${stepsFailed} step(s) skipped.`);
       }
     }
 
@@ -177,6 +155,15 @@ export class TenantsService implements OnModuleInit {
 
   /** Agrega la columna application_id a la tabla contracts si no existe. */
   private async migrateContractsApplicationId(schemaName: string) {
+    const [tableExists] = await this.dataSource.query<{ exists: boolean }[]>(
+      `SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = $1 AND table_name = 'rental_applications'
+      )`,
+      [schemaName],
+    );
+    if (!tableExists?.exists) return;
+
     await this.dataSource.query(
       `ALTER TABLE ${quoteIdent(schemaName)}.contracts ADD COLUMN IF NOT EXISTS application_id INTEGER REFERENCES ${quoteIdent(schemaName)}.rental_applications(id) ON DELETE SET NULL`,
     );
@@ -545,6 +532,7 @@ export class TenantsService implements OnModuleInit {
         commission_percentage NUMERIC(5,2) NOT NULL DEFAULT 0,
         grace_days_late_fee INTEGER NOT NULL DEFAULT 0,
         late_fee_percentage NUMERIC(5,2) NOT NULL DEFAULT 0,
+        custom_expense_categories JSONB NOT NULL DEFAULT '[]',
         setup_completed BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now()
@@ -756,10 +744,16 @@ export class TenantsService implements OnModuleInit {
       // 15. Campos bancarios en rental_owners ya incluidos en createPropertiesTables
       // (la tabla se crea con esos campos desde el inicio)
 
-      // 16. Insertar datos iniciales (seed data)
+      // 15. Crear tablas de Inspecciones
+      await this.createInspectionsTables(tenant.schema_name);
+
+      // 16. Crear tablas de Gastos (Expenses)
+      await this.createExpensesTables(tenant.schema_name);
+
+      // 17. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
-      // 16. Otorgar permisos al usuario de la aplicación
+      // 17. Otorgar permisos al usuario de la aplicación
       await this.grantSchemaPermissions(tenant.schema_name);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1525,6 +1519,125 @@ export class TenantsService implements OnModuleInit {
       CREATE INDEX IF NOT EXISTS idx_maintenance_stage_history_created_at
         ON ${quoteIdent(schemaName)}.maintenance_stage_history(created_at DESC);
     `);
+  }
+
+  private async createInspectionsTables(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.inspections (
+        id                  SERIAL PRIMARY KEY,
+        property_id         INTEGER NOT NULL
+          REFERENCES ${q}.properties(id) ON DELETE CASCADE,
+        unit_id             INTEGER
+          REFERENCES ${q}.units(id) ON DELETE SET NULL,
+        contract_id         INTEGER
+          REFERENCES ${q}.contracts(id) ON DELETE SET NULL,
+        type                VARCHAR(20) NOT NULL,
+        scheduled_date      DATE NOT NULL,
+        completed_date      DATE,
+        inspector_user_id   INTEGER
+          REFERENCES ${q}."user"(id) ON DELETE SET NULL,
+        status              VARCHAR(20) NOT NULL DEFAULT 'scheduled',
+        notes               TEXT,
+        created_by          INTEGER NOT NULL,
+        created_at          TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at          TIMESTAMP NOT NULL DEFAULT now(),
+        CONSTRAINT chk_inspections_type
+          CHECK (type IN ('move_in', 'move_out', 'periodic')),
+        CONSTRAINT chk_inspections_status
+          CHECK (status IN ('scheduled', 'in_progress', 'completed'))
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.inspection_items (
+        id            SERIAL PRIMARY KEY,
+        inspection_id INTEGER NOT NULL
+          REFERENCES ${q}.inspections(id) ON DELETE CASCADE,
+        area          VARCHAR(30) NOT NULL,
+        item_name     VARCHAR(200) NOT NULL,
+        condition     VARCHAR(20) NOT NULL DEFAULT 'good',
+        notes         TEXT,
+        photos        JSONB NOT NULL DEFAULT '[]',
+        created_at    TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at    TIMESTAMP NOT NULL DEFAULT now(),
+        CONSTRAINT chk_inspection_items_area
+          CHECK (area IN ('living_room', 'kitchen', 'bathroom', 'bedroom', 'exterior', 'other')),
+        CONSTRAINT chk_inspection_items_condition
+          CHECK (condition IN ('good', 'fair', 'poor', 'damaged'))
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_inspections_property_id
+        ON ${q}.inspections(property_id);
+      CREATE INDEX IF NOT EXISTS idx_inspections_contract_id
+        ON ${q}.inspections(contract_id);
+      CREATE INDEX IF NOT EXISTS idx_inspections_status
+        ON ${q}.inspections(status);
+      CREATE INDEX IF NOT EXISTS idx_inspections_type
+        ON ${q}.inspections(type);
+      CREATE INDEX IF NOT EXISTS idx_inspections_scheduled_date
+        ON ${q}.inspections(scheduled_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_inspection_items_inspection_id
+        ON ${q}.inspection_items(inspection_id);
+    `);
+  }
+
+  private async createExpensesTables(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.expenses (
+        id                     SERIAL PRIMARY KEY,
+        property_id            INTEGER NOT NULL REFERENCES ${q}.properties(id) ON DELETE CASCADE,
+        unit_id                INTEGER REFERENCES ${q}.units(id) ON DELETE SET NULL,
+        category               VARCHAR(50) NOT NULL,
+        amount                 DECIMAL(12, 2) NOT NULL CHECK (amount > 0),
+        currency               VARCHAR(3) NOT NULL DEFAULT 'USD',
+        description            TEXT,
+        date                   DATE NOT NULL,
+        vendor_id              INTEGER,
+        vendor_name            VARCHAR(255),
+        receipt_url            VARCHAR(255),
+        is_recurring           BOOLEAN DEFAULT FALSE,
+        recurrence_interval    VARCHAR(20),
+        recurrence_start_date  DATE,
+        recurrence_end_date    DATE,
+        recurring_expense_id   INTEGER,
+        notes                  TEXT,
+        created_by             INTEGER,
+        updated_by             INTEGER,
+        created_at             TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at             TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_expenses_property_id ON ${q}.expenses(property_id);
+      CREATE INDEX IF NOT EXISTS idx_expenses_unit_id ON ${q}.expenses(unit_id);
+      CREATE INDEX IF NOT EXISTS idx_expenses_date ON ${q}.expenses(date);
+      CREATE INDEX IF NOT EXISTS idx_expenses_category ON ${q}.expenses(category);
+    `);
+  }
+
+  private async migrateExpensesTable(schemaName: string): Promise<void> {
+    await this.createExpensesTables(schemaName);
+    
+    // Si ya existía la tabla con tenant_id, eliminarlo (limpieza post-refactor)
+    try {
+      await this.dataSource.query(
+        `ALTER TABLE ${quoteIdent(schemaName)}.expenses DROP COLUMN IF EXISTS tenant_id`,
+      );
+    } catch (e) {
+      // Ignorar si falla
+    }
+    
+    // Asegurar que tenant_config tenga la columna custom_expense_categories
+    await this.dataSource.query(
+      `ALTER TABLE ${quoteIdent(schemaName)}.tenant_config ADD COLUMN IF NOT EXISTS custom_expense_categories JSONB NOT NULL DEFAULT '[]'`,
+    );
   }
 
   private async dropTenantSchema(tenant: Tenant) {

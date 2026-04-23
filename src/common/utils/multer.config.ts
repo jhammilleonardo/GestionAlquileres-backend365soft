@@ -294,3 +294,47 @@ export const stagePhotoMulterConfig = {
     fileSize: 10 * 1024 * 1024, // 10MB max
   },
 };
+
+// Configuración de Multer para fotos de inspecciones
+export const inspectionPhotoStorage = diskStorage({
+  destination: (req: Request, file: Express.Multer.File, cb) => {
+    const tenantSlug =
+      (req as any).tenant?.slug || (req.params as any).slug || 'temp';
+    const inspectionId = (req.params as any).id || 'temp';
+
+    const uploadPath = path.join(
+      process.cwd(),
+      'storage',
+      'inspections',
+      tenantSlug,
+      inspectionId,
+    );
+    ensureDirExists(uploadPath);
+    cb(null, uploadPath);
+  },
+  filename: (_req: Request, file: Express.Multer.File, cb) => {
+    cb(null, generateSecureFilename(file.originalname));
+  },
+});
+
+export const inspectionPhotoFileFilter = (
+  _req: Request,
+  file: Express.Multer.File,
+  cb: (error: Error | null, acceptFile: boolean) => void,
+) => {
+  const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Solo se permiten imágenes (JPEG, PNG, WebP)'), false);
+  }
+};
+
+export const inspectionPhotoMulterConfig = {
+  storage: inspectionPhotoStorage,
+  fileFilter: inspectionPhotoFileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max por foto
+  },
+};

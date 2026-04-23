@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Body, Param, UseGuards, Req } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -10,6 +10,7 @@ import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 
 @ApiTags('Tenant Config')
 @ApiBearerAuth()
@@ -22,8 +23,8 @@ export class TenantConfigController {
   @Get()
   @ApiOperation({ summary: 'Obtener configuración actual del tenant' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  getConfig(@Param('slug') _slug: string) {
-    return this.tenantConfigService.getConfig();
+  getConfig(@Param('slug') _slug: string, @Req() req: TenantRequest) {
+    return this.tenantConfigService.getConfig(req.tenant!.schema_name);
   }
 
   @Patch()
@@ -31,15 +32,16 @@ export class TenantConfigController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   updateConfig(
     @Param('slug') _slug: string,
+    @Req() req: TenantRequest,
     @Body() dto: UpdateTenantConfigDto,
   ) {
-    return this.tenantConfigService.updateConfig(dto);
+    return this.tenantConfigService.updateConfig(req.tenant!.schema_name, dto);
   }
 
   @Patch('setup-complete')
   @ApiOperation({ summary: 'Marcar wizard de configuración como completado' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  markSetupComplete(@Param('slug') _slug: string) {
-    return this.tenantConfigService.markSetupComplete();
+  markSetupComplete(@Param('slug') _slug: string, @Req() req: TenantRequest) {
+    return this.tenantConfigService.markSetupComplete(req.tenant!.schema_name);
   }
 }

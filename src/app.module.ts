@@ -27,6 +27,7 @@ import { DevSeedModule } from './common/seed/dev-seed.module';
 import { StorageModule } from './common/storage/storage.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { InspectionsModule } from './inspections/inspections.module';
+import { ExpensesModule } from './expenses/expenses.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { InspectionsModule } from './inspections/inspections.module';
           __dirname + '/units/entities/*.entity{.ts,.js}',
           __dirname + '/owner-statements/entities/*.entity{.ts,.js}',
           __dirname + '/blacklist/entities/*.entity{.ts,.js}',
+          __dirname + '/expenses/entities/*.entity{.ts,.js}',
         ],
         // Sincronizar automáticamente en desarrollo - crea/actualiza tablas desde las entidades
         synchronize: configService.app.nodeEnv === 'development',
@@ -97,6 +99,7 @@ import { InspectionsModule } from './inspections/inspections.module';
     StorageModule,
     TenantModule,
     InspectionsModule,
+    ExpensesModule,
   ],
   controllers: [AppController],
   providers: [

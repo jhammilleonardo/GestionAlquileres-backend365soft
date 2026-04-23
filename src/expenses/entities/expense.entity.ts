@@ -47,7 +47,7 @@ export class Expense {
   /**
    * Moneda (ISO 4217)
    */
-  @Column({ default: 'BOB', length: 3 })
+  @Column({ default: 'USD', length: 3 })
   currency: string;
 
   /**

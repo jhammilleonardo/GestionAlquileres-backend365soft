@@ -1581,7 +1581,7 @@ export class TenantsService implements OnModuleInit {
         unit_id                INTEGER REFERENCES ${q}.units(id) ON DELETE SET NULL,
         category               VARCHAR(50) NOT NULL,
         amount                 DECIMAL(12, 2) NOT NULL CHECK (amount > 0),
-        currency               VARCHAR(3) NOT NULL DEFAULT 'BOB',
+        currency               VARCHAR(3) NOT NULL DEFAULT 'USD',
         description            TEXT,
         date                   DATE NOT NULL,
         vendor_id              INTEGER,

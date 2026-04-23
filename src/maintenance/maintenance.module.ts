@@ -5,7 +5,6 @@ import {
   AdminMaintenanceController,
   TenantMaintenanceController,
   TecnicoMaintenanceController,
-  OwnerMaintenanceController,
 } from './maintenance.controller';
 import { MaintenanceRequest } from './entities/maintenance-request.entity';
 import { MaintenanceMessage } from './entities/maintenance-message.entity';
@@ -29,7 +28,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AdminMaintenanceController,
     TenantMaintenanceController,
     TecnicoMaintenanceController,
-    OwnerMaintenanceController,
   ],
   providers: [MaintenanceService],
   exports: [MaintenanceService],

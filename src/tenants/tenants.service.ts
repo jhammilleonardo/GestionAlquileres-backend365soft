@@ -51,6 +51,7 @@ export class TenantsService implements OnModuleInit {
 
     for (const { schema_name } of rows) {
       this.logger.log(`Migrating schema: ${schema_name}`);
+<<<<<<< Updated upstream
       try {
         await this.migratePropertyColumns(schema_name);
         await this.migrateImagesToJson(schema_name);
@@ -67,6 +68,42 @@ export class TenantsService implements OnModuleInit {
         await this.migrateMaintenanceStageFields(schema_name);
         await this.createMaintenanceStageHistoryTable(schema_name);
         await this.migrateOwnerStatementsFields(schema_name);
+=======
+      let stepsFailed = 0;
+
+      const steps: Array<[string, () => Promise<void>]> = [
+        ['migratePropertyColumns', () => this.migratePropertyColumns(schema_name)],
+        ['migrateImagesToJson', () => this.migrateImagesToJson(schema_name)],
+        ['createPaymentsTables', () => this.createPaymentsTables(schema_name)],
+        ['migrateContractsApplicationId', () => this.migrateContractsApplicationId(schema_name)],
+        ['migrateEmployeeTables', () => this.migrateEmployeeTables(schema_name)],
+        ['createTenantConfigTable', () => this.createTenantConfigTable(schema_name)],
+        ['createPropertyLeadsTable', () => this.createPropertyLeadsTable(schema_name)],
+        ['createUnitsTables', () => this.createUnitsTables(schema_name)],
+        ['migrateContractsUnitId', () => this.migrateContractsUnitId(schema_name)],
+        ['migrateRentalOwnersBankFields', () => this.migrateRentalOwnersBankFields(schema_name)],
+        ['migrateApplicationsScreeningFields', () => this.migrateApplicationsScreeningFields(schema_name)],
+        ['createScreeningChecklistTable', () => this.createScreeningChecklistTable(schema_name)],
+        ['migrateMaintenanceStageFields', () => this.migrateMaintenanceStageFields(schema_name)],
+        ['createMaintenanceStageHistoryTable', () => this.createMaintenanceStageHistoryTable(schema_name)],
+        ['migrateOwnerStatementsFields', () => this.migrateOwnerStatementsFields(schema_name)],
+        ['createInspectionsTables', () => this.createInspectionsTables(schema_name)],
+        ['migrateExpensesTable', () => this.migrateExpensesTable(schema_name)],
+        ['migrateUserRolePropietario', () => this.migrateUserRolePropietario(schema_name)],
+      ];
+
+      for (const [stepName, step] of steps) {
+        try {
+          await step();
+        } catch (error: unknown) {
+          stepsFailed++;
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`[${schema_name}] Step ${stepName} failed (non-fatal): ${message}`);
+        }
+      }
+
+      if (stepsFailed === 0) {
+>>>>>>> Stashed changes
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -477,6 +514,19 @@ export class TenantsService implements OnModuleInit {
     `);
   }
 
+  /**
+   * Agrega el rol PROPIETARIO al ENUM user_role_enum de schemas ya existentes.
+   * Idempotente — ADD VALUE IF NOT EXISTS no falla si el valor ya existe.
+   * NOTA: ALTER TYPE ... ADD VALUE no puede ejecutarse dentro de una transacción activa.
+   */
+  private async migrateUserRolePropietario(schemaName: string): Promise<void> {
+    // Ejecutar con autocommit implícito (sin transacción)
+    await this.dataSource.query(`
+      ALTER TYPE ${quoteIdent(schemaName)}.user_role_enum
+        ADD VALUE IF NOT EXISTS 'PROPIETARIO';
+    `);
+  }
+
   private async createTenantConfigTable(
     schemaName: string,
     country: TenantCountry = TenantCountry.BO,
@@ -646,7 +696,7 @@ export class TenantsService implements OnModuleInit {
       // ENUM de user_role
       await this.dataSource.query(`
         DO $$ BEGIN
-          CREATE TYPE ${quoteIdent(tenant.schema_name)}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO');
+          CREATE TYPE ${quoteIdent(tenant.schema_name)}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO', 'PROPIETARIO');
         EXCEPTION
           WHEN duplicate_object THEN null;
         END $$;

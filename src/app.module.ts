@@ -26,6 +26,12 @@ import { BlacklistModule } from './blacklist/blacklist.module';
 import { DevSeedModule } from './common/seed/dev-seed.module';
 import { StorageModule } from './common/storage/storage.module';
 import { TenantModule } from './common/tenant/tenant.module';
+<<<<<<< Updated upstream
+=======
+import { InspectionsModule } from './inspections/inspections.module';
+import { ExpensesModule } from './expenses/expenses.module';
+import { OwnerPortalModule } from './owner-portal/owner-portal.module';
+>>>>>>> Stashed changes
 
 @Module({
   imports: [
@@ -95,6 +101,12 @@ import { TenantModule } from './common/tenant/tenant.module';
     DevSeedModule,
     StorageModule,
     TenantModule,
+<<<<<<< Updated upstream
+=======
+    InspectionsModule,
+    ExpensesModule,
+    OwnerPortalModule,
+>>>>>>> Stashed changes
   ],
   controllers: [AppController],
   providers: [

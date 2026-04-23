@@ -187,5 +187,18 @@ export class RentalOwnersController {
     return this.rentalOwnersService.getStatements(id);
   }
 
-
+  @Post(':id/create-account')
+  @ApiOperation({
+    summary: 'Crear cuenta de acceso para el propietario',
+    description: 'Genera credenciales de acceso para el propietario.',
+  })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ description: 'Devuelve email y contraseña temporal' })
+  async createAccount(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.rentalOwnersService.createOwnerAccount(id, slug);
+  }
 }

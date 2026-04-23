@@ -435,27 +435,3 @@ export class TecnicoMaintenanceController {
     );
   }
 }
-
-@ApiTags('Maintenance - Propietario')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
-@Controller(':slug/owner/maintenance')
-export class OwnerMaintenanceController {
-  constructor(private readonly maintenanceService: MaintenanceService) {}
-
-  @Patch(':id/authorize')
-  @ApiOperation({
-    summary: 'Propietario autoriza el costo del mantenimiento (Bolivia)',
-  })
-  @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  @ApiParam({ name: 'id', type: Number })
-  async authorizeWork(
-    @Param('slug') _slug: string,
-    @Param('id') id: string,
-    @Request() req,
-  ) {
-    await this.maintenanceService.authorizeWork(+id, req.user.userId);
-    return { message: 'Costo autorizado. El técnico puede iniciar el trabajo.' };
-  }
-}

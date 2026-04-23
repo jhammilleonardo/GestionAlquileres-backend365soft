@@ -74,6 +74,10 @@ export class TenantConfigService {
       fields.push(`late_fee_percentage = $${idx++}`);
       values.push(dto.late_fee_percentage);
     }
+    if (dto.custom_expense_categories !== undefined) {
+      fields.push(`custom_expense_categories = $${idx++}`);
+      values.push(JSON.stringify(dto.custom_expense_categories));
+    }
 
     if (fields.length === 0) {
       return config;

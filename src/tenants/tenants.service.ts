@@ -70,6 +70,7 @@ export class TenantsService implements OnModuleInit {
         ['createMaintenanceStageHistoryTable', () => this.createMaintenanceStageHistoryTable(schema_name)],
         ['migrateOwnerStatementsFields', () => this.migrateOwnerStatementsFields(schema_name)],
         ['createInspectionsTables', () => this.createInspectionsTables(schema_name)],
+        ['migrateExpensesTable', () => this.migrateExpensesTable(schema_name)],
       ];
 
       for (const [stepName, step] of steps) {
@@ -517,6 +518,7 @@ export class TenantsService implements OnModuleInit {
         commission_percentage NUMERIC(5,2) NOT NULL DEFAULT 0,
         grace_days_late_fee INTEGER NOT NULL DEFAULT 0,
         late_fee_percentage NUMERIC(5,2) NOT NULL DEFAULT 0,
+        custom_expense_categories JSONB NOT NULL DEFAULT '[]',
         setup_completed BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now()
@@ -731,7 +733,10 @@ export class TenantsService implements OnModuleInit {
       // 15. Crear tablas de Inspecciones
       await this.createInspectionsTables(tenant.schema_name);
 
-      // 16. Insertar datos iniciales (seed data)
+      // 16. Crear tablas de Gastos (Expenses)
+      await this.createExpensesTables(tenant.schema_name);
+
+      // 17. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
       // 17. Otorgar permisos al usuario de la aplicación
@@ -1564,6 +1569,61 @@ export class TenantsService implements OnModuleInit {
       CREATE INDEX IF NOT EXISTS idx_inspection_items_inspection_id
         ON ${q}.inspection_items(inspection_id);
     `);
+  }
+
+  private async createExpensesTables(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.expenses (
+        id                     SERIAL PRIMARY KEY,
+        property_id            INTEGER NOT NULL REFERENCES ${q}.properties(id) ON DELETE CASCADE,
+        unit_id                INTEGER REFERENCES ${q}.units(id) ON DELETE SET NULL,
+        category               VARCHAR(50) NOT NULL,
+        amount                 DECIMAL(12, 2) NOT NULL CHECK (amount > 0),
+        currency               VARCHAR(3) NOT NULL DEFAULT 'BOB',
+        description            TEXT,
+        date                   DATE NOT NULL,
+        vendor_id              INTEGER,
+        vendor_name            VARCHAR(255),
+        receipt_url            VARCHAR(255),
+        is_recurring           BOOLEAN DEFAULT FALSE,
+        recurrence_interval    VARCHAR(20),
+        recurrence_start_date  DATE,
+        recurrence_end_date    DATE,
+        recurring_expense_id   INTEGER,
+        notes                  TEXT,
+        created_by             INTEGER,
+        updated_by             INTEGER,
+        created_at             TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at             TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_expenses_property_id ON ${q}.expenses(property_id);
+      CREATE INDEX IF NOT EXISTS idx_expenses_unit_id ON ${q}.expenses(unit_id);
+      CREATE INDEX IF NOT EXISTS idx_expenses_date ON ${q}.expenses(date);
+      CREATE INDEX IF NOT EXISTS idx_expenses_category ON ${q}.expenses(category);
+    `);
+  }
+
+  private async migrateExpensesTable(schemaName: string): Promise<void> {
+    await this.createExpensesTables(schemaName);
+    
+    // Si ya existía la tabla con tenant_id, eliminarlo (limpieza post-refactor)
+    try {
+      await this.dataSource.query(
+        `ALTER TABLE ${quoteIdent(schemaName)}.expenses DROP COLUMN IF EXISTS tenant_id`,
+      );
+    } catch (e) {
+      // Ignorar si falla
+    }
+    
+    // Asegurar que tenant_config tenga la columna custom_expense_categories
+    await this.dataSource.query(
+      `ALTER TABLE ${quoteIdent(schemaName)}.tenant_config ADD COLUMN IF NOT EXISTS custom_expense_categories JSONB NOT NULL DEFAULT '[]'`,
+    );
   }
 
   private async dropTenantSchema(tenant: Tenant) {

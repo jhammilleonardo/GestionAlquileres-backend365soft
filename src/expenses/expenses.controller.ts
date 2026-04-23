@@ -57,7 +57,6 @@ export class AdminExpensesController {
     @Request() req: any,
   ): Promise<Expense> {
     return this.expensesService.createExpense(
-      req.tenant.id,
       createExpenseDto,
       req.user.id,
     );
@@ -79,7 +78,7 @@ export class AdminExpensesController {
     @Query() filters: ExpenseFiltersDto,
     @Request() req: any,
   ): Promise<{ data: Expense[]; total: number }> {
-    return this.expensesService.findAll(req.tenant.id, filters);
+    return this.expensesService.findAll(filters);
   }
 
   /**
@@ -120,7 +119,6 @@ export class AdminExpensesController {
     }
 
     return this.expensesService.getSummary(
-      req.tenant.id,
       +propertyId,
       from,
       to,
@@ -144,7 +142,7 @@ export class AdminExpensesController {
     @Param('id') id: string,
     @Request() req: any,
   ): Promise<Expense> {
-    return this.expensesService.findOne(+id, req.tenant.id);
+    return this.expensesService.findOne(+id);
   }
 
   /**
@@ -166,7 +164,6 @@ export class AdminExpensesController {
   ): Promise<Expense> {
     return this.expensesService.update(
       +id,
-      req.tenant.id,
       updateExpenseDto,
       req.user.id,
     );
@@ -191,6 +188,6 @@ export class AdminExpensesController {
     @Param('id') id: string,
     @Request() req: any,
   ): Promise<void> {
-    return this.expensesService.remove(+id, req.tenant.id);
+    return this.expensesService.remove(+id);
   }
 }

@@ -32,12 +32,11 @@ export class CreateExpenseDto {
   unit_id?: number;
 
   @ApiProperty({
-    description: 'Categoría del gasto',
-    enum: ExpenseCategoryEnum,
+    description: 'Categoría del gasto (MAINTENANCE, INSURANCE, TAX, UTILITIES, MANAGEMENT_FEE, CLEANING, OTHER o personalizada)',
     example: 'MAINTENANCE',
   })
-  @IsEnum(ExpenseCategoryEnum)
-  category: ExpenseCategoryEnum;
+  @IsString()
+  category: string;
 
   @ApiProperty({
     description: 'Monto del gasto',

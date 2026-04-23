@@ -32,14 +32,11 @@ export class Expense {
   unit_id: number | null;
 
   /**
-   * Categoría del gasto (enum predefinido)
-   * Se puede extender con categorías personalizadas por tenant
+   * Categoría del gasto
+   * Puede ser una de las predefinidas o una personalizada por el tenant
    */
-  @Column({
-    type: 'enum',
-    enum: ExpenseCategoryEnum,
-  })
-  category: ExpenseCategoryEnum;
+  @Column({ type: 'varchar', length: 50 })
+  category: string;
 
   /**
    * Monto del gasto
@@ -50,7 +47,7 @@ export class Expense {
   /**
    * Moneda (ISO 4217)
    */
-  @Column({ default: 'USD', length: 3 })
+  @Column({ default: 'BOB', length: 3 })
   currency: string;
 
   /**
@@ -93,8 +90,8 @@ export class Expense {
    * Intervalo de recurrencia (DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY)
    */
   @Column({
-    type: 'enum',
-    enum: ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'],
+    type: 'varchar',
+    length: 20,
     nullable: true,
   })
   recurrence_interval: string | null;
@@ -116,12 +113,6 @@ export class Expense {
    */
   @Column({ type: 'int', nullable: true })
   recurring_expense_id: number | null;
-
-  /**
-   * Tenant ID (para isolamiento de datos)
-   */
-  @Column({ type: 'int' })
-  tenant_id: number;
 
   /**
    * Notas internas

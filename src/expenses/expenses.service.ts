@@ -8,12 +8,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Between, Like, In } from 'typeorm';
 import { Expense } from './entities/expense.entity';
-import {
-  CreateExpenseDto,
-  UpdateExpenseDto,
-  ExpenseFiltersDto,
-} from './dto';
+import { CreateExpenseDto, UpdateExpenseDto, ExpenseFiltersDto } from './dto';
 import { ExpenseCategoryEnum } from './enums/expense-category.enum';
+import { TenantConfigService } from '../tenant-config/tenant-config.service';
 
 interface ExpenseSummary {
   total_expenses: string;
@@ -28,8 +25,9 @@ export class ExpensesService {
 
   constructor(
     @InjectRepository(Expense)
-    private expenseRepository: Repository<Expense>,
-    private dataSource: DataSource,
+    private readonly expenseRepository: Repository<Expense>,
+    private readonly dataSource: DataSource,
+    private readonly tenantConfigService: TenantConfigService,
   ) {}
 
   /**
@@ -42,10 +40,12 @@ export class ExpensesService {
    * Crear un nuevo gasto
    */
   async createExpense(
-    tenantId: number,
     dto: CreateExpenseDto,
     userId?: number,
   ): Promise<Expense> {
+    // Validar categoría
+    await this.validateCategory(dto.category);
+
     try {
       const expense = this.expenseRepository.create({
         ...dto,
@@ -56,7 +56,6 @@ export class ExpensesService {
         recurrence_end_date: dto.recurrence_end_date
           ? new Date(dto.recurrence_end_date)
           : null,
-        tenant_id: tenantId,
         created_by: userId,
       });
 
@@ -68,7 +67,7 @@ export class ExpensesService {
       }
 
       this.logger.log(
-        `Expense created: ${saved.id} for tenant ${tenantId}`,
+        `Expense created: ${saved.id}`,
       );
       return saved;
     } catch (error) {
@@ -81,13 +80,11 @@ export class ExpensesService {
    * Obtener todos los gastos con filtros
    */
   async findAll(
-    tenantId: number,
     filters: ExpenseFiltersDto,
   ): Promise<{ data: Expense[]; total: number }> {
     const query = this.expenseRepository.createQueryBuilder('e');
 
-    // Filtro por tenant
-    query.where('e.tenant_id = :tenantId', { tenantId });
+    // El aislamiento por tenant se maneja mediante search_path en la DB
 
     // Filtro por propiedad
     if (filters.property_id) {
@@ -151,9 +148,9 @@ export class ExpensesService {
   /**
    * Obtener un gasto específico
    */
-  async findOne(expenseId: number, tenantId: number): Promise<Expense> {
+  async findOne(expenseId: number): Promise<Expense> {
     const expense = await this.expenseRepository.findOne({
-      where: { id: expenseId, tenant_id: tenantId },
+      where: { id: expenseId },
     });
 
     if (!expense) {
@@ -170,11 +167,15 @@ export class ExpensesService {
    */
   async update(
     expenseId: number,
-    tenantId: number,
     dto: UpdateExpenseDto,
     userId?: number,
   ): Promise<Expense> {
-    const expense = await this.findOne(expenseId, tenantId);
+    const expense = await this.findOne(expenseId);
+
+    // Validar categoría si cambia
+    if (dto.category && dto.category !== expense.category) {
+      await this.validateCategory(dto.category);
+    }
 
     // Validar que no se intente cambiar un gasto recurrente existente
     if (expense.is_recurring && !dto.is_recurring) {
@@ -198,7 +199,7 @@ export class ExpensesService {
     const saved = await this.expenseRepository.save(updated);
 
     this.logger.log(
-      `Expense updated: ${expenseId} for tenant ${tenantId}`,
+      `Expense updated: ${expenseId}`,
     );
 
     return saved;
@@ -207,8 +208,8 @@ export class ExpensesService {
   /**
    * Eliminar un gasto
    */
-  async remove(expenseId: number, tenantId: number): Promise<void> {
-    const expense = await this.findOne(expenseId, tenantId);
+  async remove(expenseId: number): Promise<void> {
+    const expense = await this.findOne(expenseId);
 
     // Si es un gasto recurrente padre, eliminar también todas sus instancias generadas
     if (expense.is_recurring) {
@@ -220,7 +221,7 @@ export class ExpensesService {
     await this.expenseRepository.delete(expenseId);
 
     this.logger.log(
-      `Expense deleted: ${expenseId} for tenant ${tenantId}`,
+      `Expense deleted: ${expenseId}`,
     );
   }
 
@@ -229,15 +230,13 @@ export class ExpensesService {
    * Genera un reporte que será usado para descontar automáticamente del P&L
    */
   async getSummary(
-    tenantId: number,
     propertyId: number,
     from?: string,
     to?: string,
   ): Promise<ExpenseSummary> {
     const query = this.expenseRepository.createQueryBuilder('e');
 
-    query.where('e.tenant_id = :tenantId', { tenantId });
-    query.andWhere('e.property_id = :propertyId', { propertyId });
+    query.where('e.property_id = :propertyId', { propertyId });
 
     if (from && to) {
       query.andWhere('e.date BETWEEN :from AND :to', {
@@ -296,7 +295,6 @@ export class ExpensesService {
    * Obtener resumen de gastos para múltiples propiedades
    */
   async getBulkSummary(
-    tenantId: number,
     propertyIds: number[],
     from?: string,
     to?: string,
@@ -305,7 +303,6 @@ export class ExpensesService {
 
     for (const propertyId of propertyIds) {
       summaries[propertyId] = await this.getSummary(
-        tenantId,
         propertyId,
         from,
         to,
@@ -395,7 +392,6 @@ export class ExpensesService {
    * Usado en cálculos de P&L
    */
   async getTotalExpensesByPeriod(
-    tenantId: number,
     propertyId: number,
     from: Date,
     to: Date,
@@ -403,8 +399,7 @@ export class ExpensesService {
     const result = await this.expenseRepository
       .createQueryBuilder('e')
       .select('SUM(e.amount)', 'total')
-      .where('e.tenant_id = :tenantId', { tenantId })
-      .andWhere('e.property_id = :propertyId', { propertyId })
+      .where('e.property_id = :propertyId', { propertyId })
       .andWhere('e.date BETWEEN :from AND :to', { from, to })
       .getRawOne();
 
@@ -416,7 +411,6 @@ export class ExpensesService {
    * Usado en reportes detallados de P&L
    */
   async getExpensesByCategory(
-    tenantId: number,
     propertyId: number,
     from: Date,
     to: Date,
@@ -425,8 +419,7 @@ export class ExpensesService {
       .createQueryBuilder('e')
       .select('e.category', 'category')
       .addSelect('SUM(e.amount)', 'total')
-      .where('e.tenant_id = :tenantId', { tenantId })
-      .andWhere('e.property_id = :propertyId', { propertyId })
+      .where('e.property_id = :propertyId', { propertyId })
       .andWhere('e.date BETWEEN :from AND :to', { from, to })
       .groupBy('e.category')
       .getRawMany();
@@ -436,7 +429,35 @@ export class ExpensesService {
         acc[row.category] = parseFloat(row.total);
         return acc;
       },
-      {} as Record<ExpenseCategoryEnum, number>,
+      {} as Record<string, number>,
+    );
+  }
+
+  /**
+   * Validar que la categoría sea una de las permitidas
+   */
+  private async validateCategory(category: string): Promise<void> {
+    // 1. Check predefined enum
+    const predefined = Object.values(ExpenseCategoryEnum) as string[];
+    if (predefined.includes(category as ExpenseCategoryEnum)) {
+      return;
+    }
+
+    // 2. Check tenant custom categories
+    // Nota: Como search_path ya está seteado, consultamos tenant_config del schema actual
+    const configResult = await this.dataSource.query(
+      `SELECT custom_expense_categories FROM tenant_config LIMIT 1`,
+    );
+
+    const customCategories = configResult[0]?.custom_expense_categories || [];
+    if (customCategories.includes(category)) {
+      return;
+    }
+
+    throw new BadRequestException(
+      `Categoría '${category}' no válida. Debe ser una de las predefinidas (${predefined.join(
+        ', ',
+      )}) o personalizadas (${customCategories.join(', ')})`,
     );
   }
 }

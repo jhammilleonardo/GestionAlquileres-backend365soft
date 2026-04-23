@@ -96,6 +96,72 @@ export class AuthService {
     };
   }
 
+  /**
+   * Autentica a un propietario (role = PROPIETARIO) en el contexto del tenant.
+   * Resuelve el rental_owner_id desde rental_owners.primary_email para incluirlo en el JWT.
+   */
+  async loginOwner(email: string, password: string, tenantSlug: string) {
+    const tenant = await this.tenantsService.findBySlug(tenantSlug);
+    const { quoteIdent } = await import('../common/utils/sql-identifier.js');
+    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+
+    const user = await this.findUserByEmail(email);
+
+    if (!user) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    if (user.role !== 'PROPIETARIO') {
+      throw new UnauthorizedException('Acceso denegado: se requiere rol PROPIETARIO');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    if (!user.is_active) {
+      throw new UnauthorizedException('Cuenta de propietario inactiva');
+    }
+
+    // Resolver rental_owner_id vinculado por email
+    const ownerRows: { id: number }[] = await this.dataSource.query(
+      `SELECT id FROM rental_owners WHERE primary_email = $1 AND is_active = true LIMIT 1`,
+      [user.email],
+    );
+
+    if (ownerRows.length === 0) {
+      throw new UnauthorizedException(
+        'Este usuario no está vinculado a ningún propietario activo',
+      );
+    }
+
+    const rentalOwnerId = ownerRows[0].id;
+
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      role: user.role,
+      tenantSlug: tenant.slug,
+      rentalOwnerId,
+    };
+
+    const access_token = this.jwtService.sign(payload);
+
+    return {
+      access_token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+        tenant_slug: tenant.slug,
+        rental_owner_id: rentalOwnerId,
+      },
+    };
+  }
+
   async login(user: any, tenantSlug: string) {
     const payload = {
       email: user.email,

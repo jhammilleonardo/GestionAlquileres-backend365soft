@@ -71,6 +71,7 @@ export class TenantsService implements OnModuleInit {
         ['migrateOwnerStatementsFields', () => this.migrateOwnerStatementsFields(schema_name)],
         ['createInspectionsTables', () => this.createInspectionsTables(schema_name)],
         ['migrateExpensesTable', () => this.migrateExpensesTable(schema_name)],
+        ['migrateUserRolePropietario', () => this.migrateUserRolePropietario(schema_name)],
       ];
 
       for (const [stepName, step] of steps) {
@@ -500,6 +501,19 @@ export class TenantsService implements OnModuleInit {
     `);
   }
 
+  /**
+   * Agrega el rol PROPIETARIO al ENUM user_role_enum de schemas ya existentes.
+   * Idempotente — ADD VALUE IF NOT EXISTS no falla si el valor ya existe.
+   * NOTA: ALTER TYPE ... ADD VALUE no puede ejecutarse dentro de una transacción activa.
+   */
+  private async migrateUserRolePropietario(schemaName: string): Promise<void> {
+    // Ejecutar con autocommit implícito (sin transacción)
+    await this.dataSource.query(`
+      ALTER TYPE ${quoteIdent(schemaName)}.user_role_enum
+        ADD VALUE IF NOT EXISTS 'PROPIETARIO';
+    `);
+  }
+
   private async createTenantConfigTable(
     schemaName: string,
     country: TenantCountry = TenantCountry.BO,
@@ -670,7 +684,7 @@ export class TenantsService implements OnModuleInit {
       // ENUM de user_role
       await this.dataSource.query(`
         DO $$ BEGIN
-          CREATE TYPE ${quoteIdent(tenant.schema_name)}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO');
+          CREATE TYPE ${quoteIdent(tenant.schema_name)}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO', 'PROPIETARIO');
         EXCEPTION
           WHEN duplicate_object THEN null;
         END $$;

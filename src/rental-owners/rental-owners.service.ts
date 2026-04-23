@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
 
@@ -272,6 +274,52 @@ export class RentalOwnersService {
         'No se puede desactivar un propietario con propiedades activas asignadas',
       );
     }
+  }
+
+  /**
+   * Crea una cuenta de usuario para el propietario.
+   * Genera una contraseña aleatoria, crea el usuario con role = 'PROPIETARIO'
+   * y devuelve las credenciales temporales al admin.
+   */
+  async createOwnerAccount(ownerId: number, tenantSlug: string): Promise<{ email: string; temporaryPassword: string }> {
+    const owner = await this.findOne(ownerId);
+
+    if (!owner.is_active) {
+      throw new BadRequestException('El propietario debe estar activo para tener una cuenta.');
+    }
+
+    // Verificar si ya existe un usuario con su email
+    const existingUser = await this.dataSource.query(
+      `SELECT id FROM "user" WHERE email = $1`,
+      [owner.primary_email],
+    );
+
+    if (existingUser.length > 0) {
+      throw new ConflictException('Ya existe una cuenta de usuario con el email de este propietario.');
+    }
+
+    // Generar contraseña temporal
+    const temporaryPassword = randomBytes(5).toString('hex');
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(temporaryPassword, saltRounds);
+
+    await this.dataSource.query(
+      `INSERT INTO "user" (email, password, name, phone, role, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'PROPIETARIO', true, NOW(), NOW())`,
+      [
+        owner.primary_email,
+        hashedPassword,
+        owner.name,
+        owner.phone_number,
+      ],
+    );
+
+    this.logger.log(`Cuenta de PROPIETARIO creada: ${owner.primary_email} (tenant ${tenantSlug})`);
+
+    return {
+      email: owner.primary_email,
+      temporaryPassword,
+    };
   }
 
   private toSummary(row: RentalOwnerRow): RentalOwnerSummary {

@@ -28,6 +28,7 @@ import { StorageModule } from './common/storage/storage.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { InspectionsModule } from './inspections/inspections.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { OwnerPortalModule } from './owner-portal/owner-portal.module';
 
 @Module({
   imports: [
@@ -100,6 +101,7 @@ import { ExpensesModule } from './expenses/expenses.module';
     TenantModule,
     InspectionsModule,
     ExpensesModule,
+    OwnerPortalModule,
   ],
   controllers: [AppController],
   providers: [

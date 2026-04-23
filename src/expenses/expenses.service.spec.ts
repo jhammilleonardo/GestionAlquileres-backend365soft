@@ -10,9 +10,10 @@ import {
   UpdateExpenseDto,
   ExpenseFiltersDto,
 } from './dto';
+import { TenantConfigService } from '../tenant-config/tenant-config.service';
 
 const makeDataSource = (queryImpl?: jest.Mock): Partial<DataSource> => ({
-  query: queryImpl ?? jest.fn(),
+  query: queryImpl ?? jest.fn().mockResolvedValue([{ custom_expense_categories: [] }]),
 });
 
 const makeMockRepository = (): Partial<Repository<Expense>> => ({
@@ -39,6 +40,8 @@ const makeMockRepository = (): Partial<Repository<Expense>> => ({
   merge: jest.fn(),
 });
 
+const makeMockTenantConfigService = (): Partial<TenantConfigService> => ({});
+
 const makeModule = async () => {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
@@ -49,7 +52,11 @@ const makeModule = async () => {
       },
       {
         provide: DataSource,
-        useValue: makeDataSource(jest.fn()),
+        useValue: makeDataSource(),
+      },
+      {
+        provide: TenantConfigService,
+        useValue: makeMockTenantConfigService(),
       },
     ],
   }).compile();
@@ -62,7 +69,6 @@ describe('ExpensesService', () => {
   let mockRepository: Partial<Repository<Expense>>;
 
   beforeEach(async () => {
-    service = await makeModule();
     const module = await Test.createTestingModule({
       providers: [
         ExpensesService,
@@ -72,7 +78,11 @@ describe('ExpensesService', () => {
         },
         {
           provide: DataSource,
-          useValue: makeDataSource(jest.fn()),
+          useValue: makeDataSource(),
+        },
+        {
+          provide: TenantConfigService,
+          useValue: makeMockTenantConfigService(),
         },
       ],
     }).compile();
@@ -111,25 +121,23 @@ describe('ExpensesService', () => {
         recurrence_start_date: null,
         recurrence_end_date: null,
         recurring_expense_id: null,
-        tenant_id: 1,
         notes: null,
         created_at: new Date(),
         updated_at: new Date(),
         created_by: 1,
         updated_by: null,
-      };
+      } as Expense;
 
       (mockRepository.create as jest.Mock).mockReturnValue(createdExpense);
       (mockRepository.save as jest.Mock).mockResolvedValue(createdExpense);
 
-      const result = await service.createExpense(1, createDto, 1);
+      const result = await service.createExpense(createDto, 1);
 
       expect(mockRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           property_id: 1,
           category: ExpenseCategoryEnum.MAINTENANCE,
           amount: 150.5,
-          tenant_id: 1,
           created_by: 1,
         }),
       );
@@ -138,9 +146,6 @@ describe('ExpensesService', () => {
     });
 
     it('debe descontar automáticamente en P&L', async () => {
-      // Este test verifica que el servicio está preparado para
-      // que otros módulos usen getTotalExpensesByPeriod para descontar del P&L
-      const tenantId = 1;
       const propertyId = 1;
       const from = new Date('2024-01-01');
       const to = new Date('2024-01-31');
@@ -158,7 +163,6 @@ describe('ExpensesService', () => {
       );
 
       const total = await service.getTotalExpensesByPeriod(
-        tenantId,
         propertyId,
         from,
         to,
@@ -184,7 +188,6 @@ describe('ExpensesService', () => {
           amount: 150.5,
           date: new Date('2024-04-15'),
           currency: 'USD',
-          tenant_id: 1,
           unit_id: null,
           vendor_id: null,
           vendor_name: null,
@@ -200,7 +203,7 @@ describe('ExpensesService', () => {
           updated_at: new Date(),
           created_by: null,
           updated_by: null,
-        },
+        } as Expense,
       ];
 
       const mockQueryBuilder = {
@@ -220,7 +223,7 @@ describe('ExpensesService', () => {
         mockQueryBuilder,
       );
 
-      const result = await service.findAll(1, filters);
+      const result = await service.findAll(filters);
 
       expect(result.data).toEqual(mockExpenses);
       expect(result.total).toBe(1);
@@ -248,7 +251,7 @@ describe('ExpensesService', () => {
         mockQueryBuilder,
       );
 
-      await service.findAll(1, filters);
+      await service.findAll(filters);
 
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
         'e.category = :category',
@@ -279,7 +282,7 @@ describe('ExpensesService', () => {
         mockQueryBuilder,
       );
 
-      await service.findAll(1, filters);
+      await service.findAll(filters);
 
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
         'e.date BETWEEN :from AND :to',
@@ -297,7 +300,6 @@ describe('ExpensesService', () => {
         amount: 150.5,
         date: new Date('2024-04-15'),
         currency: 'USD',
-        tenant_id: 1,
         unit_id: null,
         vendor_id: null,
         vendor_name: null,
@@ -313,14 +315,14 @@ describe('ExpensesService', () => {
         updated_at: new Date(),
         created_by: null,
         updated_by: null,
-      };
+      } as Expense;
 
       (mockRepository.findOne as jest.Mock).mockResolvedValue(expense);
 
-      const result = await service.findOne(1, 1);
+      const result = await service.findOne(1);
 
       expect(mockRepository.findOne).toHaveBeenCalledWith({
-        where: { id: 1, tenant_id: 1 },
+        where: { id: 1 },
       });
       expect(result).toEqual(expense);
     });
@@ -328,7 +330,7 @@ describe('ExpensesService', () => {
     it('debe lanzar NotFoundException si no existe', async () => {
       (mockRepository.findOne as jest.Mock).mockResolvedValue(null);
 
-      await expect(service.findOne(999, 1)).rejects.toThrow(
+      await expect(service.findOne(999)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -343,7 +345,6 @@ describe('ExpensesService', () => {
         amount: 150.5,
         date: new Date('2024-04-15'),
         currency: 'USD',
-        tenant_id: 1,
         unit_id: null,
         vendor_id: null,
         vendor_name: null,
@@ -359,7 +360,7 @@ describe('ExpensesService', () => {
         updated_at: new Date(),
         created_by: null,
         updated_by: null,
-      };
+      } as Expense;
 
       const updateDto: UpdateExpenseDto = {
         description: 'Actualizado',
@@ -367,13 +368,11 @@ describe('ExpensesService', () => {
 
       const updatedExpense = { ...existingExpense, description: 'Actualizado' };
 
-      (mockRepository.findOne as jest.Mock).mockResolvedValue(
-        existingExpense,
-      );
+      (mockRepository.findOne as jest.Mock).mockResolvedValue(existingExpense);
       (mockRepository.merge as jest.Mock).mockReturnValue(updatedExpense);
       (mockRepository.save as jest.Mock).mockResolvedValue(updatedExpense);
 
-      const result = await service.update(1, 1, updateDto, 1);
+      const result = await service.update(1, updateDto, 1);
 
       expect(mockRepository.merge).toHaveBeenCalled();
       expect(mockRepository.save).toHaveBeenCalled();
@@ -390,7 +389,6 @@ describe('ExpensesService', () => {
         amount: 150.5,
         date: new Date('2024-04-15'),
         currency: 'USD',
-        tenant_id: 1,
         unit_id: null,
         vendor_id: null,
         vendor_name: null,
@@ -406,12 +404,12 @@ describe('ExpensesService', () => {
         updated_at: new Date(),
         created_by: null,
         updated_by: null,
-      };
+      } as Expense;
 
       (mockRepository.findOne as jest.Mock).mockResolvedValue(expense);
       (mockRepository.delete as jest.Mock).mockResolvedValue({ affected: 1 });
 
-      await service.remove(1, 1);
+      await service.remove(1);
 
       expect(mockRepository.delete).toHaveBeenCalledWith(1);
     });
@@ -427,48 +425,30 @@ describe('ExpensesService', () => {
         groupBy: jest.fn().mockReturnThis(),
         getRawOne: jest.fn().mockResolvedValue({ total: '500.00' }),
         getRawMany: jest.fn().mockResolvedValue([
-          {
-            category: ExpenseCategoryEnum.MAINTENANCE,
-            total: '250.00',
-          },
-          {
-            category: ExpenseCategoryEnum.UTILITIES,
-            total: '250.00',
-          },
+          { category: ExpenseCategoryEnum.MAINTENANCE, total: '250.00' },
+          { category: ExpenseCategoryEnum.UTILITIES, total: '250.00' },
         ]),
         getCount: jest.fn().mockResolvedValue(2),
-        clone: jest
-          .fn()
-          .mockReturnValue({
-            select: jest.fn().mockReturnThis(),
-            addSelect: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            andWhere: jest.fn().mockReturnThis(),
-            groupBy: jest.fn().mockReturnThis(),
-            getRawOne: jest
-              .fn()
-              .mockResolvedValue({ total: '500.00' }),
-            getRawMany: jest
-              .fn()
-              .mockResolvedValue([
-                {
-                  category: ExpenseCategoryEnum.MAINTENANCE,
-                  total: '250.00',
-                },
-                {
-                  category: ExpenseCategoryEnum.UTILITIES,
-                  total: '250.00',
-                },
-              ]),
-            getCount: jest.fn().mockResolvedValue(2),
-          }),
+        clone: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnThis(),
+          addSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          groupBy: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ total: '500.00' }),
+          getRawMany: jest.fn().mockResolvedValue([
+            { category: ExpenseCategoryEnum.MAINTENANCE, total: '250.00' },
+            { category: ExpenseCategoryEnum.UTILITIES, total: '250.00' },
+          ]),
+          getCount: jest.fn().mockResolvedValue(2),
+        }),
       };
 
       (mockRepository.createQueryBuilder as jest.Mock).mockReturnValue(
         mockQueryBuilder,
       );
 
-      const result = await service.getSummary(1, 1, '2024-01-01', '2024-01-31');
+      const result = await service.getSummary(1, '2024-01-01', '2024-01-31');
 
       expect(result).toHaveProperty('total_expenses');
       expect(result).toHaveProperty('by_category');
@@ -479,7 +459,6 @@ describe('ExpensesService', () => {
 
   describe('cálculo correcto de balance ingresos - gastos', () => {
     it('debe proporcionar métodos para calcular P&L = Ingresos - Gastos', async () => {
-      // Verificar que el servicio expone los métodos necesarios para el cálculo
       expect(typeof service.getTotalExpensesByPeriod).toBe('function');
       expect(typeof service.getExpensesByCategory).toBe('function');
       expect(typeof service.getSummary).toBe('function');
@@ -498,7 +477,6 @@ describe('ExpensesService', () => {
       );
 
       const total = await service.getTotalExpensesByPeriod(
-        1,
         1,
         new Date('2024-01-01'),
         new Date('2024-01-31'),
@@ -526,7 +504,6 @@ describe('ExpensesService', () => {
       );
 
       const expenses = await service.getExpensesByCategory(
-        1,
         1,
         new Date('2024-01-01'),
         new Date('2024-01-31'),

@@ -22,6 +22,8 @@ import { NotificationEventType } from '../notifications/dto/create-notification.
 import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
 import { SplitPaymentService } from '../split-payment/split-payment.service';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 
 @Injectable()
 export class PaymentsService {
@@ -33,6 +35,7 @@ export class PaymentsService {
     private notificationsService: NotificationsService,
     private ownerStatementsService: OwnerStatementsService,
     private splitPaymentService: SplitPaymentService,
+    private auditLogsService: AuditLogsService,
   ) {}
 
   /**
@@ -916,6 +919,15 @@ export class PaymentsService {
       this.logger.error(`Split payment falló para pago #${id}: ${msg}`);
     }
 
+    await this.auditLogsService.log({
+      userId: adminId,
+      action: AuditAction.APPROVED,
+      entityType: 'payment',
+      entityId: id,
+      oldValues: { status: payment.status },
+      newValues: { status: PaymentStatus.APPROVED, admin_notes: dto.admin_notes },
+    });
+
     return updated[0];
   }
 
@@ -976,6 +988,18 @@ export class PaymentsService {
     } catch {
       // No propagar errores de notificación
     }
+
+    await this.auditLogsService.log({
+      userId: adminId,
+      action: AuditAction.REJECTED,
+      entityType: 'payment',
+      entityId: id,
+      oldValues: { status: payment.status },
+      newValues: {
+        status: PaymentStatus.REJECTED,
+        rejection_reason: dto.rejection_reason,
+      },
+    });
 
     return updated[0];
   }

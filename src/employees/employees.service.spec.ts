@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EmployeesService } from './employees.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 describe('EmployeesService', () => {
   let service: EmployeesService;
@@ -25,6 +26,10 @@ describe('EmployeesService', () => {
         {
           provide: NotificationsService,
           useValue: mockNotificationsService,
+        },
+        {
+          provide: AuditLogsService,
+          useValue: { log: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();

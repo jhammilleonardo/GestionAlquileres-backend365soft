@@ -455,7 +455,63 @@ ACTIVO → FINALIZADO (cuando finaliza el contrato o se rescinde)
 **Endpoint:** `POST /:slug/admin/contracts/:id/renew`
 **Auth:** Requerida (ADMIN)
 
-**Request Body:** (Vacío, no requiere parámetros)
+**Contratos renovables:** `ACTIVO`, `POR_VENCER`, `BORRADOR` — no se puede renovar un contrato `FINALIZADO` o `RENOVADO`.
+
+**Request Body (todos los campos son opcionales):**
+```json
+{
+  "start_date": "2027-03-01",
+  "duration_months": 6,
+  "monthly_rent": 1400.00,
+  "deposit_amount": 2800.00,
+  "payment_day": 10,
+  "currency": "USD",
+  "payment_method": "transferencia",
+  "late_fee_percentage": 3,
+  "grace_days": 5,
+  "auto_renew": false,
+  "auto_increase_percentage": 5,
+  "renewal_notice_days": 30,
+  "included_services": ["Internet", "Agua"],
+  "prohibitions": "No se permiten mascotas",
+  "tenant_responsibilities": "Mantener la propiedad en buen estado",
+  "owner_responsibilities": "Realizar reparaciones estructurales",
+  "coexistence_rules": "Respetar horarios de descanso",
+  "renewal_terms": "Renovación automática si no hay aviso previo",
+  "termination_terms": "Preaviso de 60 días",
+  "jurisdiction": "Bolivia"
+}
+```
+
+**Descripción de campos del body:**
+
+| Campo | Tipo | Descripción | Default si se omite |
+|-------|------|-------------|---------------------|
+| `start_date` | string (ISO) | Fecha de inicio del nuevo contrato | Un día después del `end_date` del anterior |
+| `duration_months` | number | Duración en meses | Hereda del contrato anterior |
+| `monthly_rent` | number | Alquiler mensual | Hereda + aplica `auto_increase_percentage` |
+| `deposit_amount` | number | Depósito de garantía | Hereda del contrato anterior |
+| `payment_day` | number | Día de pago (1–31) | Hereda del contrato anterior |
+| `currency` | string | Moneda | Hereda del contrato anterior |
+| `payment_method` | string | Método de pago | Hereda del contrato anterior |
+| `late_fee_percentage` | number | % recargo por mora | Hereda del contrato anterior |
+| `grace_days` | number | Días de gracia | Hereda del contrato anterior |
+| `auto_renew` | boolean | Renovación automática | Hereda del contrato anterior |
+| `auto_increase_percentage` | number | % aumento automático | Hereda del contrato anterior |
+| `renewal_notice_days` | number | Días de aviso para no renovar | Hereda del contrato anterior |
+| `included_services` | string[] | Servicios incluidos | Hereda del contrato anterior |
+| `prohibitions` | string | Cláusula de prohibiciones | Hereda del contrato anterior |
+| `tenant_responsibilities` | string | Responsabilidades del inquilino | Hereda |
+| `owner_responsibilities` | string | Responsabilidades del propietario | Hereda |
+| `coexistence_rules` | string | Normas de convivencia | Hereda |
+| `renewal_terms` | string | Condiciones de renovación | Hereda |
+| `termination_terms` | string | Condiciones de rescisión | Hereda |
+| `jurisdiction` | string | Jurisdicción legal | Hereda del contrato anterior |
+
+**Regla de herencia:** Todos los campos no enviados se heredan del contrato original. Para `monthly_rent`, si no se envía, se aplica la fórmula:
+```
+nueva_renta = renta_anterior × (1 + auto_increase_percentage / 100)
+```
 
 **Response (201):**
 ```json
@@ -465,33 +521,93 @@ ACTIVO → FINALIZADO (cuando finaliza el contrato o se rescinde)
   "status": "BORRADOR",
   "start_date": "2027-02-02",
   "end_date": "2028-02-02",
+  "duration_months": 12,
   "monthly_rent": 1320.00,
   "currency": "USD",
   "tenant_id": 5,
   "property_id": 1,
-  "renewed_from": 1,
   "created_at": "2026-02-05T12:00:00.000Z",
-  "tenant": {
-    "id": 5,
-    "name": "María González"
-  },
-  "property": {
-    "id": 1,
-    "title": "Apartamento Moderno en Centro"
-  }
+  "tenant_name": "María González",
+  "tenant_email": "maria@test.com",
+  "property_title": "Apartamento Moderno en Centro"
 }
 ```
 
-**Comportamiento:**
-- Crea un nuevo contrato basado en el anterior
-- Ajusta las fechas automáticamente (comienza el día después de finalizar el anterior)
-- Aplica el aumento automático si está configurado (`auto_increase_percentage`)
-- Mantiene el mismo inquilino y propiedad
-- Estado inicial: `BORRADOR` (requiere firma)
+**Efectos secundarios:**
+- El contrato anterior queda con estado `RENOVADO`
+- El nuevo contrato inicia en estado `BORRADOR` (requiere firma del inquilino)
+- Se registra en `audit_logs` con `action: "renewed"`
+
+**Errores:**
+- `404 Not Found` — el contrato no existe
+- `400 Bad Request` — el contrato está en estado `FINALIZADO` o `RENOVADO`
 
 ---
 
-### 1.8 Descargar PDF del Contrato
+### 1.8 Historial de Contratos por Unidad/Propiedad
+
+**Endpoint:** `GET /:slug/admin/contracts/:id/history`
+**Auth:** Requerida (ADMIN)
+
+**URL Params:**
+- `id` — ID de cualquier contrato que pertenezca a la unidad/propiedad
+
+**Descripción:** Retorna todos los contratos vinculados a la misma unidad (o propiedad si no hay unidad), ordenados cronológicamente. Útil para ver la cadena de renovaciones y el historial completo de ocupantes.
+
+**Response (200):**
+```json
+[
+  {
+    "id": 1,
+    "contract_number": "CTR-2024-0001",
+    "status": "RENOVADO",
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-31",
+    "duration_months": 12,
+    "monthly_rent": 1000.00,
+    "currency": "USD",
+    "tenant_id": 10,
+    "property_id": 20,
+    "unit_id": 5,
+    "tenant_name": "Juan Pérez",
+    "tenant_email": "juan@test.com",
+    "property_title": "Casa A",
+    "created_at": "2024-01-01T00:00:00.000Z",
+    "updated_at": "2024-12-31T00:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "contract_number": "CTR-2025-0001",
+    "status": "ACTIVO",
+    "start_date": "2025-01-01",
+    "end_date": "2025-12-31",
+    "duration_months": 12,
+    "monthly_rent": 1100.00,
+    "currency": "USD",
+    "tenant_id": 10,
+    "property_id": 20,
+    "unit_id": 5,
+    "tenant_name": "Juan Pérez",
+    "tenant_email": "juan@test.com",
+    "property_title": "Casa A",
+    "created_at": "2025-01-01T00:00:00.000Z",
+    "updated_at": "2025-01-01T00:00:00.000Z"
+  }
+]
+```
+
+**Comportamiento:**
+- Si el contrato tiene `unit_id`: filtra por `unit_id`
+- Si no tiene `unit_id` (propiedad sin subdivisión en unidades): filtra por `property_id`
+- Incluye contratos en cualquier estado: `BORRADOR`, `ACTIVO`, `POR_VENCER`, `RENOVADO`, `FINALIZADO`
+- Ordenado por `start_date ASC` (cronológico)
+
+**Errores:**
+- `404 Not Found` — el contrato con ese `id` no existe
+
+---
+
+### 1.9 Descargar PDF del Contrato
 
 **Endpoint:** `GET /:slug/admin/contracts/:id/pdf`
 **Auth:** Requerida (ADMIN)
@@ -699,16 +815,19 @@ a.click();
 ### 3.1 Ciclo de Vida del Contrato
 
 ```
-BORRADOR → ACTIVO → FINALIZADO
+BORRADOR → ACTIVO → POR_VENCER → RENOVADO (si se renueva)
+                  ↘ FINALIZADO  (si se termina)
 ```
 
 ### 3.2 Descripción de Estados
 
 | Estado | Descripción | Acciones Permitidas |
 |--------|-------------|---------------------|
-| `BORRADOR` | Contrato creado pero no firmado | Editar, Firmar, Eliminar |
-| `ACTIVO` | Contrato vigente y firmado | Ver, Descargar PDF, Finalizar |
-| `FINALIZADO` | Contrato terminado | Ver, Descargar PDF |
+| `BORRADOR` | Contrato creado pero no firmado | Editar, Firmar, Renovar, Eliminar |
+| `ACTIVO` | Contrato vigente y firmado | Ver, Descargar PDF, Finalizar, Renovar |
+| `POR_VENCER` | Contrato activo próximo a vencer (< 30 días) | Ver, Descargar PDF, Renovar, Finalizar |
+| `RENOVADO` | Contrato reemplazado por una renovación | Ver, Descargar PDF (solo lectura) |
+| `FINALIZADO` | Contrato terminado sin renovación | Ver, Descargar PDF (solo lectura) |
 
 ### 3.3 Transiciones de Estado
 
@@ -717,7 +836,16 @@ BORRADOR → ACTIVO → FINALIZADO
 - La propiedad cambia de `RESERVADO` a `OCUPADO`
 - El inquilino recibe acceso a funcionalidades de mantenimiento
 
-**De ACTIVO a FINALIZADO:**
+**De ACTIVO a POR_VENCER:**
+- Transición automática por cron job cuando quedan ≤ 30 días para `end_date`
+- No afecta funcionalidad, solo indica que requiere atención
+
+**De ACTIVO / POR_VENCER a RENOVADO:**
+- Se produce al llamar `POST /:slug/admin/contracts/:id/renew`
+- El contrato original queda inmutable en estado `RENOVADO`
+- Se crea un nuevo contrato en `BORRADOR`
+
+**De ACTIVO / POR_VENCER a FINALIZADO:**
 - Se activa cuando:
   - El contrato llega a su fecha de finalización (`end_date`)
   - El administrador cambia manualmente el estado
@@ -764,11 +892,17 @@ POST /:slug/tenant/contracts/:id/sign
 **Paso 3: (Opcional) Renovar Contrato**
 ```javascript
 POST /:slug/admin/contracts/:id/renew
+// Body opcional — si se omite, todo se hereda del contrato anterior
+{
+  "monthly_rent": 1400.00,  // override del monto
+  "duration_months": 6      // override de la duración
+}
 ```
 
 **Resultado:**
-- Nuevo contrato creado basado en el anterior
-- Estado `BORRADOR` (requiere nueva firma)
+- Contrato anterior pasa a estado `RENOVADO`
+- Nuevo contrato creado en `BORRADOR` (hereda todos los campos, aplica overrides del body)
+- Requiere nueva firma del inquilino
 
 ---
 
@@ -1443,7 +1577,8 @@ export default TenantContractDetail;
 | `POST` | `/:slug/admin/contracts` | Crear contrato manual (casos especiales) |
 | `PATCH` | `/:slug/admin/contracts/:id` | Actualizar contrato |
 | `PATCH` | `/:slug/admin/contracts/:id/status` | Cambiar estado |
-| `POST` | `/:slug/admin/contracts/:id/renew` | Renovar contrato |
+| `POST` | `/:slug/admin/contracts/:id/renew` | Renovar contrato (body opcional con overrides) |
+| `GET` | `/:slug/admin/contracts/:id/history` | Historial cronológico por unidad/propiedad |
 | `GET` | `/:slug/admin/contracts/:id/pdf` | Descargar PDF |
 
 ### Para Inquilinos

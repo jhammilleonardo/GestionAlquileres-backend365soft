@@ -21,6 +21,7 @@ describe('PaymentsService — lógica de negocio', () => {
       {} as NotificationsService,
       {} as OwnerStatementsService,
       {} as SplitPaymentService,
+      { log: jest.fn() } as any,
     );
   });
 

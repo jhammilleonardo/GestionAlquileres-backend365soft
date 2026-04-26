@@ -17,6 +17,7 @@ import type { Response } from 'express';
 import { ContractsService, ContractResult } from './contracts.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
+import { RenewContractDto } from './dto/renew-contract.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -129,10 +130,21 @@ export class AdminContractsController {
   async renew(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
+    @Body() renewDto: RenewContractDto,
     @Req() req: TenantRequest,
   ) {
     const currentUserId = req.user?.userId || 0;
-    return this.contractsService.renew(id, currentUserId);
+    return this.contractsService.renew(id, renewDto, currentUserId);
+  }
+
+  @Get(':id/history')
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async getHistory(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<ContractResult[]> {
+    return this.contractsService.getContractHistory(id);
   }
 
   @Patch(':id')

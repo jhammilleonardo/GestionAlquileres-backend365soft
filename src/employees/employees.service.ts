@@ -15,12 +15,15 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 
 @Injectable()
 export class EmployeesService {
   constructor(
     @InjectDataSource() private dataSource: DataSource,
     private notificationsService: NotificationsService,
+    private auditLogsService: AuditLogsService,
   ) {}
 
   /**
@@ -135,6 +138,14 @@ export class EmployeesService {
       );
     }
 
+    await this.auditLogsService.log({
+      userId: adminId,
+      action: AuditAction.CREATED,
+      entityType: 'employee',
+      entityId: employee.id as number,
+      newValues: { email, name, role: 'EMPLEADO' },
+    });
+
     return fullEmployee;
   }
 
@@ -232,16 +243,30 @@ export class EmployeesService {
     schemaName: string,
     id: number,
     permissions: ModulePermissionsDto[],
+    performedBy: number = 0,
   ): Promise<any> {
     await this.findOne(schemaName, id);
     await this.upsertPermissions(schemaName, id, permissions);
+
+    await this.auditLogsService.log({
+      userId: performedBy,
+      action: AuditAction.PERMISSIONS_UPDATED,
+      entityType: 'employee',
+      entityId: id,
+      newValues: { permissions: permissions as unknown as Record<string, unknown>[] },
+    });
+
     return this.findOne(schemaName, id);
   }
 
   /**
    * Desactiva el acceso del empleado (soft delete)
    */
-  async remove(schemaName: string, id: number): Promise<{ message: string }> {
+  async remove(
+    schemaName: string,
+    id: number,
+    performedBy: number = 0,
+  ): Promise<{ message: string }> {
     await this.findOne(schemaName, id);
 
     await this.dataSource.query(
@@ -250,6 +275,14 @@ export class EmployeesService {
        WHERE id = $1`,
       [id],
     );
+
+    await this.auditLogsService.log({
+      userId: performedBy,
+      action: AuditAction.DELETED,
+      entityType: 'employee',
+      entityId: id,
+      newValues: { is_active: false },
+    });
 
     return {
       message: `Acceso del empleado con ID ${id} desactivado correctamente`,

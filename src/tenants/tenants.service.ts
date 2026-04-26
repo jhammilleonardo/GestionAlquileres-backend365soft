@@ -80,6 +80,7 @@ export class TenantsService implements OnModuleInit {
         ['createReservationsTable', () => this.createReservationsTable(schema_name)],
         ['createLifecycleNotificationLog', () => this.createLifecycleNotificationLog(schema_name)],
         ['createContractTemplatesTable', () => this.createContractTemplatesTable(schema_name)],
+        ['createAuditLogsTable', () => this.createAuditLogsTable(schema_name)],
       ];
 
       for (const [stepName, step] of steps) {
@@ -758,7 +759,10 @@ export class TenantsService implements OnModuleInit {
       // 16. Crear tablas de Gastos (Expenses)
       await this.createExpensesTables(tenant.schema_name);
 
-      // 17. Insertar datos iniciales (seed data)
+      // 17. Crear tabla de audit logs
+      await this.createAuditLogsTable(tenant.schema_name);
+
+      // 18. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
       // 17. Otorgar permisos al usuario de la aplicación
@@ -1935,6 +1939,34 @@ Tenant Signature                    Landlord Signature`;
          ('en', 'Standard Rental Agreement (EN)', $2, true)`,
       [esContent, enContent],
     );
+  }
+
+  private async createAuditLogsTable(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.audit_logs (
+        id          SERIAL PRIMARY KEY,
+        user_id     INTEGER NOT NULL,
+        action      VARCHAR(30) NOT NULL,
+        entity_type VARCHAR(50) NOT NULL,
+        entity_id   INTEGER NOT NULL,
+        old_values  JSONB,
+        new_values  JSONB,
+        ip_address  VARCHAR(45),
+        user_agent  VARCHAR(500),
+        timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_entity
+        ON ${q}.audit_logs(entity_type, entity_id, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id
+        ON ${q}.audit_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_action
+        ON ${q}.audit_logs(action);
+    `);
   }
 
   private async dropTenantSchema(tenant: Tenant) {

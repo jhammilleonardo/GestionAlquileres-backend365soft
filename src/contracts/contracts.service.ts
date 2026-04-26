@@ -14,6 +14,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 import { ContractTemplatesService } from '../contract-templates/contract-templates.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
+import { RenewContractDto } from './dto/renew-contract.dto';
 
 export interface ContractResult {
   id: number;
@@ -22,44 +25,46 @@ export interface ContractResult {
   property_id: number;
   start_date: string | Date;
   end_date: string | Date;
-  duration_months?: number;
+  duration_months?: number | null;
   monthly_rent: number;
   currency: string;
   payment_day: number;
   deposit_amount: number;
-  payment_method?: string;
-  late_fee_percentage?: number;
-  grace_days?: number;
-  included_services?: any; // JSON
-  tenant_responsibilities?: string;
-  owner_responsibilities?: string;
-  prohibitions?: string;
-  coexistence_rules?: string;
-  renewal_terms?: string;
-  termination_terms?: string;
-  jurisdiction?: string;
-  auto_renew?: boolean;
-  renewal_notice_days?: number;
-  auto_increase_percentage?: number;
-  bank_account_number?: string;
-  bank_account_type?: string;
-  bank_name?: string;
-  bank_account_holder?: string;
+  payment_method?: string | null;
+  late_fee_percentage?: number | null;
+  grace_days?: number | null;
+  unit_id?: number | null;
+  included_services?: string[] | string | null;
+  tenant_responsibilities?: string | null;
+  owner_responsibilities?: string | null;
+  prohibitions?: string | null;
+  coexistence_rules?: string | null;
+  renewal_terms?: string | null;
+  termination_terms?: string | null;
+  jurisdiction?: string | null;
+  auto_renew?: boolean | null;
+  renewal_notice_days?: number | null;
+  auto_increase_percentage?: number | null;
+  bank_account_number?: string | null;
+  bank_account_type?: string | null;
+  bank_name?: string | null;
+  bank_account_holder?: string | null;
   status: ContractStatus;
-  terms_conditions?: string;
+  terms_conditions?: string | null;
   created_at: Date;
   updated_at: Date;
-  property_title?: string;
-  property_description?: string;
-  property_status?: string;
-  street_address?: string;
-  city?: string;
-  state?: string;
-  zip_code?: string;
-  country?: string;
-  tenant_name?: string;
-  tenant_email?: string;
-  tenant_phone?: string;
+  // Campos de JOIN — SQL retorna null cuando no hay coincidencia
+  property_title?: string | null;
+  property_description?: string | null;
+  property_status?: string | null;
+  street_address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip_code?: string | null;
+  country?: string | null;
+  tenant_name?: string | null;
+  tenant_email?: string | null;
+  tenant_phone?: string | null;
 }
 
 @Injectable()
@@ -71,6 +76,7 @@ export class ContractsService {
     private notificationsService: NotificationsService,
     private lifecycleNotificationsService: LifecycleNotificationsService,
     private contractTemplatesService: ContractTemplatesService,
+    private auditLogsService: AuditLogsService,
   ) {}
 
   private async generateContractNumber(): Promise<string> {
@@ -281,7 +287,21 @@ export class ContractsService {
       'Creación de contrato',
     );
 
-    // 7. Notificaciones: al inquilino y a los admins
+    // 7. Audit log
+    await this.auditLogsService.log({
+      userId: adminUserId ?? 0,
+      action: AuditAction.CREATED,
+      entityType: 'contract',
+      entityId: savedContract.id,
+      newValues: {
+        contract_number: contractNumber,
+        tenant_id: savedContract.tenant_id,
+        property_id: savedContract.property_id,
+        status: ContractStatus.BORRADOR,
+      },
+    });
+
+    // 8. Notificaciones: al inquilino y a los admins
     try {
       const tenantId: number = createContractDto.tenant_id;
       await this.notificationsService.createForUser(
@@ -517,6 +537,18 @@ export class ContractsService {
       } catch {
         // No propagar errores de notificación
       }
+
+      await this.auditLogsService.log({
+        userId,
+        action: AuditAction.STATUS_CHANGED,
+        entityType: 'contract',
+        entityId: id,
+        oldValues: { status: oldStatus },
+        newValues: {
+          status: updateContractDto.status,
+          reason: updateContractDto.update_reason,
+        },
+      });
     }
 
     return updatedContract;
@@ -593,6 +625,16 @@ export class ContractsService {
     } catch {
       // No propagar errores de notificación
     }
+
+    await this.auditLogsService.log({
+      userId,
+      action: AuditAction.SIGNED,
+      entityType: 'contract',
+      entityId: id,
+      oldValues: { status: oldStatus },
+      newValues: { status: ContractStatus.ACTIVO },
+      ipAddress: ip,
+    });
 
     return await this.findOne(id);
   }
@@ -758,7 +800,11 @@ export class ContractsService {
     };
   }
 
-  async renew(id: number, userId: number = 0) {
+  async renew(
+    id: number,
+    dto: RenewContractDto = {},
+    userId: number = 0,
+  ): Promise<ContractResult> {
     const oldContract = await this.findOne(id);
 
     if (
@@ -770,23 +816,27 @@ export class ContractsService {
       );
     }
 
-    // Calcular nuevas fechas
-    const newStartDate = new Date(oldContract.end_date as string);
-    newStartDate.setDate(newStartDate.getDate() + 1);
+    const baseStartDate = new Date(oldContract.end_date as string);
+    baseStartDate.setDate(baseStartDate.getDate() + 1);
+    const newStartDate = dto.start_date
+      ? new Date(dto.start_date)
+      : baseStartDate;
+
+    const durationMonths =
+      dto.duration_months ?? (oldContract.duration_months as number) ?? 12;
 
     const newEndDate = new Date(newStartDate);
-    newEndDate.setMonth(
-      newEndDate.getMonth() + ((oldContract.duration_months as number) || 12),
-    );
+    newEndDate.setMonth(newEndDate.getMonth() + durationMonths);
 
-    // Aplicar aumento si existe
+    const autoIncrease =
+      dto.auto_increase_percentage ??
+      (oldContract.auto_increase_percentage as number) ??
+      0;
     const newRent =
-      oldContract.monthly_rent *
-      (1 + ((oldContract.auto_increase_percentage as number) || 0) / 100);
+      dto.monthly_rent ?? oldContract.monthly_rent * (1 + autoIncrease / 100);
 
     const newContractNumber = await this.generateContractNumber();
 
-    // Insertar nuevo contrato usando SQL directo
     const insertResult = await this.dataSource.query<ContractResult[]>(
       `INSERT INTO contracts
        (tenant_id, property_id, contract_number, start_date, end_date, duration_months,
@@ -804,27 +854,29 @@ export class ContractsService {
         newContractNumber,
         newStartDate.toISOString().split('T')[0],
         newEndDate.toISOString().split('T')[0],
-        oldContract.duration_months,
+        durationMonths,
         newRent,
-        oldContract.currency,
-        oldContract.payment_day,
-        oldContract.deposit_amount,
-        oldContract.payment_method,
-        oldContract.late_fee_percentage,
-        oldContract.grace_days,
-        oldContract.included_services
-          ? JSON.stringify(oldContract.included_services)
+        dto.currency ?? oldContract.currency,
+        dto.payment_day ?? oldContract.payment_day,
+        dto.deposit_amount ?? oldContract.deposit_amount,
+        dto.payment_method ?? oldContract.payment_method,
+        dto.late_fee_percentage ?? oldContract.late_fee_percentage,
+        dto.grace_days ?? oldContract.grace_days,
+        (dto.included_services ?? oldContract.included_services)
+          ? JSON.stringify(
+              dto.included_services ?? oldContract.included_services,
+            )
           : null,
-        oldContract.tenant_responsibilities,
-        oldContract.owner_responsibilities,
-        oldContract.prohibitions,
-        oldContract.coexistence_rules,
-        oldContract.renewal_terms,
-        oldContract.termination_terms,
-        oldContract.jurisdiction,
-        oldContract.auto_renew,
-        oldContract.renewal_notice_days,
-        oldContract.auto_increase_percentage,
+        dto.tenant_responsibilities ?? oldContract.tenant_responsibilities,
+        dto.owner_responsibilities ?? oldContract.owner_responsibilities,
+        dto.prohibitions ?? oldContract.prohibitions,
+        dto.coexistence_rules ?? oldContract.coexistence_rules,
+        dto.renewal_terms ?? oldContract.renewal_terms,
+        dto.termination_terms ?? oldContract.termination_terms,
+        dto.jurisdiction ?? oldContract.jurisdiction,
+        dto.auto_renew ?? oldContract.auto_renew,
+        dto.renewal_notice_days ?? oldContract.renewal_notice_days,
+        autoIncrease,
         oldContract.id,
         oldContract.bank_account_number,
         oldContract.bank_account_type,
@@ -836,9 +888,8 @@ export class ContractsService {
 
     const savedContract = insertResult[0];
 
-    // Actualizar estado del anterior
     await this.dataSource.query(
-      'UPDATE contracts SET status = $1 WHERE id = $2',
+      'UPDATE contracts SET status = $1, updated_at = NOW() WHERE id = $2',
       [ContractStatus.RENOVADO, id],
     );
 
@@ -859,6 +910,47 @@ export class ContractsService {
       'Creado por renovación',
     );
 
+    await this.auditLogsService.log({
+      userId,
+      action: AuditAction.RENEWED,
+      entityType: 'contract',
+      entityId: id,
+      oldValues: { status: oldContract.status },
+      newValues: {
+        newContractId: savedContract.id,
+        newContractNumber,
+        status: ContractStatus.RENOVADO,
+      },
+    });
+
     return savedContract;
+  }
+
+  async getContractHistory(id: number): Promise<ContractResult[]> {
+    const contract = await this.findOne(id);
+
+    const baseQuery = `
+      SELECT c.*,
+             p.title as property_title, p.status as property_status,
+             pa.street_address, pa.city, pa.country,
+             u.name as tenant_name, u.email as tenant_email, u.phone as tenant_phone
+      FROM contracts c
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN property_addresses pa
+        ON c.property_id = pa.property_id AND pa.address_type = 'address_1'
+      LEFT JOIN "user" u ON c.tenant_id = u.id
+    `;
+
+    if (contract.unit_id) {
+      return this.dataSource.query<ContractResult[]>(
+        `${baseQuery} WHERE c.unit_id = $1 ORDER BY c.start_date ASC`,
+        [contract.unit_id],
+      );
+    }
+
+    return this.dataSource.query<ContractResult[]>(
+      `${baseQuery} WHERE c.property_id = $1 ORDER BY c.start_date ASC`,
+      [contract.property_id],
+    );
   }
 }

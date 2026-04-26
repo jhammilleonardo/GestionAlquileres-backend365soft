@@ -73,6 +73,9 @@ export class TenantsService implements OnModuleInit {
         ['migrateExpensesTable', () => this.migrateExpensesTable(schema_name)],
         ['migrateUserRolePropietario', () => this.migrateUserRolePropietario(schema_name)],
         ['createViolationsTable', () => this.createViolationsTable(schema_name)],
+        ['migrateUnitsShortTermFields', () => this.migrateUnitsShortTermFields(schema_name)],
+        ['createPropertyAvailabilityTable', () => this.createPropertyAvailabilityTable(schema_name)],
+        ['createReservationsTable', () => this.createReservationsTable(schema_name)],
       ];
 
       for (const [stepName, step] of steps) {
@@ -1669,6 +1672,75 @@ export class TenantsService implements OnModuleInit {
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS idx_violations_status
         ON ${quoteIdent(schemaName)}.violations(status)
+    `);
+  }
+
+  private async migrateUnitsShortTermFields(schemaName: string): Promise<void> {
+    const table = `${quoteIdent(schemaName)}.units`;
+    const alterations = [
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS min_nights     INT`,
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS max_nights     INT`,
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS checkin_time   VARCHAR(5)`,
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS checkout_time  VARCHAR(5)`,
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS cleaning_fee   DECIMAL(10,2)`,
+    ];
+    for (const sql of alterations) {
+      await this.dataSource.query(sql);
+    }
+  }
+
+  private async createPropertyAvailabilityTable(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.property_availability (
+        id             SERIAL      PRIMARY KEY,
+        property_id    INT         NOT NULL,
+        unit_id        INT         NOT NULL,
+        date           DATE        NOT NULL,
+        status         VARCHAR(20) NOT NULL DEFAULT 'available',
+        reservation_id INT,
+        blocked_by     INT,
+        notes          TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_availability_unit_date UNIQUE (unit_id, date)
+      )
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_availability_property_month
+        ON ${quoteIdent(schemaName)}.property_availability(property_id, date)
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_availability_unit_date
+        ON ${quoteIdent(schemaName)}.property_availability(unit_id, date)
+    `);
+  }
+
+  private async createReservationsTable(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.reservations (
+        id               SERIAL       PRIMARY KEY,
+        property_id      INT          NOT NULL,
+        unit_id          INT          NOT NULL,
+        tenant_id        INT          NOT NULL,
+        checkin_date     DATE         NOT NULL,
+        checkout_date    DATE         NOT NULL,
+        nights           INT          NOT NULL,
+        price_per_night  DECIMAL(10,2) NOT NULL,
+        cleaning_fee     DECIMAL(10,2) NOT NULL DEFAULT 0,
+        total_amount     DECIMAL(10,2) NOT NULL,
+        currency         VARCHAR(10)  NOT NULL DEFAULT 'BOB',
+        status           VARCHAR(20)  NOT NULL DEFAULT 'confirmed',
+        notes            TEXT,
+        created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_reservations_unit_dates
+        ON ${quoteIdent(schemaName)}.reservations(unit_id, checkin_date, checkout_date)
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_reservations_tenant
+        ON ${quoteIdent(schemaName)}.reservations(tenant_id)
     `);
   }
 

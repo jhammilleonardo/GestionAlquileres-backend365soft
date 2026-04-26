@@ -13,6 +13,7 @@ import { PropertySubtype } from './property-subtype.entity';
 import { PropertyAddress } from './property-address.entity';
 import { RentalOwner } from './rental-owner.entity';
 import { decimalTransformer } from '../../common/utils/decimal.transformer';
+import { RentalType } from '../../units/enums/rental-type.enum';
 
 @Entity('properties')
 export class Property {
@@ -119,9 +120,8 @@ export class Property {
   @OneToMany(() => PropertyAddress, (address) => address.property)
   addresses: PropertyAddress[];
 
-  // Tipo de alquiler (F2-BE-03)
-  @Column({ nullable: true })
-  rental_type: string;
+  @Column({ type: 'varchar', nullable: true })
+  rental_type: RentalType | null;
 
   // View tracking (F2-BE-03)
   @Column({ type: 'int', default: 0 })

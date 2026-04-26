@@ -30,6 +30,7 @@ import { InspectionsModule } from './inspections/inspections.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { OwnerPortalModule } from './owner-portal/owner-portal.module';
 import { ViolationsModule } from './violations/violations.module';
+import { ReservationsModule } from './reservations/reservations.module';
 
 @Module({
   imports: [
@@ -104,6 +105,7 @@ import { ViolationsModule } from './violations/violations.module';
     ExpensesModule,
     OwnerPortalModule,
     ViolationsModule,
+    ReservationsModule,
   ],
   controllers: [AppController],
   providers: [

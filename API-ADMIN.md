@@ -1047,6 +1047,71 @@ Solo disponible para usuarios con rol ADMIN.
 
 ---
 
+## 9. Reservaciones de Corto Plazo (Alquiler SHORT_TERM)
+
+### 9.1 Bloquear Fechas en una Unidad
+
+Bloquea fechas para mantenimiento u otros motivos. La unidad debe tener `rental_type: SHORT_TERM` o `BOTH`.  
+Requiere permiso `reservations:edit`.
+
+```
+POST /:slug/admin/properties/:id/units/:unitId/block-dates
+```
+
+#### Request Body
+
+```json
+{
+  "dates": ["2026-06-20", "2026-06-21", "2026-06-22"],
+  "reason": "Mantenimiento programado"
+}
+```
+
+#### Response 200 OK
+
+```json
+{ "blocked": 3 }
+```
+
+| Código | Causa |
+|---|---|
+| `400` | La unidad no es SHORT_TERM |
+| `404` | Unidad no encontrada |
+| `409` | Alguna fecha ya tiene reserva confirmada |
+
+### 9.2 Campos SHORT_TERM al Crear/Actualizar una Unidad
+
+Al crear o editar una unidad (`POST/PATCH /:slug/admin/properties/:id/units`), se pueden incluir los campos de corto plazo:
+
+```json
+{
+  "unit_number": "2A",
+  "rental_type": "SHORT_TERM",
+  "price_per_night": 80,
+  "cleaning_fee": 30,
+  "min_nights": 2,
+  "max_nights": 30,
+  "checkin_time": "14:00",
+  "checkout_time": "11:00"
+}
+```
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `rental_type` | enum | `SHORT_TERM` / `LONG_TERM` / `BOTH` |
+| `price_per_night` | decimal | Precio por noche en la moneda del tenant |
+| `cleaning_fee` | decimal | Cargo de limpieza por estadía |
+| `min_nights` | integer | Noches mínimas (≥ 1) |
+| `max_nights` | integer | Noches máximas (≤ 365) |
+| `checkin_time` | string | Hora de check-in formato `HH:MM` |
+| `checkout_time` | string | Hora de check-out formato `HH:MM` |
+
+> **Validación automática:** Si `tenant_config.rental_type = LONG_TERM`, no se puede crear unidad `SHORT_TERM`. Se retorna `400 Bad Request`.
+
+> Documentación completa del flujo: [API-RESERVATIONS.md](./API-RESERVATIONS.md)
+
+---
+
 ## Flujo Completo Recomendado de Creación de Propiedad
 
 ### Paso 1: Preparación

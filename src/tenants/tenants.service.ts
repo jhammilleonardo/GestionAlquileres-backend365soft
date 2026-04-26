@@ -78,6 +78,7 @@ export class TenantsService implements OnModuleInit {
         ['migrateUnitsShortTermFields', () => this.migrateUnitsShortTermFields(schema_name)],
         ['createPropertyAvailabilityTable', () => this.createPropertyAvailabilityTable(schema_name)],
         ['createReservationsTable', () => this.createReservationsTable(schema_name)],
+        ['createLifecycleNotificationLog', () => this.createLifecycleNotificationLog(schema_name)],
       ];
 
       for (const [stepName, step] of steps) {
@@ -1792,6 +1793,23 @@ export class TenantsService implements OnModuleInit {
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS idx_reservations_tenant
         ON ${quoteIdent(schemaName)}.reservations(tenant_id)
+    `);
+  }
+
+  private async createLifecycleNotificationLog(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.lifecycle_notification_log (
+        id            SERIAL PRIMARY KEY,
+        entity_type   VARCHAR(50)  NOT NULL,
+        entity_id     INTEGER      NOT NULL,
+        event_key     VARCHAR(100) NOT NULL,
+        sent_at       TIMESTAMP    NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_lifecycle_notif_log UNIQUE (entity_id, entity_type, event_key)
+      )
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_lifecycle_notif_log_entity
+        ON ${quoteIdent(schemaName)}.lifecycle_notification_log(entity_type, entity_id)
     `);
   }
 

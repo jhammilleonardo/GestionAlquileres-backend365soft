@@ -9,6 +9,7 @@ import { quoteIdent } from '../common/utils/sql-identifier';
 import type { CreateInspectionDto } from './dto/create-inspection.dto';
 import type { UpdateInspectionItemsDto } from './dto/update-inspection-items.dto';
 import type { FilterInspectionsDto } from './dto/filter-inspections.dto';
+import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 
 interface PdfDoc extends NodeJS.ReadableStream {
   fontSize(size: number): PdfDoc;
@@ -62,13 +63,12 @@ export interface InspectionItemRow {
 
 @Injectable()
 export class InspectionsService {
-  constructor(@InjectDataSource() private dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private dataSource: DataSource,
+    private lifecycleNotificationsService: LifecycleNotificationsService,
+  ) {}
 
-  async create(
-    schemaName: string,
-    dto: CreateInspectionDto,
-    userId: number,
-  ) {
+  async create(schemaName: string, dto: CreateInspectionDto, userId: number) {
     const q = quoteIdent(schemaName);
 
     const [inspection] = await this.dataSource.query<InspectionRow[]>(
@@ -144,9 +144,7 @@ export class InspectionsService {
       params.push(filters.to);
     }
 
-    const where = conditions.length
-      ? `WHERE ${conditions.join(' AND ')}`
-      : '';
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     return this.dataSource.query(
       `SELECT i.*,
@@ -212,11 +210,10 @@ export class InspectionsService {
     const q = quoteIdent(schemaName);
 
     const [inspection] = await this.dataSource.query<
-      { id: number; status: string }[]
-    >(
-      `SELECT id, status FROM ${q}.inspections WHERE id = $1`,
-      [inspectionId],
-    );
+      { id: number; status: string; type: string }[]
+    >(`SELECT id, status, type FROM ${q}.inspections WHERE id = $1`, [
+      inspectionId,
+    ]);
 
     if (!inspection) {
       throw new NotFoundException(`Inspección ${inspectionId} no encontrada`);
@@ -243,14 +240,26 @@ export class InspectionsService {
           `UPDATE ${q}.inspection_items
            SET area = $1, item_name = $2, condition = $3, notes = $4, updated_at = now()
            WHERE id = $5`,
-          [item.area, item.item_name, item.condition, item.notes ?? null, item.id],
+          [
+            item.area,
+            item.item_name,
+            item.condition,
+            item.notes ?? null,
+            item.id,
+          ],
         );
       } else {
         await this.dataSource.query(
           `INSERT INTO ${q}.inspection_items
              (inspection_id, area, item_name, condition, notes)
            VALUES ($1, $2, $3, $4, $5)`,
-          [inspectionId, item.area, item.item_name, item.condition, item.notes ?? null],
+          [
+            inspectionId,
+            item.area,
+            item.item_name,
+            item.condition,
+            item.notes ?? null,
+          ],
         );
       }
     }
@@ -263,6 +272,16 @@ export class InspectionsService {
          WHERE id = $1`,
         [inspectionId],
       );
+
+      if (inspection.type === 'move_out') {
+        try {
+          await this.lifecycleNotificationsService.onMoveOutCompleted(
+            inspectionId,
+          );
+        } catch {
+          // No propagar errores de notificación
+        }
+      }
     } else if (inspection.status === 'scheduled') {
       await this.dataSource.query(
         `UPDATE ${q}.inspections
@@ -300,8 +319,7 @@ export class InspectionsService {
     }
 
     const newPhotos = files.map(
-      (f) =>
-        `/storage/inspections/${tenantSlug}/${inspectionId}/${f.filename}`,
+      (f) => `/storage/inspections/${tenantSlug}/${inspectionId}/${f.filename}`,
     );
     const allPhotos = [...(item.photos ?? []), ...newPhotos];
 
@@ -365,8 +383,12 @@ export class InspectionsService {
       doc.moveDown(0.3);
       doc.fontSize(10).font('Helvetica');
       doc.text(`ID:             #${inspection.id}`);
-      doc.text(`Tipo:           ${typeLabel[inspection.type] ?? inspection.type}`);
-      doc.text(`Estado:         ${statusLabel[inspection.status] ?? inspection.status}`);
+      doc.text(
+        `Tipo:           ${typeLabel[inspection.type] ?? inspection.type}`,
+      );
+      doc.text(
+        `Estado:         ${statusLabel[inspection.status] ?? inspection.status}`,
+      );
       doc.text(`Fecha programada: ${inspection.scheduled_date}`);
       if (inspection.completed_date) {
         doc.text(`Fecha completada: ${inspection.completed_date}`);
@@ -440,9 +462,7 @@ export class InspectionsService {
           doc
             .fontSize(9)
             .font('Helvetica')
-            .text(
-              `  • ${item.item_name} — ${condition}${photoInfo}`,
-            );
+            .text(`  • ${item.item_name} — ${condition}${photoInfo}`);
           if (item.notes) {
             doc
               .fontSize(8)

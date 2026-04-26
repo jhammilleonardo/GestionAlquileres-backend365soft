@@ -30,12 +30,19 @@ export enum NotificationEventType {
   CONTRACT_CREATED = 'contract.created',
   CONTRACT_SIGNED = 'contract.signed',
   CONTRACT_EXPIRING = 'contract.expiring',
+  CONTRACT_ACTIVATED = 'contract.activated',
+  CONTRACT_EXPIRING_60 = 'contract.expiring.60',
+  CONTRACT_EXPIRING_30 = 'contract.expiring.30',
+  CONTRACT_EXPIRING_15 = 'contract.expiring.15',
   // Empleados
   EMPLOYEE_CREATED = 'employee.created',
   // Leads de Propiedades
   PROPERTY_LEAD_RECEIVED = 'property.lead.received',
   // Infracciones
   VIOLATION_NOTIFIED = 'violation.notified',
+  // Ciclo de vida
+  INSPECTION_MOVE_OUT_COMPLETED = 'inspection.move_out.completed',
+  MAINTENANCE_UNASSIGNED_REMINDER = 'maintenance.unassigned_reminder',
 }
 
 export class CreateNotificationDto {

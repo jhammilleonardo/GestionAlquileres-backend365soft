@@ -3,9 +3,14 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { InspectionsService } from './inspections.service';
 import { InspectionType } from './dto/create-inspection.dto';
+import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 
 const mockDataSource = {
   query: jest.fn(),
+};
+
+const mockLifecycleNotificationsService = {
+  onMoveOutCompleted: jest.fn().mockResolvedValue(undefined),
 };
 
 const SCHEMA = 'tenant_test';
@@ -20,6 +25,7 @@ describe('InspectionsService', () => {
       providers: [
         InspectionsService,
         { provide: getDataSourceToken(), useValue: mockDataSource },
+        { provide: LifecycleNotificationsService, useValue: mockLifecycleNotificationsService },
       ],
     }).compile();
 

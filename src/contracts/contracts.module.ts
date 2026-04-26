@@ -9,11 +9,13 @@ import {
 import { Contract } from './entities/contract.entity';
 import { ContractHistory } from './entities/contract-history.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { LifecycleNotificationsModule } from '../lifecycle-notifications/lifecycle-notifications.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Contract, ContractHistory]),
     NotificationsModule,
+    LifecycleNotificationsModule,
   ],
   providers: [ContractsService, PdfService],
   controllers: [AdminContractsController, TenantContractsController],

@@ -43,6 +43,13 @@ export class Notification {
       'contract.created',
       'contract.signed',
       'contract.expiring',
+      'contract.activated',
+      'contract.expiring.60',
+      'contract.expiring.30',
+      'contract.expiring.15',
+      // Ciclo de vida
+      'inspection.move_out.completed',
+      'maintenance.unassigned_reminder',
     ],
   })
   event_type: string;

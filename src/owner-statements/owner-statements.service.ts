@@ -282,8 +282,8 @@ export class OwnerStatementsService {
     }
   ): Promise<OwnerStatementResponseDto> {
     // 1. Obtener el rango de fechas del período (mes completo)
-    const startDate = new Date(paymentData.periodYear, paymentData.periodMonth - 1, 1);
-    const endDate = new Date(paymentData.periodYear, paymentData.periodMonth, 0); // Último día del mes
+    const startDate = new Date(paymentData.year, paymentData.month - 1, 1);
+    const endDate = new Date(paymentData.year, paymentData.month, 0); // Último día del mes
 
     // 2. Consultar gastos automáticos desde la tabla expenses
     // Nota: Usamos query directo para evitar dependencias circulares con ExpensesService

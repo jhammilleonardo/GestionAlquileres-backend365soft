@@ -69,6 +69,7 @@ ORDER BY table_name;
 | owner-statements | OwnerStatement | ✅ F2-BE-07 Sincronizado |
 | reservations | property_availability, reservations | ✅ Sprint 5 — Startup Migration |
 | vendors | vendors | ✅ Sprint 5 — Startup Migration |
+| lifecycle-notifications | lifecycle_notification_log | ✅ Sprint 5 — Startup Migration |
 
 ---
 
@@ -134,6 +135,49 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 | `POST` | `/:slug/admin/maintenance/:id/rate-vendor` | Admin | Calificar vendor (1-5) |
 
 > Documentación completa: [API-VENDORS.md](./API-VENDORS.md)
+
+---
+
+## Recent Changes (Sprint 5 — Lifecycle Notifications)
+
+### Nuevos Archivos
+- `src/lifecycle-notifications/lifecycle-notifications.service.ts` — Lógica de eventos: contrato activado, vencimientos 60/30/15 días, inspección de salida, mantenimiento sin asignar
+- `src/lifecycle-notifications/lifecycle-notifications.cron.ts` — Cron jobs: diario 08:00 UTC (contratos) y cada 6 horas (mantenimiento)
+- `src/lifecycle-notifications/lifecycle-notifications.module.ts` — Módulo NestJS exportable
+
+### Archivos Modificados
+- `src/notifications/dto/create-notification.dto.ts` — 6 nuevos valores en `NotificationEventType`
+- `src/notifications/entities/notification.entity.ts` — Mismos 6 valores en el enum de columna TypeORM
+- `src/contracts/contracts.service.ts` — Hook `onContractActivated()` al activar y al firmar contrato
+- `src/contracts/contracts.module.ts` — Importa `LifecycleNotificationsModule`
+- `src/inspections/inspections.service.ts` — Hook `onMoveOutCompleted()` al completar inspección tipo `move_out`
+- `src/inspections/inspections.module.ts` — Importa `LifecycleNotificationsModule`
+- `src/tenants/tenants.service.ts` — Migración `createLifecycleNotificationLog` en `runStartupMigrations()`
+- `src/app.module.ts` — `ScheduleModule.forRoot()` y `LifecycleNotificationsModule` registrados
+
+### Base de Datos — Startup Migration (idempotente)
+
+**Nueva tabla `lifecycle_notification_log`** (por schema de tenant):
+```sql
+CREATE TABLE IF NOT EXISTS {schema}.lifecycle_notification_log (
+  id          SERIAL       PRIMARY KEY,
+  entity_type VARCHAR(50)  NOT NULL,
+  entity_id   INTEGER      NOT NULL,
+  event_key   VARCHAR(100) NOT NULL,
+  sent_at     TIMESTAMP    NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_lifecycle_notif_log UNIQUE (entity_id, entity_type, event_key)
+);
+CREATE INDEX IF NOT EXISTS idx_lifecycle_notif_log_entity
+  ON {schema}.lifecycle_notification_log (entity_type, entity_id);
+```
+
+**Propósito:** Deduplicación de notificaciones automáticas. El cron no re-envía si ya existe una fila para `(entity_type, entity_id, event_key)`.
+
+**Ejemplos de `event_key`:**
+- `contract.expiring.60` + `entity_type = 'contract'` + `entity_id = 5`
+- `maintenance.unassigned_reminder` + `entity_type = 'maintenance'` + `entity_id = 7`
+
+> Documentación completa: [API-NOTIFICATIONS.md](./API-NOTIFICATIONS.md#8-notificaciones-automáticas-de-ciclo-de-vida)
 
 ---
 

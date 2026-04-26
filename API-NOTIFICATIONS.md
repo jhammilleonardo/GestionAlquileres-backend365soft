@@ -1,6 +1,6 @@
-# API Documentation - Sistema de Notificaciones (In-App)
+# API Documentation - Sistema de Notificaciones
 
-Esta documentación está diseñada para el equipo de frontend que trabajará en el sistema de notificaciones dentro de la aplicación. Las notificaciones son **in-app solamente** (sin email/SMS externos por ahora).
+Esta documentación está diseñada para el equipo de frontend que trabajará en el sistema de notificaciones. Las notificaciones son **in-app** por defecto. Cada tenant puede habilitar además canales **email** y **whatsapp** en `tenant_config.notification_channels` — actualmente esos canales tienen integración pendiente (stub de log).
 
 **Base URL:** `http://localhost:3000`
 
@@ -23,7 +23,8 @@ El sistema detecta automáticamente el rol del usuario (ADMIN o USER) mediante e
 5. [Eliminar Notificación](#5-eliminar-notificación)
 6. [Estadísticas de Notificaciones](#6-estadísticas-de-notificaciones)
 7. [Tipos de Notificaciones](#7-tipos-de-notificaciones)
-8. [Ejemplos de Implementación](#8-ejemplos-de-implementación)
+8. [Notificaciones Automáticas de Ciclo de Vida](#8-notificaciones-automáticas-de-ciclo-de-vida)
+9. [Ejemplos de Implementación](#9-ejemplos-de-implementación)
 
 ---
 
@@ -311,6 +312,19 @@ Los `event_type` identifican el tipo de notificación. Aquí están los disponib
 | `user.registered` | Nuevo usuario registrado | Admin | Nuevo usuario se registra |
 | `user.password.changed` | Contraseña actualizada | Usuario (mismo) | Usuario cambia password |
 
+#### 📋 Ciclo de Vida (automáticas — generadas por el sistema)
+
+| Event Type | Título Default | ¿Quién recibe? | Cuándo se dispara |
+|------------|----------------|----------------|-------------------|
+| `contract.activated` | Tu contrato está activo | Inquilino | Al activar un contrato (status → ACTIVO) |
+| `contract.expiring.60` | Tu contrato vence en 60 días | Admins + Inquilino | Cron diario 08:00 UTC — 60 días antes del vencimiento |
+| `contract.expiring.30` | Tu contrato vence en 30 días | Admins + Inquilino | Cron diario 08:00 UTC — 30 días antes del vencimiento |
+| `contract.expiring.15` | Contrato vence en 15 días | Admins **únicamente** | Cron diario 08:00 UTC — 15 días antes del vencimiento |
+| `inspection.move_out.completed` | Resumen de inspección de salida | Propietario (si tiene cuenta) | Al completar una inspección de tipo `move_out` |
+| `maintenance.unassigned_reminder` | Solicitudes de mantenimiento sin atender | Admins | Cron cada 6 horas — solicitudes sin asignar > 48 h |
+
+> **Deduplicación:** Las notificaciones de ciclo de vida son idempotentes — el sistema no re-envía la misma notificación si ya fue enviada para ese contrato/inspección/solicitud.
+
 ---
 
 ### 7.2 Metadata por Tipo de Notificación
@@ -374,9 +388,97 @@ Cada tipo de notificación incluye información diferente en `metadata`:
 }
 ```
 
+#### contract.activated
+```json
+{
+  "contract_id": 12,
+  "contract_number": "CTR-2025-001",
+  "start_date": "2025-01-01",
+  "end_date": "2025-12-31"
+}
+```
+
+#### contract.expiring.60 / contract.expiring.30 / contract.expiring.15
+```json
+{
+  "contract_id": 12,
+  "contract_number": "CTR-2025-001",
+  "end_date": "2025-12-31",
+  "days_left": 60
+}
+```
+
+#### inspection.move_out.completed
+```json
+{
+  "inspection_id": 8,
+  "property_id": 3,
+  "completed_date": "2025-06-01"
+}
+```
+
+#### maintenance.unassigned_reminder
+```json
+{
+  "maintenance_request_id": 7,
+  "ticket_number": "MNT-2025-007",
+  "property_title": "Casa 3"
+}
+```
+
 ---
 
-## 8. Ejemplos de Implementación
+## 8. Notificaciones Automáticas de Ciclo de Vida
+
+El módulo `lifecycle-notifications` genera notificaciones automáticamente en dos contextos:
+
+### 8.1 Disparadas por evento HTTP (dentro de un request)
+
+Estas se generan cuando un usuario realiza una acción:
+
+| Evento | Acción que la dispara | Destinatario |
+|--------|----------------------|--------------|
+| **Contrato activado** | Admin cambia estado del contrato a `ACTIVO`, o inquilino firma el contrato | Inquilino del contrato |
+| **Inspección de salida completada** | Admin marca como completa una inspección de tipo `move_out` | Propietario de la propiedad (solo si tiene cuenta de usuario con rol `PROPIETARIO`) |
+
+### 8.2 Disparadas por Cron (sin request HTTP)
+
+Estas se ejecutan automáticamente en segundo plano:
+
+| Cron | Horario | Qué hace |
+|------|---------|----------|
+| `runContractExpiryCheck` | Diariamente a las **08:00 UTC** | Revisa todos los contratos activos de todos los tenants y envía alertas de vencimiento a los 60, 30 y 15 días |
+| `runMaintenanceUnassignedCheck` | Cada **6 horas** | Revisa solicitudes de mantenimiento en estado `NEW` sin técnico/vendor asignado por más de 48 horas |
+
+### 8.3 Canales de notificación (`notification_channels`)
+
+Cada tenant configura en `tenant_config.notification_channels` qué canales están activos:
+
+```json
+{
+  "internal": true,
+  "email": false,
+  "whatsapp": false
+}
+```
+
+- `internal: true` → se crea la notificación in-app (registro en tabla `notifications`)
+- `email: true` → **stub** — actualmente loggea en consola; pendiente integración SendGrid
+- `whatsapp: true` → **stub** — actualmente loggea en consola; pendiente integración Twilio
+
+> El frontend solo necesita manejar notificaciones `internal`. Los canales email/whatsapp son transparentes para el frontend.
+
+### 8.4 Tolerancia a fallos y reintentos
+
+Las notificaciones de ciclo de vida están diseñadas para no bloquear el flujo principal:
+
+- Los errores al enviar notificaciones **no propagan excepción** al caller (contratos, inspecciones)
+- El cron itera todos los tenants y **continúa con el siguiente** si uno falla
+- La deduplicación usa la tabla `lifecycle_notification_log` — si el cron no corrió un día y corre al día siguiente, detecta el rango de ±2 días para no re-enviar
+
+---
+
+## 9. Ejemplos de Implementación
 
 ### 8.1 Componente de Notificaciones en Header
 
@@ -487,6 +589,12 @@ const NotificationBell = ({ tenantSlug }) => {
     } else if (notification.event_type === 'user.registered') {
       const userId = notification.metadata.user_id;
       window.location.href = `/admin/users/${userId}`;
+    } else if (notification.event_type.startsWith('contract.')) {
+      const contractId = notification.metadata.contract_id;
+      window.location.href = `/admin/contracts/${contractId}`;
+    } else if (notification.event_type === 'inspection.move_out.completed') {
+      const inspectionId = notification.metadata.inspection_id;
+      window.location.href = `/admin/inspections/${inspectionId}`;
     }
   };
 
@@ -739,7 +847,14 @@ const formatEventType = (eventType) => {
     'property.status.changed': '🏠 Propiedad Actualizada',
     'property.available': '🏠 Propiedad Disponible',
     'user.registered': '👤 Nuevo Usuario',
-    'user.password.changed': '🔒 Contraseña Cambiada'
+    'user.password.changed': '🔒 Contraseña Cambiada',
+    // Ciclo de vida
+    'contract.activated': '📄 Contrato Activo',
+    'contract.expiring.60': '⏳ Contrato Vence en 60 días',
+    'contract.expiring.30': '⚠️ Contrato Vence en 30 días',
+    'contract.expiring.15': '🚨 Contrato Vence en 15 días',
+    'inspection.move_out.completed': '🏠 Inspección de Salida Completa',
+    'maintenance.unassigned_reminder': '🔧 Mantenimiento Sin Atender',
   };
   return types[eventType] || eventType;
 };
@@ -777,10 +892,11 @@ if (notification.event_type.includes('maintenance')) {
 - No se pueden desactivar individualmente
 - Fase 2: Se agregará panel de preferencias
 
-### 5. Solo In-App (por ahora)
-- No hay email/SMS externos
-- Todo es dentro de la aplicación
-- Fase 3: Se integrarán servicios externos (email, SMS)
+### 5. Canales de Notificación
+- **In-app** (`internal: true`): activo por defecto — el frontend lo consume con los endpoints de esta documentación
+- **Email** (`email: true`): stub implementado — loggea en consola, pendiente integración SendGrid (Fase 3)
+- **WhatsApp** (`whatsapp: true`): stub implementado — loggea en consola, pendiente integración Twilio (Fase 3)
+- Los canales se configuran en `tenant_config.notification_channels` — el frontend no necesita manejarlos directamente
 
 ### 6. Multitenancy
 - Cada tenant tiene sus propias notificaciones

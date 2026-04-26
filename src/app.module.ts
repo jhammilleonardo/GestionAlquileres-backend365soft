@@ -1,5 +1,6 @@
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
@@ -32,11 +33,13 @@ import { OwnerPortalModule } from './owner-portal/owner-portal.module';
 import { ViolationsModule } from './violations/violations.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { VendorsModule } from './vendors/vendors.module';
+import { LifecycleNotificationsModule } from './lifecycle-notifications/lifecycle-notifications.module';
 
 @Module({
   imports: [
     ConfigModule,
     HealthModule,
+    ScheduleModule.forRoot(),
     // Rate Limiting - Protección contra fuerza bruta y DoS
     ThrottlerModule.forRoot([
       {
@@ -108,6 +111,7 @@ import { VendorsModule } from './vendors/vendors.module';
     ViolationsModule,
     ReservationsModule,
     VendorsModule,
+    LifecycleNotificationsModule,
   ],
   controllers: [AppController],
   providers: [

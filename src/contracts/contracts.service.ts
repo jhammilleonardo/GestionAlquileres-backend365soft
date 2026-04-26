@@ -12,6 +12,7 @@ import { ContractStatus } from './enums/contract-status.enum';
 import { PdfService } from './pdf.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
+import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 
 export interface ContractResult {
   id: number;
@@ -67,6 +68,7 @@ export class ContractsService {
     private dataSource: DataSource,
     private pdfService: PdfService,
     private notificationsService: NotificationsService,
+    private lifecycleNotificationsService: LifecycleNotificationsService,
   ) {}
 
   private async generateContractNumber(): Promise<string> {
@@ -479,37 +481,36 @@ export class ContractsService {
 
       // Notificar al inquilino sobre el cambio de estado relevante
       try {
-        const statusNotifMap: Partial<
-          Record<
-            ContractStatus,
-            { type: NotificationEventType; title: string; msg: string }
-          >
-        > = {
-          [ContractStatus.ACTIVO]: {
-            type: NotificationEventType.CONTRACT_SIGNED,
-            title: 'Contrato activado',
-            msg: 'Tu contrato ha sido activado y está en vigencia',
-          },
-          [ContractStatus.FINALIZADO]: {
-            type: NotificationEventType.CONTRACT_EXPIRING,
-            title: 'Contrato finalizado',
-            msg: 'Tu contrato ha finalizado',
-          },
-          [ContractStatus.CANCELADO]: {
-            type: NotificationEventType.CONTRACT_EXPIRING,
-            title: 'Contrato cancelado',
-            msg: 'Tu contrato ha sido cancelado',
-          },
-        };
-        const notif = statusNotifMap[updateContractDto.status];
-        if (notif) {
-          await this.notificationsService.createForUser(
-            contract.tenant_id,
-            notif.type,
-            notif.title,
-            notif.msg,
-            { contract_id: id, new_status: updateContractDto.status },
-          );
+        if (updateContractDto.status === ContractStatus.ACTIVO) {
+          await this.lifecycleNotificationsService.onContractActivated(id);
+        } else {
+          const statusNotifMap: Partial<
+            Record<
+              ContractStatus,
+              { type: NotificationEventType; title: string; msg: string }
+            >
+          > = {
+            [ContractStatus.FINALIZADO]: {
+              type: NotificationEventType.CONTRACT_EXPIRING,
+              title: 'Contrato finalizado',
+              msg: 'Tu contrato ha finalizado',
+            },
+            [ContractStatus.CANCELADO]: {
+              type: NotificationEventType.CONTRACT_EXPIRING,
+              title: 'Contrato cancelado',
+              msg: 'Tu contrato ha sido cancelado',
+            },
+          };
+          const notif = statusNotifMap[updateContractDto.status];
+          if (notif) {
+            await this.notificationsService.createForUser(
+              contract.tenant_id,
+              notif.type,
+              notif.title,
+              notif.msg,
+              { contract_id: id, new_status: updateContractDto.status },
+            );
+          }
         }
       } catch (notifError) {
         // No propagar errores de notificación
@@ -567,10 +568,12 @@ export class ContractsService {
 
     // Notificar a los admins que el contrato fue firmado
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const admins = await this.dataSource.query(
-        `SELECT id FROM users WHERE role = 'ADMIN' LIMIT 5`,
+        `SELECT id FROM "user" WHERE role = 'ADMIN' LIMIT 5`,
       );
-      const adminIds = admins.map((a: any) => a.id as number);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      const adminIds = (admins as { id: number }[]).map((a) => a.id) as number[];
       if (adminIds.length > 0) {
         await this.notificationsService.notifyAdmins(
           adminIds,
@@ -580,7 +583,14 @@ export class ContractsService {
           { contract_id: id },
         );
       }
-    } catch (notifError) {
+    } catch {
+      // No propagar errores de notificación
+    }
+
+    // Enviar bienvenida al inquilino con datos del portal
+    try {
+      await this.lifecycleNotificationsService.onContractActivated(id);
+    } catch {
       // No propagar errores de notificación
     }
 

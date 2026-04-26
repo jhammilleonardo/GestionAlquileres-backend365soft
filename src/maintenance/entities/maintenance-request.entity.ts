@@ -83,6 +83,9 @@ export class MaintenanceRequest {
   @Column({ nullable: true })
   assigned_to: number;
 
+  @Column({ type: 'int', nullable: true })
+  vendor_id: number | null;
+
   @Column()
   tenant_id: number;
 
@@ -126,6 +129,18 @@ export class MaintenanceRequest {
 
   @Column({ type: 'timestamptz', nullable: true })
   completed_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  vendor_rating: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  vendor_rating_comment: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  vendor_rated_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  vendor_rated_by: number | null;
 
   @CreateDateColumn()
   created_at: Date;

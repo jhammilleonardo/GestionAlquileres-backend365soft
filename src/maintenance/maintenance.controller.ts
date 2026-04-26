@@ -31,6 +31,8 @@ import { CreateMaintenanceDto } from './dto/create-maintenance.dto';
 import { UpdateMaintenanceDto } from './dto/update-maintenance.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
+import { AssignVendorDto } from './dto/assign-vendor.dto';
+import { RateVendorDto } from './dto/rate-vendor.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -234,6 +236,35 @@ export class AdminMaintenanceController {
   ) {
     await this.maintenanceService.authorizeWork(+id, req.user.userId);
     return { message: 'Trabajo autorizado correctamente' };
+  }
+
+  @Patch(':id/assign-vendor')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Asignar proveedor externo o técnico interno a la orden' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async assignVendor(
+    @Param('id') id: string,
+    @Body() dto: AssignVendorDto,
+  ) {
+    return this.maintenanceService.assignVendor(
+      +id,
+      dto.vendor_id ?? null,
+      dto.assigned_to ?? null,
+    );
+  }
+
+  @Post(':id/rate-vendor')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Calificar al proveedor externo al cerrar la orden (1-5)' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  async rateVendor(
+    @Param('id') id: string,
+    @Body() dto: RateVendorDto,
+    @Request() req,
+  ) {
+    return this.maintenanceService.rateVendor(+id, dto.rating, dto.comment, req.user.userId);
   }
 }
 

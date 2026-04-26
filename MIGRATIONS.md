@@ -68,6 +68,72 @@ ORDER BY table_name;
 | units | Unit | ✅ Sincronizado |
 | owner-statements | OwnerStatement | ✅ F2-BE-07 Sincronizado |
 | reservations | property_availability, reservations | ✅ Sprint 5 — Startup Migration |
+| vendors | vendors | ✅ Sprint 5 — Startup Migration |
+
+---
+
+## Recent Changes (Sprint 5 — Gestión de Vendors)
+
+### Nuevos Archivos
+- `src/vendors/` — Módulo completo: service, controller, DTOs, enums, tests
+- `src/vendors/enums/vendor-specialty.enum.ts` — `plumbing/electrical/hvac/cleaning/painting/general/other`
+- `src/maintenance/dto/assign-vendor.dto.ts` — DTO para asignar vendor o técnico
+- `src/maintenance/dto/rate-vendor.dto.ts` — DTO para calificar vendor (1-5 + comentario)
+
+### Archivos Modificados
+- `src/maintenance/entities/maintenance-request.entity.ts` — 5 columnas nuevas: `vendor_id`, `vendor_rating`, `vendor_rating_comment`, `vendor_rated_at`, `vendor_rated_by`
+- `src/maintenance/maintenance.service.ts` — Métodos `assignVendor()` y `rateVendor()`
+- `src/maintenance/maintenance.controller.ts` — Endpoints `PATCH :id/assign-vendor` y `POST :id/rate-vendor`
+- `src/tenants/tenants.service.ts` — 2 migraciones nuevas en `runStartupMigrations()`
+- `src/app.module.ts` — `VendorsModule` registrado
+
+### Base de Datos — Startup Migrations (idempotentes)
+
+**Nueva tabla `vendors`:**
+```sql
+CREATE TABLE IF NOT EXISTS {schema}.vendors (
+  id             SERIAL        PRIMARY KEY,
+  name           VARCHAR(200)  NOT NULL,
+  specialty      VARCHAR(50)   NOT NULL,
+  phone          VARCHAR(30),
+  email          VARCHAR(200),
+  address        TEXT,
+  rate_per_hour  DECIMAL(10,2),
+  rate_flat      DECIMAL(10,2),
+  is_active      BOOLEAN       NOT NULL DEFAULT true,
+  average_rating DECIMAL(3,2),
+  notes          TEXT,
+  created_by     INT,
+  created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+-- Índices: specialty (WHERE is_active), is_active
+```
+
+**Columnas nuevas en `maintenance_requests`:**
+```sql
+ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_id             INT;
+ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rating         INT;
+ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rating_comment TEXT;
+ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_at       TIMESTAMPTZ;
+ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_by       INT;
+-- Índice: vendor_id WHERE NOT NULL
+```
+
+### Endpoints Nuevos
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| `GET` | `/:slug/admin/vendors` | Admin | Listar proveedores |
+| `GET` | `/:slug/admin/vendors/:id` | Admin | Obtener proveedor |
+| `POST` | `/:slug/admin/vendors` | Admin | Crear proveedor |
+| `PATCH` | `/:slug/admin/vendors/:id` | Admin | Actualizar proveedor |
+| `DELETE` | `/:slug/admin/vendors/:id` | Admin | Desactivar proveedor |
+| `GET` | `/:slug/admin/vendors/:id/history` | Admin | Historial de órdenes |
+| `PATCH` | `/:slug/admin/maintenance/:id/assign-vendor` | Admin | Asignar vendor/técnico |
+| `POST` | `/:slug/admin/maintenance/:id/rate-vendor` | Admin | Calificar vendor (1-5) |
+
+> Documentación completa: [API-VENDORS.md](./API-VENDORS.md)
 
 ---
 

@@ -34,6 +34,7 @@ import { ViolationsModule } from './violations/violations.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { LifecycleNotificationsModule } from './lifecycle-notifications/lifecycle-notifications.module';
+import { BillingCronModule } from './billing-cron/billing-cron.module';
 
 @Module({
   imports: [
@@ -112,6 +113,7 @@ import { LifecycleNotificationsModule } from './lifecycle-notifications/lifecycl
     ReservationsModule,
     VendorsModule,
     LifecycleNotificationsModule,
+    BillingCronModule,
   ],
   controllers: [AppController],
   providers: [

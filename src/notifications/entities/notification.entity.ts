@@ -50,6 +50,9 @@ export class Notification {
       // Ciclo de vida
       'inspection.move_out.completed',
       'maintenance.unassigned_reminder',
+      // Facturación automática
+      'payment.reminder',
+      'payment.late_fee_applied',
     ],
   })
   event_type: string;

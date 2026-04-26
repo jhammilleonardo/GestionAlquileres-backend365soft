@@ -24,6 +24,7 @@ El sistema detecta automáticamente el rol del usuario (ADMIN o USER) mediante e
 6. [Estadísticas de Notificaciones](#6-estadísticas-de-notificaciones)
 7. [Tipos de Notificaciones](#7-tipos-de-notificaciones)
 8. [Notificaciones Automáticas de Ciclo de Vida](#8-notificaciones-automáticas-de-ciclo-de-vida)
+8b. [Notificaciones Automáticas de Facturación](#8b-notificaciones-automáticas-de-facturación-billing-cron)
 9. [Ejemplos de Implementación](#9-ejemplos-de-implementación)
 
 ---
@@ -325,6 +326,15 @@ Los `event_type` identifican el tipo de notificación. Aquí están los disponib
 
 > **Deduplicación:** Las notificaciones de ciclo de vida son idempotentes — el sistema no re-envía la misma notificación si ya fue enviada para ese contrato/inspección/solicitud.
 
+#### 💰 Facturación Automática (automáticas — generadas por el sistema)
+
+| Event Type | Título Default | ¿Quién recibe? | Cuándo se dispara |
+|------------|----------------|----------------|-------------------|
+| `payment.reminder` | Recordatorio de pago | Inquilino | Cron cada hora — 7 días antes del `due_date` del pago RENT pendiente |
+| `payment.late_fee_applied` | Cargo por mora aplicado | Inquilino | Cron cada hora — cuando se aplica automáticamente una mora por pago vencido |
+
+> **Deduplicación:** Los recordatorios (`payment.reminder`) usan `lifecycle_notification_log` para no reenviar el mismo aviso. La mora (`payment.late_fee_applied`) es idempotente por diseño — se verifica que no exista ya un pago hijo de tipo `LATE_FEE` antes de crearlo.
+
 ---
 
 ### 7.2 Metadata por Tipo de Notificación
@@ -426,6 +436,27 @@ Cada tipo de notificación incluye información diferente en `metadata`:
 }
 ```
 
+#### payment.reminder
+```json
+{
+  "payment_id": 34,
+  "due_date": "2025-08-10",
+  "amount": "1500.00",
+  "currency": "BOB",
+  "contract_number": "CTR-2025-001"
+}
+```
+
+#### payment.late_fee_applied
+```json
+{
+  "payment_id": 34,
+  "fee_amount": 30.00,
+  "currency": "BOB",
+  "contract_number": "CTR-2025-001"
+}
+```
+
 ---
 
 ## 8. Notificaciones Automáticas de Ciclo de Vida
@@ -475,6 +506,65 @@ Las notificaciones de ciclo de vida están diseñadas para no bloquear el flujo 
 - Los errores al enviar notificaciones **no propagan excepción** al caller (contratos, inspecciones)
 - El cron itera todos los tenants y **continúa con el siguiente** si uno falla
 - La deduplicación usa la tabla `lifecycle_notification_log` — si el cron no corrió un día y corre al día siguiente, detecta el rango de ±2 días para no re-enviar
+
+---
+
+## 8b. Notificaciones Automáticas de Facturación (`billing-cron`)
+
+El módulo `billing-cron` gestiona la facturación periódica de forma autónoma, generando notificaciones como efecto secundario.
+
+### 8b.1 Lógica de timezone
+
+A diferencia de `lifecycle-notifications` (que corre en hora UTC fija), `billing-cron` respeta la zona horaria de cada tenant:
+
+- El cron corre **cada hora en UTC** (`0 * * * *`)
+- Antes de procesar, verifica si es **medianoche (00:xx) en la zona horaria del tenant**
+- Si `notification_channels.internal` está habilitado, crea las notificaciones in-app
+
+```
+08:00 UTC  → medianoche en America/La_Paz (UTC-8 invierno) → procesa ese tenant
+04:00 UTC  → medianoche en America/New_York (EDT, UTC-4)   → procesa ese tenant
+```
+
+### 8b.2 Cron jobs de facturación
+
+| Cron | Horario | Qué hace |
+|------|---------|----------|
+| `runDailyBilling` | Cada hora — solo actúa en tenants cuya hora local sea `00:xx` | Detecta pagos RENT vencidos tras período de gracia → inserta pago `LATE_FEE` + notifica al inquilino; envía recordatorio 7 días antes del `due_date` |
+| `runMonthlyStatements` | Cada hora — solo actúa si es medianoche Y día 1 del mes en el tenant | Genera `owner_statements` (liquidaciones) para todos los propietarios con contratos activos y pagos aprobados el mes anterior |
+
+### 8b.3 Aplicación de mora — detalles
+
+La mora se aplica cuando:
+- El pago es de tipo `RENT`, estado `PENDING`
+- `due_date + grace_days_late_fee < hoy`
+- No existe ya un pago hijo con `payment_type = 'LATE_FEE'` y `parent_payment_id` apuntando al pago original
+
+El monto de mora: `fee = round(amount × late_fee_percentage / 100, 2)`
+
+Valores de `grace_days_late_fee` y `late_fee_percentage` vienen de `tenant_config`:
+
+| País | `grace_days_late_fee` | `late_fee_percentage` |
+|------|-----------------------|-----------------------|
+| 🇺🇸 US | 5 | 5% |
+| 🇧🇴 BO | 5 | 2% |
+| 🇬🇹 GT | 5 | 3% |
+| 🇭🇳 HN | 5 | 3% |
+
+### 8b.4 Liquidaciones mensuales — detalles
+
+El día 1 de cada mes (en la zona horaria del tenant) se genera una liquidación (`owner_statement`) por cada propiedad con:
+- Contrato activo (`ACTIVO` o `POR_VENCER`)
+- Propietario asignado (`property_owners`)
+- Al menos un pago `RENT` con `status = 'APPROVED'` el mes anterior
+
+Cálculo: `net_amount = gross_rent - maintenance_deduction - management_commission`
+
+- `gross_rent` = suma de pagos RENT aprobados del mes
+- `maintenance_deduction` = suma de gastos (`expenses`) de la propiedad ese mes
+- `management_commission` = `gross_rent × commission_percentage / 100` (de `tenant_config`)
+
+> Si ya existía una liquidación para ese período (el admin la creó manualmente), el cron la **actualiza** via upsert en lugar de duplicarla.
 
 ---
 
@@ -595,6 +685,12 @@ const NotificationBell = ({ tenantSlug }) => {
     } else if (notification.event_type === 'inspection.move_out.completed') {
       const inspectionId = notification.metadata.inspection_id;
       window.location.href = `/admin/inspections/${inspectionId}`;
+    } else if (
+      notification.event_type === 'payment.reminder' ||
+      notification.event_type === 'payment.late_fee_applied'
+    ) {
+      const paymentId = notification.metadata.payment_id;
+      window.location.href = `/admin/payments/${paymentId}`;
     }
   };
 
@@ -855,6 +951,9 @@ const formatEventType = (eventType) => {
     'contract.expiring.15': '🚨 Contrato Vence en 15 días',
     'inspection.move_out.completed': '🏠 Inspección de Salida Completa',
     'maintenance.unassigned_reminder': '🔧 Mantenimiento Sin Atender',
+    // Facturación automática
+    'payment.reminder': '💳 Recordatorio de Pago',
+    'payment.late_fee_applied': '⚠️ Cargo por Mora',
   };
   return types[eventType] || eventType;
 };

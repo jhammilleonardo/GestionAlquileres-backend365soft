@@ -43,6 +43,9 @@ export enum NotificationEventType {
   // Ciclo de vida
   INSPECTION_MOVE_OUT_COMPLETED = 'inspection.move_out.completed',
   MAINTENANCE_UNASSIGNED_REMINDER = 'maintenance.unassigned_reminder',
+  // Facturación automática
+  PAYMENT_REMINDER = 'payment.reminder',
+  LATE_FEE_APPLIED = 'payment.late_fee_applied',
 }
 
 export class CreateNotificationDto {

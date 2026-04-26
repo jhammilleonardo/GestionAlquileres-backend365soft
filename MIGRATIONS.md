@@ -70,6 +70,7 @@ ORDER BY table_name;
 | reservations | property_availability, reservations | ✅ Sprint 5 — Startup Migration |
 | vendors | vendors | ✅ Sprint 5 — Startup Migration |
 | lifecycle-notifications | lifecycle_notification_log | ✅ Sprint 5 — Startup Migration |
+| billing-cron | Sin tablas nuevas — usa `payments` y `lifecycle_notification_log` | ✅ Sprint 5 |
 
 ---
 
@@ -135,6 +136,41 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 | `POST` | `/:slug/admin/maintenance/:id/rate-vendor` | Admin | Calificar vendor (1-5) |
 
 > Documentación completa: [API-VENDORS.md](./API-VENDORS.md)
+
+---
+
+## Recent Changes (Sprint 5 — Facturación Automática / Billing Cron)
+
+### Nuevos Archivos
+- `src/billing-cron/late-fee.calculator.ts` — Funciones puras: `calculateLateFee`, `isPaymentOverdue`, `isMidnightWindowInTz`, `isFirstDayOfMonthInTz`, `getPreviousMonthYear`
+- `src/billing-cron/billing-cron.service.ts` — Lógica: mora automática, recordatorios 7 días, liquidaciones mensuales
+- `src/billing-cron/billing-cron.scheduler.ts` — Cron `0 * * * *` (cada hora): `runDailyBilling` y `runMonthlyStatements`
+- `src/billing-cron/billing-cron.module.ts` — Módulo NestJS
+- `src/billing-cron/billing-cron.service.spec.ts` — 25 tests unitarios
+
+### Archivos Modificados
+- `src/notifications/dto/create-notification.dto.ts` — 2 nuevos valores: `PAYMENT_REMINDER = 'payment.reminder'`, `LATE_FEE_APPLIED = 'payment.late_fee_applied'`
+- `src/notifications/entities/notification.entity.ts` — Mismos 2 valores en el enum de columna TypeORM
+- `src/app.module.ts` — `BillingCronModule` registrado
+
+### Base de Datos — Sin nuevas tablas
+
+El módulo **no crea tablas nuevas**. Usa las tablas existentes:
+
+| Tabla | Uso |
+|-------|-----|
+| `{schema}.payments` | Lee pagos vencidos (mora) y próximos a vencer (recordatorios). Inserta pagos `LATE_FEE` con `parent_payment_id` apuntando al pago original. |
+| `{schema}.lifecycle_notification_log` | Deduplicación de recordatorios (`event_key = 'payment.reminder.7d'`) |
+| `{schema}.owner_statements` | Upsert mensual de liquidaciones (día 1 del mes en la TZ del tenant) |
+| `{schema}.expenses` | Suma de gastos del mes para calcular `maintenance_deduction` |
+| `{schema}.property_owners` | Identifica el propietario de cada propiedad con contrato activo |
+| `{schema}.tenant_config` | Lee `grace_days_late_fee`, `late_fee_percentage`, `commission_percentage`, `timezone`, `notification_channels` |
+
+### Lógica de timezone
+
+El cron corre **cada hora en UTC**. Por cada tenant comprueba si `hora_local == 0` (medianoche) antes de ejecutar la lógica diaria. Para las liquidaciones, además verifica `día_local == 1`. Esto elimina la necesidad de cron dinámico por tenant.
+
+> Documentación completa: [API-NOTIFICATIONS.md — sección 8b](./API-NOTIFICATIONS.md#8b-notificaciones-automáticas-de-facturación-billing-cron)
 
 ---
 

@@ -73,6 +73,8 @@ export class TenantsService implements OnModuleInit {
         ['migrateExpensesTable', () => this.migrateExpensesTable(schema_name)],
         ['migrateUserRolePropietario', () => this.migrateUserRolePropietario(schema_name)],
         ['createViolationsTable', () => this.createViolationsTable(schema_name)],
+        ['createVendorsTable', () => this.createVendorsTable(schema_name)],
+        ['migrateMaintenanceVendorFields', () => this.migrateMaintenanceVendorFields(schema_name)],
         ['migrateUnitsShortTermFields', () => this.migrateUnitsShortTermFields(schema_name)],
         ['createPropertyAvailabilityTable', () => this.createPropertyAvailabilityTable(schema_name)],
         ['createReservationsTable', () => this.createReservationsTable(schema_name)],
@@ -1672,6 +1674,55 @@ export class TenantsService implements OnModuleInit {
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS idx_violations_status
         ON ${quoteIdent(schemaName)}.violations(status)
+    `);
+  }
+
+  private async createVendorsTable(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.vendors (
+        id             SERIAL        PRIMARY KEY,
+        name           VARCHAR(200)  NOT NULL,
+        specialty      VARCHAR(50)   NOT NULL,
+        phone          VARCHAR(30),
+        email          VARCHAR(200),
+        address        TEXT,
+        rate_per_hour  DECIMAL(10,2),
+        rate_flat      DECIMAL(10,2),
+        is_active      BOOLEAN       NOT NULL DEFAULT true,
+        average_rating DECIMAL(3,2),
+        notes          TEXT,
+        created_by     INT,
+        created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_vendors_specialty
+        ON ${quoteIdent(schemaName)}.vendors(specialty)
+        WHERE is_active = true
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_vendors_active
+        ON ${quoteIdent(schemaName)}.vendors(is_active)
+    `);
+  }
+
+  private async migrateMaintenanceVendorFields(schemaName: string): Promise<void> {
+    const table = `${quoteIdent(schemaName)}.maintenance_requests`;
+    const alterations = [
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS vendor_id             INT`,
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS vendor_rating         INT`,
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS vendor_rating_comment TEXT`,
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS vendor_rated_at       TIMESTAMPTZ`,
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS vendor_rated_by       INT`,
+    ];
+    for (const sql of alterations) {
+      await this.dataSource.query(sql);
+    }
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_maintenance_vendor_id
+        ON ${quoteIdent(schemaName)}.maintenance_requests(vendor_id)
+        WHERE vendor_id IS NOT NULL
     `);
   }
 

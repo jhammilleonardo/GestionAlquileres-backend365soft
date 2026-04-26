@@ -31,6 +31,7 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { OwnerPortalModule } from './owner-portal/owner-portal.module';
 import { ViolationsModule } from './violations/violations.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { VendorsModule } from './vendors/vendors.module';
 
 @Module({
   imports: [
@@ -106,6 +107,7 @@ import { ReservationsModule } from './reservations/reservations.module';
     OwnerPortalModule,
     ViolationsModule,
     ReservationsModule,
+    VendorsModule,
   ],
   controllers: [AppController],
   providers: [

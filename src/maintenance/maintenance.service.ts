@@ -1055,4 +1055,86 @@ export class MaintenanceService {
       return 'Usuario';
     }
   }
+
+  // ─── Vendors ──────────────────────────────────────────────────────────────
+
+  async assignVendor(
+    requestId: number,
+    vendorId: number | null,
+    assignedTo: number | null,
+  ): Promise<MaintenanceRequest> {
+    const request = await this.findOne(requestId);
+
+    if (vendorId !== null && assignedTo !== null) {
+      throw new BadRequestException(
+        'No se puede asignar vendor externo y técnico interno al mismo tiempo',
+      );
+    }
+
+    if (vendorId !== null) {
+      const vendor = await this.dataSource.query(
+        `SELECT id, is_active FROM vendors WHERE id = $1`,
+        [vendorId],
+      );
+      if (vendor.length === 0) {
+        throw new NotFoundException(`Proveedor con ID ${vendorId} no encontrado`);
+      }
+      if (!vendor[0].is_active) {
+        throw new BadRequestException('El proveedor está desactivado');
+      }
+    }
+
+    await this.maintenanceRepository.update(requestId, {
+      vendor_id: vendorId,
+      assigned_to: assignedTo ?? request.assigned_to,
+    });
+
+    this.logger.log(`Request ${requestId} assigned to ${vendorId ? `vendor ${vendorId}` : `tech ${assignedTo}`}`);
+    return this.findOne(requestId);
+  }
+
+  async rateVendor(
+    requestId: number,
+    rating: number,
+    comment: string | undefined,
+    userId: number,
+  ): Promise<MaintenanceRequest> {
+    const request = await this.findOne(requestId);
+
+    if (!request.vendor_id) {
+      throw new BadRequestException('Esta orden no tiene un proveedor externo asignado');
+    }
+
+    if (request.vendor_rated_at) {
+      throw new BadRequestException('Este proveedor ya fue calificado para esta orden');
+    }
+
+    if (!['COMPLETED', 'CLOSED'].includes(request.status)) {
+      throw new BadRequestException(
+        'Solo se puede calificar al proveedor cuando la orden está COMPLETED o CLOSED',
+      );
+    }
+
+    await this.maintenanceRepository.update(requestId, {
+      vendor_rating: rating,
+      vendor_rating_comment: comment ?? null,
+      vendor_rated_at: new Date(),
+      vendor_rated_by: userId,
+    });
+
+    await this.dataSource.query(
+      `UPDATE vendors
+         SET average_rating = (
+           SELECT ROUND(AVG(vendor_rating)::numeric, 2)
+           FROM maintenance_requests
+           WHERE vendor_id = $1 AND vendor_rating IS NOT NULL
+         ),
+         updated_at = now()
+         WHERE id = $1`,
+      [request.vendor_id],
+    );
+
+    this.logger.log(`Vendor ${request.vendor_id} rated ${rating}/5 for request ${requestId}`);
+    return this.findOne(requestId);
+  }
 }

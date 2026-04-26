@@ -14,12 +14,14 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 import { ContractTemplatesService } from '../contract-templates/contract-templates.service';
+import { RenewContractDto } from './dto/renew-contract.dto';
 
 export interface ContractResult {
   id: number;
   contract_number: string;
   tenant_id: number;
   property_id: number;
+  unit_id?: number;
   start_date: string | Date;
   end_date: string | Date;
   duration_months?: number;
@@ -30,7 +32,7 @@ export interface ContractResult {
   payment_method?: string;
   late_fee_percentage?: number;
   grace_days?: number;
-  included_services?: any; // JSON
+  included_services?: string[] | string;
   tenant_responsibilities?: string;
   owner_responsibilities?: string;
   prohibitions?: string;
@@ -692,12 +694,10 @@ export class ContractsService {
 
       // Obtener número de unidad si el contrato tiene unit_id
       let unitNumber = '';
-      const contractUnitId = (contract as ContractResult & { unit_id?: number })
-        .unit_id;
-      if (contractUnitId) {
+      if (contract.unit_id) {
         const unitRows = await this.dataSource.query<{ unit_number: string }[]>(
           'SELECT unit_number FROM units WHERE id = $1',
-          [contractUnitId],
+          [contract.unit_id],
         );
         unitNumber = unitRows[0]?.unit_number ?? '';
       }
@@ -706,9 +706,7 @@ export class ContractsService {
         contract_number: contract.contract_number ?? '',
         tenant_name: contract.tenant_name ?? '',
         tenant_email: contract.tenant_email ?? '',
-        tenant_phone:
-          (contract as ContractResult & { tenant_phone?: string })
-            .tenant_phone ?? '',
+        tenant_phone: contract.tenant_phone ?? '',
         property_title: contract.property_title ?? '',
         property_address: fullAddress || 'No especificada',
         unit_number: unitNumber,
@@ -758,7 +756,11 @@ export class ContractsService {
     };
   }
 
-  async renew(id: number, userId: number = 0) {
+  async renew(
+    id: number,
+    dto: RenewContractDto = {},
+    userId: number = 0,
+  ): Promise<ContractResult> {
     const oldContract = await this.findOne(id);
 
     if (
@@ -770,75 +772,89 @@ export class ContractsService {
       );
     }
 
-    // Calcular nuevas fechas
-    const newStartDate = new Date(oldContract.end_date as string);
-    newStartDate.setDate(newStartDate.getDate() + 1);
+    // Calcular fechas: usar override del dto o derivar del contrato anterior
+    const durationMonths =
+      dto.duration_months ?? oldContract.duration_months ?? 12;
+
+    const newStartDate = dto.start_date
+      ? new Date(dto.start_date)
+      : (() => {
+          const d = new Date(oldContract.end_date as string);
+          d.setDate(d.getDate() + 1);
+          return d;
+        })();
 
     const newEndDate = new Date(newStartDate);
-    newEndDate.setMonth(
-      newEndDate.getMonth() + ((oldContract.duration_months as number) || 12),
-    );
+    newEndDate.setMonth(newEndDate.getMonth() + durationMonths);
 
-    // Aplicar aumento si existe
+    // Renta: usar override o aplicar aumento automático
     const newRent =
+      dto.monthly_rent ??
       oldContract.monthly_rent *
-      (1 + ((oldContract.auto_increase_percentage as number) || 0) / 100);
+        (1 + (oldContract.auto_increase_percentage ?? 0) / 100);
 
     const newContractNumber = await this.generateContractNumber();
 
-    // Insertar nuevo contrato usando SQL directo
+    const includedServices =
+      dto.included_services ?? oldContract.included_services;
+
     const insertResult = await this.dataSource.query<ContractResult[]>(
       `INSERT INTO contracts
-       (tenant_id, property_id, contract_number, start_date, end_date, duration_months,
+       (tenant_id, property_id, unit_id, contract_number, start_date, end_date, duration_months,
         monthly_rent, currency, payment_day, deposit_amount, payment_method,
         late_fee_percentage, grace_days, included_services, tenant_responsibilities,
         owner_responsibilities, prohibitions, coexistence_rules, renewal_terms, termination_terms,
         jurisdiction, auto_renew, renewal_notice_days, auto_increase_percentage,
         previous_contract_id, bank_account_number, bank_account_type, bank_name, bank_account_holder,
         status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, NOW(), NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, NOW(), NOW())
        RETURNING *`,
       [
         oldContract.tenant_id,
         oldContract.property_id,
+        oldContract.unit_id ?? null,
         newContractNumber,
         newStartDate.toISOString().split('T')[0],
         newEndDate.toISOString().split('T')[0],
-        oldContract.duration_months,
+        durationMonths,
         newRent,
-        oldContract.currency,
-        oldContract.payment_day,
-        oldContract.deposit_amount,
-        oldContract.payment_method,
-        oldContract.late_fee_percentage,
-        oldContract.grace_days,
-        oldContract.included_services
-          ? JSON.stringify(oldContract.included_services)
-          : null,
-        oldContract.tenant_responsibilities,
-        oldContract.owner_responsibilities,
-        oldContract.prohibitions,
-        oldContract.coexistence_rules,
-        oldContract.renewal_terms,
-        oldContract.termination_terms,
-        oldContract.jurisdiction,
-        oldContract.auto_renew,
-        oldContract.renewal_notice_days,
-        oldContract.auto_increase_percentage,
+        dto.currency ?? oldContract.currency,
+        dto.payment_day ?? oldContract.payment_day,
+        dto.deposit_amount ?? oldContract.deposit_amount,
+        dto.payment_method ?? oldContract.payment_method ?? null,
+        dto.late_fee_percentage ?? oldContract.late_fee_percentage ?? 0,
+        dto.grace_days ?? oldContract.grace_days ?? 0,
+        includedServices ? JSON.stringify(includedServices) : null,
+        dto.tenant_responsibilities ??
+          oldContract.tenant_responsibilities ??
+          null,
+        dto.owner_responsibilities ??
+          oldContract.owner_responsibilities ??
+          null,
+        dto.prohibitions ?? oldContract.prohibitions ?? null,
+        dto.coexistence_rules ?? oldContract.coexistence_rules ?? null,
+        dto.renewal_terms ?? oldContract.renewal_terms ?? null,
+        dto.termination_terms ?? oldContract.termination_terms ?? null,
+        dto.jurisdiction ?? oldContract.jurisdiction ?? 'Bolivia',
+        dto.auto_renew ?? oldContract.auto_renew ?? false,
+        dto.renewal_notice_days ?? oldContract.renewal_notice_days ?? 30,
+        dto.auto_increase_percentage ??
+          oldContract.auto_increase_percentage ??
+          0,
         oldContract.id,
-        oldContract.bank_account_number,
-        oldContract.bank_account_type,
-        oldContract.bank_name,
-        oldContract.bank_account_holder,
+        oldContract.bank_account_number ?? null,
+        oldContract.bank_account_type ?? null,
+        oldContract.bank_name ?? null,
+        oldContract.bank_account_holder ?? null,
         ContractStatus.BORRADOR,
       ],
     );
 
     const savedContract = insertResult[0];
 
-    // Actualizar estado del anterior
+    // Marcar contrato anterior como RENOVADO
     await this.dataSource.query(
-      'UPDATE contracts SET status = $1 WHERE id = $2',
+      'UPDATE contracts SET status = $1, updated_at = NOW() WHERE id = $2',
       [ContractStatus.RENOVADO, id],
     );
 
@@ -860,5 +876,41 @@ export class ContractsService {
     );
 
     return savedContract;
+  }
+
+  async getContractHistory(id: number): Promise<ContractResult[]> {
+    const contract = await this.findOne(id);
+
+    // Historial: todos los contratos de la misma unidad (o propiedad si no hay unidad)
+    // ordenados cronológicamente
+    if (contract.unit_id) {
+      return this.dataSource.query<ContractResult[]>(
+        `SELECT c.*,
+                p.title as property_title, p.status as property_status,
+                pa.street_address, pa.city, pa.state, pa.zip_code, pa.country,
+                u.name as tenant_name, u.email as tenant_email, u.phone as tenant_phone
+         FROM contracts c
+         LEFT JOIN properties p ON c.property_id = p.id
+         LEFT JOIN property_addresses pa ON c.property_id = pa.property_id AND pa.address_type = 'address_1'
+         LEFT JOIN "user" u ON c.tenant_id = u.id
+         WHERE c.unit_id = $1
+         ORDER BY c.start_date ASC`,
+        [contract.unit_id],
+      );
+    }
+
+    return this.dataSource.query<ContractResult[]>(
+      `SELECT c.*,
+              p.title as property_title, p.status as property_status,
+              pa.street_address, pa.city, pa.state, pa.zip_code, pa.country,
+              u.name as tenant_name, u.email as tenant_email, u.phone as tenant_phone
+       FROM contracts c
+       LEFT JOIN properties p ON c.property_id = p.id
+       LEFT JOIN property_addresses pa ON c.property_id = pa.property_id AND pa.address_type = 'address_1'
+       LEFT JOIN "user" u ON c.tenant_id = u.id
+       WHERE c.property_id = $1
+       ORDER BY c.start_date ASC`,
+      [contract.property_id],
+    );
   }
 }

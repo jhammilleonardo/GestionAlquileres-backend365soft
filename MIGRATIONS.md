@@ -71,6 +71,7 @@ ORDER BY table_name;
 | vendors | vendors | ✅ Sprint 5 — Startup Migration |
 | lifecycle-notifications | lifecycle_notification_log | ✅ Sprint 5 — Startup Migration |
 | billing-cron | Sin tablas nuevas — usa `payments` y `lifecycle_notification_log` | ✅ Sprint 5 |
+| contract-templates | contract_templates | ✅ Sprint 5 — Startup Migration |
 
 ---
 
@@ -136,6 +137,55 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 | `POST` | `/:slug/admin/maintenance/:id/rate-vendor` | Admin | Calificar vendor (1-5) |
 
 > Documentación completa: [API-VENDORS.md](./API-VENDORS.md)
+
+---
+
+## Recent Changes (Sprint 5 — Contract Templates)
+
+### Nuevos Archivos
+- `src/contract-templates/entities/contract-template.entity.ts` — Entidad TypeORM
+- `src/contract-templates/dto/create-contract-template.dto.ts` / `update-contract-template.dto.ts` — DTOs validados
+- `src/contract-templates/contract-templates.service.ts` — CRUD + `substituteVariables()` (función pura de sustitución)
+- `src/contract-templates/contract-templates.controller.ts` — `POST/GET/PATCH/DELETE /:slug/admin/contract-templates`
+- `src/contract-templates/contract-templates.module.ts` — Módulo NestJS
+- `src/contract-templates/contract-templates.service.spec.ts` — 16 tests unitarios
+
+### Archivos Modificados
+- `src/contracts/pdf.service.ts` — Interfaz `ContractData` (reemplaza `any`) + nuevo método `generateContractPdfFromTemplate`
+- `src/contracts/contracts.service.ts` — `generatePdf` detecta idioma del tenant, busca plantilla activa y la usa si existe
+- `src/contracts/contracts.module.ts` — Importa `ContractTemplatesModule`
+- `src/app.module.ts` — `ContractTemplatesModule` registrado
+- `src/tenants/tenants.service.ts` — Startup migration `createContractTemplatesTable` + seed de plantillas ES/EN
+
+### Base de Datos
+
+| Tabla | Descripción |
+|-------|-------------|
+| `{schema}.contract_templates` | `id, language, name, content (TEXT), is_active, created_at, updated_at` |
+
+**Seed automático al crear tenant**: se insertan 2 plantillas por defecto (ES y EN) que replican el contenido del generador hardcodeado, usando variables `{{contract_number}}`, `{{tenant_name}}`, etc.
+
+### Variables de plantilla soportadas
+
+| Variable | Valor |
+|----------|-------|
+| `{{contract_number}}` | Número del contrato |
+| `{{tenant_name}}` / `{{tenant_email}}` / `{{tenant_phone}}` | Datos del inquilino |
+| `{{landlord_name}}` | Nombre de la empresa administradora |
+| `{{property_title}}` / `{{property_address}}` / `{{unit_number}}` | Datos de la propiedad |
+| `{{rent_amount}}` / `{{currency}}` / `{{payment_day}}` | Términos financieros |
+| `{{start_date}}` / `{{end_date}}` / `{{duration_months}}` | Vigencia |
+| `{{deposit_amount}}` | Depósito de garantía |
+| `{{late_fee_percentage}}` / `{{grace_days}}` | Condiciones de mora |
+| `{{jurisdiction}}` | Jurisdicción legal |
+| `{{issue_date}}` | Fecha de emisión del documento |
+
+### Lógica de selección de plantilla
+
+1. `ContractsService.generatePdf` lee `tenant_config.language`
+2. Busca la plantilla activa (`is_active = true`) para ese idioma
+3. Si existe → sustituye variables y genera PDF desde la plantilla
+4. Si no existe → fallback al generador hardcodeado (compatibilidad hacia atrás)
 
 ---
 

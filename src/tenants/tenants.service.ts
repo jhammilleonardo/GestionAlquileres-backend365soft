@@ -79,6 +79,7 @@ export class TenantsService implements OnModuleInit {
         ['createPropertyAvailabilityTable', () => this.createPropertyAvailabilityTable(schema_name)],
         ['createReservationsTable', () => this.createReservationsTable(schema_name)],
         ['createLifecycleNotificationLog', () => this.createLifecycleNotificationLog(schema_name)],
+        ['createContractTemplatesTable', () => this.createContractTemplatesTable(schema_name)],
       ];
 
       for (const [stepName, step] of steps) {
@@ -1811,6 +1812,129 @@ export class TenantsService implements OnModuleInit {
       CREATE INDEX IF NOT EXISTS idx_lifecycle_notif_log_entity
         ON ${quoteIdent(schemaName)}.lifecycle_notification_log(entity_type, entity_id)
     `);
+  }
+
+  private async createContractTemplatesTable(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.contract_templates (
+        id           SERIAL PRIMARY KEY,
+        language     VARCHAR(5)   NOT NULL,
+        name         VARCHAR(200) NOT NULL,
+        content      TEXT         NOT NULL,
+        is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
+        created_at   TIMESTAMP    NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMP    NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Índice para búsqueda por idioma
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_contract_templates_language
+        ON ${quoteIdent(schemaName)}.contract_templates(language);
+    `);
+
+    // Plantilas por defecto — solo si la tabla está vacía
+    const existingRows = await this.dataSource.query<{ count: string }[]>(
+      `SELECT COUNT(*) AS count FROM ${quoteIdent(schemaName)}.contract_templates`,
+    );
+    if (Number(existingRows[0]?.count ?? 0) > 0) return;
+
+    const esContent = `CONTRATO DE ARRENDAMIENTO
+Contrato N°: {{contract_number}}
+Fecha de emisión: {{issue_date}}
+
+PARTES DEL CONTRATO
+
+ARRENDADOR:
+Nombre: {{landlord_name}}
+
+ARRENDATARIO (INQUILINO):
+Nombre: {{tenant_name}}
+Email: {{tenant_email}}
+Teléfono: {{tenant_phone}}
+
+PROPIEDAD:
+Nombre: {{property_title}}
+Dirección: {{property_address}}
+Unidad: {{unit_number}}
+
+CLÁUSULAS DEL CONTRATO
+
+PRIMERA. OBJETO DEL CONTRATO
+El Arrendador cede en arrendamiento al Arrendatario la propiedad descrita anteriormente para uso exclusivamente residencial.
+
+SEGUNDA. DURACIÓN
+El presente contrato tendrá una duración de {{duration_months}} meses, iniciando el {{start_date}} y finalizando el {{end_date}}.
+
+TERCERA. RENTA MENSUAL
+El monto del alquiler mensual es de {{rent_amount}} {{currency}}, pagaderos los días {{payment_day}} de cada mes.
+
+CUARTA. DEPÓSITO DE GARANTÍA
+El Arrendatario entrega en este acto la suma de {{deposit_amount}} {{currency}} en concepto de depósito de garantía.
+
+QUINTA. MORA
+En caso de pago tardío, se aplicará una mora del {{late_fee_percentage}}% con un período de gracia de {{grace_days}} días calendario.
+
+SEXTA. JURISDICCIÓN
+Para cualquier conflicto legal, las partes se someten a la jurisdicción de {{jurisdiction}}.
+
+
+
+________________________           ________________________
+Firma del Arrendatario              Firma del Arrendador`;
+
+    const enContent = `RENTAL AGREEMENT
+Contract No.: {{contract_number}}
+Issue Date: {{issue_date}}
+
+PARTIES
+
+LANDLORD:
+Name: {{landlord_name}}
+
+TENANT:
+Name: {{tenant_name}}
+Email: {{tenant_email}}
+Phone: {{tenant_phone}}
+
+PROPERTY:
+Title: {{property_title}}
+Address: {{property_address}}
+Unit: {{unit_number}}
+
+TERMS AND CONDITIONS
+
+1. OBJECT
+The Landlord leases to the Tenant the above-described property for residential use only.
+
+2. TERM
+This agreement shall be in effect for {{duration_months}} months, commencing {{start_date}} and ending {{end_date}}.
+
+3. RENT
+The monthly rent is {{rent_amount}} {{currency}}, due on day {{payment_day}} of each month.
+
+4. SECURITY DEPOSIT
+The Tenant deposits {{deposit_amount}} {{currency}} as a security deposit.
+
+5. LATE FEES
+A late fee of {{late_fee_percentage}}% will be applied after a grace period of {{grace_days}} calendar days.
+
+6. JURISDICTION
+Any disputes shall be resolved under the jurisdiction of {{jurisdiction}}.
+
+
+
+________________________           ________________________
+Tenant Signature                    Landlord Signature`;
+
+    await this.dataSource.query(
+      `INSERT INTO ${quoteIdent(schemaName)}.contract_templates
+         (language, name, content, is_active)
+       VALUES
+         ('es', 'Contrato de Arrendamiento Estándar (ES)', $1, true),
+         ('en', 'Standard Rental Agreement (EN)', $2, true)`,
+      [esContent, enContent],
+    );
   }
 
   private async dropTenantSchema(tenant: Tenant) {

@@ -35,6 +35,7 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { LifecycleNotificationsModule } from './lifecycle-notifications/lifecycle-notifications.module';
 import { BillingCronModule } from './billing-cron/billing-cron.module';
+import { ContractTemplatesModule } from './contract-templates/contract-templates.module';
 
 @Module({
   imports: [
@@ -114,6 +115,7 @@ import { BillingCronModule } from './billing-cron/billing-cron.module';
     VendorsModule,
     LifecycleNotificationsModule,
     BillingCronModule,
+    ContractTemplatesModule,
   ],
   controllers: [AppController],
   providers: [

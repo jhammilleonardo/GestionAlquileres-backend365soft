@@ -13,6 +13,7 @@ import { PdfService } from './pdf.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
+import { ContractTemplatesService } from '../contract-templates/contract-templates.service';
 
 export interface ContractResult {
   id: number;
@@ -69,6 +70,7 @@ export class ContractsService {
     private pdfService: PdfService,
     private notificationsService: NotificationsService,
     private lifecycleNotificationsService: LifecycleNotificationsService,
+    private contractTemplatesService: ContractTemplatesService,
   ) {}
 
   private async generateContractNumber(): Promise<string> {
@@ -290,10 +292,10 @@ export class ContractsService {
         { contract_id: savedContract.id, contract_number: contractNumber },
       );
 
-      const admins = await this.dataSource.query(
-        `SELECT id FROM users WHERE role = 'ADMIN' LIMIT 5`,
+      const admins = await this.dataSource.query<{ id: number }[]>(
+        `SELECT id FROM "user" WHERE role = 'ADMIN' LIMIT 5`,
       );
-      const adminIds = admins.map((a: any) => a.id as number);
+      const adminIds = admins.map((a) => a.id);
       if (adminIds.length > 0) {
         await this.notificationsService.notifyAdmins(
           adminIds,
@@ -303,7 +305,7 @@ export class ContractsService {
           { contract_id: savedContract.id, contract_number: contractNumber },
         );
       }
-    } catch (notifError) {
+    } catch {
       // No propagar errores de notificación
     }
 
@@ -512,7 +514,7 @@ export class ContractsService {
             );
           }
         }
-      } catch (notifError) {
+      } catch {
         // No propagar errores de notificación
       }
     }
@@ -568,12 +570,10 @@ export class ContractsService {
 
     // Notificar a los admins que el contrato fue firmado
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const admins = await this.dataSource.query(
+      const admins = await this.dataSource.query<{ id: number }[]>(
         `SELECT id FROM "user" WHERE role = 'ADMIN' LIMIT 5`,
       );
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      const adminIds = (admins as { id: number }[]).map((a) => a.id) as number[];
+      const adminIds = admins.map((a) => a.id);
       if (adminIds.length > 0) {
         await this.notificationsService.notifyAdmins(
           adminIds,
@@ -657,19 +657,89 @@ export class ContractsService {
   }
 
   async generatePdf(id: number, tenantSlug: string, baseUrl: string = '') {
-    const contract = (await this.findOne(id)) as Contract;
+    const contract = await this.findOne(id);
 
-    // Obtener información del tenant (empresa) desde el schema public
+    // Información del tenant (empresa arrendadora) desde schema public
     const tenantInfo = await this.dataSource.query<
       { company_name: string; logo_url?: string }[]
     >('SELECT company_name, logo_url FROM public.tenant WHERE slug = $1', [
       tenantSlug,
     ]);
+    const landlordName =
+      tenantInfo[0]?.company_name ?? 'Empresa Administradora';
 
-    const pdfPath = await this.pdfService.generateContractPdf(contract, {
-      name: tenantInfo[0]?.company_name || 'Empresa Administradora',
-      address: 'Dirección de la administración',
-    });
+    // Detectar idioma del tenant para seleccionar plantilla
+    const configRows = await this.dataSource.query<{ language: string }[]>(
+      'SELECT language FROM tenant_config LIMIT 1',
+    );
+    const language = configRows[0]?.language ?? 'es';
+
+    // Intentar usar plantilla configurable; si no existe, usar generador hardcodeado
+    const template =
+      await this.contractTemplatesService.findActiveForLanguage(language);
+
+    let pdfPath: string;
+
+    if (template) {
+      const fullAddress = [
+        contract.street_address,
+        contract.city,
+        contract.state,
+        contract.country,
+      ]
+        .filter(Boolean)
+        .join(', ');
+
+      // Obtener número de unidad si el contrato tiene unit_id
+      let unitNumber = '';
+      const contractUnitId = (contract as ContractResult & { unit_id?: number })
+        .unit_id;
+      if (contractUnitId) {
+        const unitRows = await this.dataSource.query<{ unit_number: string }[]>(
+          'SELECT unit_number FROM units WHERE id = $1',
+          [contractUnitId],
+        );
+        unitNumber = unitRows[0]?.unit_number ?? '';
+      }
+
+      const vars = {
+        contract_number: contract.contract_number ?? '',
+        tenant_name: contract.tenant_name ?? '',
+        tenant_email: contract.tenant_email ?? '',
+        tenant_phone:
+          (contract as ContractResult & { tenant_phone?: string })
+            .tenant_phone ?? '',
+        property_title: contract.property_title ?? '',
+        property_address: fullAddress || 'No especificada',
+        unit_number: unitNumber,
+        rent_amount: String(contract.monthly_rent ?? 0),
+        currency: contract.currency ?? '',
+        start_date: new Date(contract.start_date).toLocaleDateString(),
+        end_date: new Date(contract.end_date).toLocaleDateString(),
+        payment_day: String(contract.payment_day ?? 5),
+        deposit_amount: String(contract.deposit_amount ?? 0),
+        late_fee_percentage: String(contract.late_fee_percentage ?? 0),
+        grace_days: String(contract.grace_days ?? 0),
+        jurisdiction: contract.jurisdiction ?? '',
+        duration_months: String(contract.duration_months ?? 12),
+        landlord_name: landlordName,
+        issue_date: new Date().toLocaleDateString(),
+      };
+
+      const populated = this.contractTemplatesService.substituteVariables(
+        template.content,
+        vars,
+      );
+      pdfPath = await this.pdfService.generateContractPdfFromTemplate(
+        contract.contract_number,
+        populated,
+      );
+    } else {
+      pdfPath = await this.pdfService.generateContractPdf(contract, {
+        name: landlordName,
+        address: 'Dirección de la administración',
+      });
+    }
 
     // Actualizar URL del PDF con ruta relativa para acceso estático
     const relativePath = pdfPath.split('uploads')[1].replace(/\\/g, '/');

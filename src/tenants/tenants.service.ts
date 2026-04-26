@@ -72,6 +72,7 @@ export class TenantsService implements OnModuleInit {
         ['createInspectionsTables', () => this.createInspectionsTables(schema_name)],
         ['migrateExpensesTable', () => this.migrateExpensesTable(schema_name)],
         ['migrateUserRolePropietario', () => this.migrateUserRolePropietario(schema_name)],
+        ['createViolationsTable', () => this.createViolationsTable(schema_name)],
       ];
 
       for (const [stepName, step] of steps) {
@@ -1638,6 +1639,37 @@ export class TenantsService implements OnModuleInit {
     await this.dataSource.query(
       `ALTER TABLE ${quoteIdent(schemaName)}.tenant_config ADD COLUMN IF NOT EXISTS custom_expense_categories JSONB NOT NULL DEFAULT '[]'`,
     );
+  }
+
+  private async createViolationsTable(schemaName: string): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.violations (
+        id              SERIAL PRIMARY KEY,
+        property_id     INT          NOT NULL,
+        unit_id         INT,
+        tenant_id       INT          NOT NULL,
+        type            VARCHAR(50)  NOT NULL,
+        description     TEXT         NOT NULL,
+        status          VARCHAR(20)  NOT NULL DEFAULT 'open',
+        evidence_photos JSONB        NOT NULL DEFAULT '[]',
+        created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        resolved_at     TIMESTAMPTZ,
+        resolved_notes  TEXT,
+        created_by      INT
+      )
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_violations_property_id
+        ON ${quoteIdent(schemaName)}.violations(property_id)
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_violations_tenant_id
+        ON ${quoteIdent(schemaName)}.violations(tenant_id)
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_violations_status
+        ON ${quoteIdent(schemaName)}.violations(status)
+    `);
   }
 
   private async dropTenantSchema(tenant: Tenant) {

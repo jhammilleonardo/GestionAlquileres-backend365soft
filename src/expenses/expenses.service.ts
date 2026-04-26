@@ -12,7 +12,7 @@ import { CreateExpenseDto, UpdateExpenseDto, ExpenseFiltersDto } from './dto';
 import { ExpenseCategoryEnum } from './enums/expense-category.enum';
 import { TenantConfigService } from '../tenant-config/tenant-config.service';
 
-interface ExpenseSummary {
+export interface ExpenseSummary {
   total_expenses: string;
   by_category: Record<string, string>;
   expense_count: number;

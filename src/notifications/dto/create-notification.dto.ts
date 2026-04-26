@@ -34,6 +34,8 @@ export enum NotificationEventType {
   EMPLOYEE_CREATED = 'employee.created',
   // Leads de Propiedades
   PROPERTY_LEAD_RECEIVED = 'property.lead.received',
+  // Infracciones
+  VIOLATION_NOTIFIED = 'violation.notified',
 }
 
 export class CreateNotificationDto {

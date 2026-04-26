@@ -208,6 +208,41 @@ curl -X POST http://localhost:3000/mi-inmobiliaria/catalog/properties/1/contact 
 
 ---
 
+### GET /:slug/catalog/properties/:id/availability
+
+Consultar disponibilidad mensual de una propiedad para alquiler de corto plazo.  
+**No requiere autenticación.**
+
+#### Query Parameters
+
+| Parámetro | Tipo | Requerido | Descripción | Ejemplo |
+|---|---|---|---|---|
+| `month` | string | **Sí** | Mes en formato `YYYY-MM` | `2026-06` |
+| `unit_id` | number | No | Filtrar por unidad específica | `7` |
+
+#### Ejemplo de Solicitud
+
+```
+GET http://localhost:3000/mi-inmobiliaria/catalog/properties/3/availability?month=2026-06&unit_id=7
+```
+
+#### Response 200 OK
+
+```json
+[
+  { "date": "2026-06-01", "status": "available" },
+  { "date": "2026-06-02", "status": "available" },
+  { "date": "2026-06-03", "status": "blocked" },
+  { "date": "2026-06-04", "status": "booked" }
+]
+```
+
+Retorna un array con **todos los días del mes**. Las fechas sin registro en BD se devuelven como `available`.
+
+> Documentación completa en [API-RESERVATIONS.md](./API-RESERVATIONS.md)
+
+---
+
 ## Instalación & Configuración
 
 ### 1. Actualizar Código

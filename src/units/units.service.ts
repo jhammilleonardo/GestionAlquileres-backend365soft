@@ -64,6 +64,10 @@ export class UnitsService {
     await this.assertPropertyExists(propertyId);
     await this.assertUnitNumberUnique(propertyId, createUnitDto.unit_number);
 
+    if (createUnitDto.rental_type) {
+      await this.assertRentalTypeCoherence(createUnitDto.rental_type);
+    }
+
     const unit = this.getUnitRepository().create({
       ...createUnitDto,
       property_id: propertyId,
@@ -84,6 +88,10 @@ export class UnitsService {
       updateUnitDto.unit_number !== unit.unit_number
     ) {
       await this.assertUnitNumberUnique(propertyId, updateUnitDto.unit_number, unitId);
+    }
+
+    if (updateUnitDto.rental_type && updateUnitDto.rental_type !== unit.rental_type) {
+      await this.assertRentalTypeCoherence(updateUnitDto.rental_type);
     }
 
     Object.assign(unit, updateUnitDto);
@@ -131,6 +139,23 @@ export class UnitsService {
     if (existing) {
       throw new ConflictException(
         `Ya existe una unidad con el número "${unitNumber}" en esta propiedad`,
+      );
+    }
+  }
+
+  private async assertRentalTypeCoherence(unitRentalType: string): Promise<void> {
+    const rows: Array<{ rental_type: string }> = await this.dataSource.query(
+      `SELECT rental_type FROM tenant_config LIMIT 1`,
+    );
+
+    const tenantRentalType = rows[0]?.rental_type;
+    if (!tenantRentalType || tenantRentalType === 'BOTH') {
+      return;
+    }
+
+    if (unitRentalType !== tenantRentalType) {
+      throw new BadRequestException(
+        `El tenant está configurado como ${tenantRentalType}. No se pueden crear unidades de tipo ${unitRentalType}.`,
       );
     }
   }

@@ -28,6 +28,7 @@ export const AVAILABLE_MODULES = [
   'expenses',
   'vendors',
   'messages',
+  'reservations',
 ] as const;
 
 export type AvailableModule = (typeof AVAILABLE_MODULES)[number];

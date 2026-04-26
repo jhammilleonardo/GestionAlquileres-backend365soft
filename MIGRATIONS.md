@@ -67,6 +67,85 @@ ORDER BY table_name;
 | applications | **ScreeningChecklist** | **✅ F2-BE-SCREENING Sincronizado** |
 | units | Unit | ✅ Sincronizado |
 | owner-statements | OwnerStatement | ✅ F2-BE-07 Sincronizado |
+| reservations | property_availability, reservations | ✅ Sprint 5 — Startup Migration |
+
+---
+
+## Recent Changes (Sprint 5 — Alquiler Corto Plazo)
+
+### Nuevos Archivos
+- `src/reservations/` — Módulo completo: service, controllers (3), DTOs, enums, tests
+- `src/reservations/enums/availability-status.enum.ts` — `available / blocked / booked`
+- `src/reservations/enums/reservation-status.enum.ts` — `pending / confirmed / cancelled / completed`
+
+### Archivos Modificados
+- `src/units/entities/unit.entity.ts` — 5 campos nuevos: `min_nights`, `max_nights`, `checkin_time`, `checkout_time`, `cleaning_fee`
+- `src/units/dto/create-unit.dto.ts` — Validación de los 5 campos nuevos
+- `src/units/units.service.ts` — Validación de coherencia `rental_type` unidad vs. `tenant_config`
+- `src/properties/entities/property.entity.ts` — `rental_type` tipado con enum `RentalType`
+- `src/employees/dto/create-employee.dto.ts` — Módulo `'reservations'` agregado a `AVAILABLE_MODULES`
+- `src/tenants/tenants.service.ts` — 3 migraciones nuevas en `runStartupMigrations()`
+- `src/app.module.ts` — `ReservationsModule` registrado
+
+### Base de Datos — Startup Migrations (idempotentes)
+
+**Columnas nuevas en `units`:**
+```sql
+ALTER TABLE {schema}.units ADD COLUMN IF NOT EXISTS min_nights    INT;
+ALTER TABLE {schema}.units ADD COLUMN IF NOT EXISTS max_nights    INT;
+ALTER TABLE {schema}.units ADD COLUMN IF NOT EXISTS checkin_time  VARCHAR(5);
+ALTER TABLE {schema}.units ADD COLUMN IF NOT EXISTS checkout_time VARCHAR(5);
+ALTER TABLE {schema}.units ADD COLUMN IF NOT EXISTS cleaning_fee  DECIMAL(10,2);
+```
+
+**Nueva tabla `property_availability`:**
+```sql
+CREATE TABLE IF NOT EXISTS {schema}.property_availability (
+  id             SERIAL      PRIMARY KEY,
+  property_id    INT         NOT NULL,
+  unit_id        INT         NOT NULL,
+  date           DATE        NOT NULL,
+  status         VARCHAR(20) NOT NULL DEFAULT 'available',
+  reservation_id INT,
+  blocked_by     INT,
+  notes          TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_availability_unit_date UNIQUE (unit_id, date)
+);
+-- Índices: (property_id, date) y (unit_id, date)
+```
+
+**Nueva tabla `reservations`:**
+```sql
+CREATE TABLE IF NOT EXISTS {schema}.reservations (
+  id               SERIAL        PRIMARY KEY,
+  property_id      INT           NOT NULL,
+  unit_id          INT           NOT NULL,
+  tenant_id        INT           NOT NULL,
+  checkin_date     DATE          NOT NULL,
+  checkout_date    DATE          NOT NULL,
+  nights           INT           NOT NULL,
+  price_per_night  DECIMAL(10,2) NOT NULL,
+  cleaning_fee     DECIMAL(10,2) NOT NULL DEFAULT 0,
+  total_amount     DECIMAL(10,2) NOT NULL,
+  currency         VARCHAR(10)   NOT NULL DEFAULT 'BOB',
+  status           VARCHAR(20)   NOT NULL DEFAULT 'confirmed',
+  notes            TEXT,
+  created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+-- Índices: (unit_id, checkin_date, checkout_date) y (tenant_id)
+```
+
+### Endpoints Nuevos
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| `GET` | `/:slug/catalog/properties/:id/availability` | Pública | Disponibilidad mensual |
+| `POST` | `/:slug/admin/properties/:id/units/:unitId/block-dates` | Admin | Bloquear fechas |
+| `POST` | `/:slug/tenant/reservations` | Inquilino | Crear reserva |
+
+> Documentación completa: [API-RESERVATIONS.md](./API-RESERVATIONS.md)
 
 ---
 

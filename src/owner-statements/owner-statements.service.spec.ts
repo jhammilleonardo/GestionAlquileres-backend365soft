@@ -211,7 +211,9 @@ describe('OwnerStatementsService', () => {
       };
 
       const mockResult = mockOwnerStatement();
-      mockDataSource.query.mockResolvedValueOnce([mockResult]);
+      mockDataSource.query
+        .mockResolvedValueOnce([{ total: '0' }])  // consulta de gastos automáticos (expenses)
+        .mockResolvedValueOnce([mockResult]);      // INSERT en create()
 
       const result = await service.createStatementFromPayment(paymentData);
 

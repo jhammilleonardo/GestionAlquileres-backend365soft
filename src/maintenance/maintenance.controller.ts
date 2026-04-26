@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -269,7 +270,7 @@ export class TenantMaintenanceController {
     const request = await this.maintenanceService.findOne(+id);
     // Verificar que la solicitud pertenezca al inquilino
     if (request.tenant_id !== req.user.userId) {
-      throw new Error('No tienes permiso para ver esta solicitud');
+      throw new ForbiddenException('No tienes permiso para ver esta solicitud');
     }
     return request;
   }
@@ -305,7 +306,7 @@ export class TenantMaintenanceController {
   ) {
     const request = await this.maintenanceService.findOne(+id);
     if (request.tenant_id !== req.user.userId) {
-      throw new Error('No tienes permiso para ver esta solicitud');
+      throw new ForbiddenException('No tienes permiso para ver esta solicitud');
     }
     return this.maintenanceService.getMessages(+id, req.user.userId);
   }
@@ -322,9 +323,7 @@ export class TenantMaintenanceController {
   ) {
     const request = await this.maintenanceService.findOne(+id);
     if (request.tenant_id !== req.user.userId) {
-      throw new Error(
-        'No tienes permiso para enviar mensajes en esta solicitud',
-      );
+      throw new ForbiddenException('No tienes permiso para enviar mensajes en esta solicitud');
     }
     return this.maintenanceService.addMessage(
       +id,

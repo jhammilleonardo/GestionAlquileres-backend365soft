@@ -5,7 +5,6 @@ import {
   Param,
   ParseIntPipe,
   UseGuards,
-  Request,
   Res,
   Query,
   BadRequestException,
@@ -25,7 +24,15 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OwnerPortalGuard } from '../common/guards/owner-portal.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { OwnerPortalService } from './owner-portal.service';
+
+interface OwnerUser {
+  userId: number;
+  rentalOwnerId: number;
+  role: string;
+  tenantSlug: string;
+}
 
 @ApiTags('Owner Portal')
 @ApiBearerAuth()
@@ -39,52 +46,36 @@ export class OwnerPortalController {
   // ─── Dashboard ────────────────────────────────────────────────────────────
 
   @Get('dashboard')
-  @ApiOperation({
-    summary: 'Dashboard del propietario',
-    description:
-      'Resumen con cantidad de propiedades, inquilinos activos, saldo pendiente de liquidaciones y mantenimientos activos.',
-  })
+  @ApiOperation({ summary: 'Dashboard del propietario' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiOkResponse({ description: 'Resumen del propietario' })
   @ApiForbiddenResponse({ description: 'Solo accesible con rol PROPIETARIO' })
-  async getDashboard(@Request() req) {
-    return this.ownerPortalService.getDashboard(req.user.rentalOwnerId);
+  async getDashboard(@CurrentUser() user: OwnerUser) {
+    return this.ownerPortalService.getDashboard(user.rentalOwnerId);
   }
 
   // ─── Propiedades ──────────────────────────────────────────────────────────
 
   @Get('properties')
-  @ApiOperation({
-    summary: 'Propiedades del propietario',
-    description:
-      'Lista sus propiedades con estado actual, porcentaje de participación e inquilino actual.',
-  })
+  @ApiOperation({ summary: 'Propiedades del propietario' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiOkResponse({ description: 'Lista de propiedades del propietario' })
-  async getProperties(@Request() req) {
-    return this.ownerPortalService.getProperties(req.user.rentalOwnerId);
+  async getProperties(@CurrentUser() user: OwnerUser) {
+    return this.ownerPortalService.getProperties(user.rentalOwnerId);
   }
 
   // ─── Liquidaciones ────────────────────────────────────────────────────────
 
   @Get('statements')
-  @ApiOperation({
-    summary: 'Historial de liquidaciones',
-    description:
-      'Lista todas las liquidaciones del propietario ordenadas por período descendente. Incluye monto bruto, deducciones y monto neto.',
-  })
+  @ApiOperation({ summary: 'Historial de liquidaciones' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiOkResponse({ description: 'Lista de liquidaciones del propietario' })
-  async getStatements(@Request() req) {
-    return this.ownerPortalService.getStatements(req.user.rentalOwnerId);
+  async getStatements(@CurrentUser() user: OwnerUser) {
+    return this.ownerPortalService.getStatements(user.rentalOwnerId);
   }
 
   @Get('statements/:id/pdf')
-  @ApiOperation({
-    summary: 'Descargar PDF de liquidación',
-    description:
-      'Descarga el PDF de una liquidación específica. Solo se permite si la liquidación pertenece al propietario autenticado.',
-  })
+  @ApiOperation({ summary: 'Descargar PDF de liquidación' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la liquidación' })
   @ApiQuery({ name: 'lang', enum: ['es', 'en'], required: false })
@@ -92,17 +83,16 @@ export class OwnerPortalController {
   @ApiNotFoundResponse({ description: 'Liquidación no encontrada' })
   @ApiForbiddenResponse({ description: 'La liquidación no pertenece al propietario' })
   async downloadStatementPdf(
-    @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Query('lang') lang: 'es' | 'en' | undefined,
-    @Request() req,
+    @CurrentUser() user: OwnerUser,
     @Res() res: Response,
   ) {
     const language = lang === 'en' ? 'en' : 'es';
     try {
       const filePath = await this.ownerPortalService.getStatementPdf(
         id,
-        req.user.rentalOwnerId,
+        user.rentalOwnerId,
         language,
       );
       res.download(filePath, `liquidacion_${id}.pdf`, (err) => {
@@ -121,48 +111,34 @@ export class OwnerPortalController {
   // ─── Mantenimiento ────────────────────────────────────────────────────────
 
   @Get('maintenance')
-  @ApiOperation({
-    summary: 'Solicitudes de mantenimiento activas',
-    description:
-      'Lista las solicitudes de mantenimiento activas (NEW | IN_PROGRESS) en propiedades del propietario.',
-  })
+  @ApiOperation({ summary: 'Solicitudes de mantenimiento activas' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiOkResponse({ description: 'Solicitudes de mantenimiento activas' })
-  async getMaintenance(@Request() req) {
-    return this.ownerPortalService.getMaintenance(req.user.rentalOwnerId);
+  async getMaintenance(@CurrentUser() user: OwnerUser) {
+    return this.ownerPortalService.getMaintenance(user.rentalOwnerId);
   }
 
   @Patch('maintenance/:id/authorize')
-  @ApiOperation({
-    summary: 'Autorizar gasto de mantenimiento (solo Bolivia)',
-    description:
-      'El propietario autoriza el costo estimado de una solicitud de mantenimiento. ' +
-      'Solo aplica para propiedades de Bolivia. ' +
-      'Lanza 403 si la solicitud no pertenece a una de sus propiedades.',
-  })
+  @ApiOperation({ summary: 'Autorizar gasto de mantenimiento (solo Bolivia)' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la solicitud de mantenimiento' })
   @ApiOkResponse({ description: 'Gasto autorizado correctamente' })
-  @ApiForbiddenResponse({ description: 'La solicitud no pertenece al propietario' })
+  @ApiForbiddenResponse({ description: 'La solicitud no pertenece al propietario o no es de Bolivia' })
   async authorizeMaintenance(
     @Param('id', ParseIntPipe) id: number,
-    @Request() req,
+    @CurrentUser() user: OwnerUser,
   ) {
-    await this.ownerPortalService.authorizeMaintenance(id, req.user.rentalOwnerId);
+    await this.ownerPortalService.authorizeMaintenance(id, user.rentalOwnerId);
     return { message: 'Gasto autorizado. El técnico puede iniciar el trabajo.' };
   }
 
   // ─── Contratos ────────────────────────────────────────────────────────────
 
   @Get('contracts')
-  @ApiOperation({
-    summary: 'Contratos firmados descargables',
-    description:
-      'Lista los contratos firmados (is_signed = true) con PDF disponible para descargar en propiedades del propietario.',
-  })
+  @ApiOperation({ summary: 'Contratos firmados descargables' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiOkResponse({ description: 'Contratos firmados con PDF' })
-  async getContracts(@Request() req) {
-    return this.ownerPortalService.getContracts(req.user.rentalOwnerId);
+  async getContracts(@CurrentUser() user: OwnerUser) {
+    return this.ownerPortalService.getContracts(user.rentalOwnerId);
   }
 }

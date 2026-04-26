@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   Req,
   Res,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -222,7 +223,7 @@ export class TenantContractsController {
   ) {
     const contract = await this.contractsService.findOne(id);
     if (contract.tenant_id !== req.user?.userId) {
-      throw new Error('No tienes permiso para ver este contrato');
+      throw new ForbiddenException('No tienes permiso para ver este contrato');
     }
 
     const tenantSlug = req.tenant?.slug || 'default';
@@ -248,7 +249,7 @@ export class TenantContractsController {
   ) {
     const contract = await this.contractsService.findOne(id);
     if (contract.tenant_id !== req.user?.userId) {
-      throw new Error('No tienes permiso para ver este contrato');
+      throw new ForbiddenException('No tienes permiso para ver este contrato');
     }
 
     const tenantSlug = req.tenant?.slug || 'default';
@@ -269,7 +270,7 @@ export class TenantContractsController {
   ) {
     const contract = await this.contractsService.findOne(id);
     if (contract.tenant_id !== req.user?.userId) {
-      throw new Error('No tienes permiso para ver este contrato');
+      throw new ForbiddenException('No tienes permiso para ver este contrato');
     }
     return contract;
   }

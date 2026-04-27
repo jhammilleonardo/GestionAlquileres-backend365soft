@@ -14,6 +14,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 import { ContractTemplatesService } from '../contract-templates/contract-templates.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 import { RenewContractDto } from './dto/renew-contract.dto';
 
 export interface ContractResult {
@@ -24,44 +26,46 @@ export interface ContractResult {
   unit_id?: number;
   start_date: string | Date;
   end_date: string | Date;
-  duration_months?: number;
+  duration_months?: number | null;
   monthly_rent: number;
   currency: string;
   payment_day: number;
   deposit_amount: number;
-  payment_method?: string;
-  late_fee_percentage?: number;
-  grace_days?: number;
-  included_services?: string[] | string;
-  tenant_responsibilities?: string;
-  owner_responsibilities?: string;
-  prohibitions?: string;
-  coexistence_rules?: string;
-  renewal_terms?: string;
-  termination_terms?: string;
-  jurisdiction?: string;
-  auto_renew?: boolean;
-  renewal_notice_days?: number;
-  auto_increase_percentage?: number;
-  bank_account_number?: string;
-  bank_account_type?: string;
-  bank_name?: string;
-  bank_account_holder?: string;
+  payment_method?: string | null;
+  late_fee_percentage?: number | null;
+  grace_days?: number | null;
+  unit_id?: number | null;
+  included_services?: string[] | string | null;
+  tenant_responsibilities?: string | null;
+  owner_responsibilities?: string | null;
+  prohibitions?: string | null;
+  coexistence_rules?: string | null;
+  renewal_terms?: string | null;
+  termination_terms?: string | null;
+  jurisdiction?: string | null;
+  auto_renew?: boolean | null;
+  renewal_notice_days?: number | null;
+  auto_increase_percentage?: number | null;
+  bank_account_number?: string | null;
+  bank_account_type?: string | null;
+  bank_name?: string | null;
+  bank_account_holder?: string | null;
   status: ContractStatus;
-  terms_conditions?: string;
+  terms_conditions?: string | null;
   created_at: Date;
   updated_at: Date;
-  property_title?: string;
-  property_description?: string;
-  property_status?: string;
-  street_address?: string;
-  city?: string;
-  state?: string;
-  zip_code?: string;
-  country?: string;
-  tenant_name?: string;
-  tenant_email?: string;
-  tenant_phone?: string;
+  // Campos de JOIN — SQL retorna null cuando no hay coincidencia
+  property_title?: string | null;
+  property_description?: string | null;
+  property_status?: string | null;
+  street_address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip_code?: string | null;
+  country?: string | null;
+  tenant_name?: string | null;
+  tenant_email?: string | null;
+  tenant_phone?: string | null;
 }
 
 @Injectable()
@@ -73,6 +77,7 @@ export class ContractsService {
     private notificationsService: NotificationsService,
     private lifecycleNotificationsService: LifecycleNotificationsService,
     private contractTemplatesService: ContractTemplatesService,
+    private auditLogsService: AuditLogsService,
   ) {}
 
   private async generateContractNumber(): Promise<string> {
@@ -283,7 +288,21 @@ export class ContractsService {
       'Creación de contrato',
     );
 
-    // 7. Notificaciones: al inquilino y a los admins
+    // 7. Audit log
+    await this.auditLogsService.log({
+      userId: adminUserId ?? 0,
+      action: AuditAction.CREATED,
+      entityType: 'contract',
+      entityId: savedContract.id,
+      newValues: {
+        contract_number: contractNumber,
+        tenant_id: savedContract.tenant_id,
+        property_id: savedContract.property_id,
+        status: ContractStatus.BORRADOR,
+      },
+    });
+
+    // 8. Notificaciones: al inquilino y a los admins
     try {
       const tenantId: number = createContractDto.tenant_id;
       await this.notificationsService.createForUser(
@@ -519,6 +538,18 @@ export class ContractsService {
       } catch {
         // No propagar errores de notificación
       }
+
+      await this.auditLogsService.log({
+        userId,
+        action: AuditAction.STATUS_CHANGED,
+        entityType: 'contract',
+        entityId: id,
+        oldValues: { status: oldStatus },
+        newValues: {
+          status: updateContractDto.status,
+          reason: updateContractDto.update_reason,
+        },
+      });
     }
 
     return updatedContract;
@@ -595,6 +626,16 @@ export class ContractsService {
     } catch {
       // No propagar errores de notificación
     }
+
+    await this.auditLogsService.log({
+      userId,
+      action: AuditAction.SIGNED,
+      entityType: 'contract',
+      entityId: id,
+      oldValues: { status: oldStatus },
+      newValues: { status: ContractStatus.ACTIVO },
+      ipAddress: ip,
+    });
 
     return await this.findOne(id);
   }
@@ -772,7 +813,6 @@ export class ContractsService {
       );
     }
 
-    // Calcular fechas: usar override del dto o derivar del contrato anterior
     const durationMonths =
       dto.duration_months ?? oldContract.duration_months ?? 12;
 
@@ -787,7 +827,6 @@ export class ContractsService {
     const newEndDate = new Date(newStartDate);
     newEndDate.setMonth(newEndDate.getMonth() + durationMonths);
 
-    // Renta: usar override o aplicar aumento automático
     const newRent =
       dto.monthly_rent ??
       oldContract.monthly_rent *
@@ -797,6 +836,7 @@ export class ContractsService {
 
     const includedServices =
       dto.included_services ?? oldContract.included_services;
+
 
     const insertResult = await this.dataSource.query<ContractResult[]>(
       `INSERT INTO contracts
@@ -852,7 +892,6 @@ export class ContractsService {
 
     const savedContract = insertResult[0];
 
-    // Marcar contrato anterior como RENOVADO
     await this.dataSource.query(
       'UPDATE contracts SET status = $1, updated_at = NOW() WHERE id = $2',
       [ContractStatus.RENOVADO, id],
@@ -875,14 +914,25 @@ export class ContractsService {
       'Creado por renovación',
     );
 
+    await this.auditLogsService.log({
+      userId,
+      action: AuditAction.RENEWED,
+      entityType: 'contract',
+      entityId: id,
+      oldValues: { status: oldContract.status },
+      newValues: {
+        newContractId: savedContract.id,
+        newContractNumber,
+        status: ContractStatus.RENOVADO,
+      },
+    });
+
     return savedContract;
   }
 
   async getContractHistory(id: number): Promise<ContractResult[]> {
     const contract = await this.findOne(id);
 
-    // Historial: todos los contratos de la misma unidad (o propiedad si no hay unidad)
-    // ordenados cronológicamente
     if (contract.unit_id) {
       return this.dataSource.query<ContractResult[]>(
         `SELECT c.*,

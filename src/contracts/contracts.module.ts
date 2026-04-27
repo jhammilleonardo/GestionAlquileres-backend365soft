@@ -11,6 +11,7 @@ import { ContractHistory } from './entities/contract-history.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LifecycleNotificationsModule } from '../lifecycle-notifications/lifecycle-notifications.module';
 import { ContractTemplatesModule } from '../contract-templates/contract-templates.module';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ContractTemplatesModule } from '../contract-templates/contract-template
     NotificationsModule,
     LifecycleNotificationsModule,
     ContractTemplatesModule,
+    AuditLogsModule,
   ],
   providers: [ContractsService, PdfService],
   controllers: [AdminContractsController, TenantContractsController],

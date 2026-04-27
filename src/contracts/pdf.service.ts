@@ -6,33 +6,33 @@ import * as path from 'path';
 export interface ContractData {
   contract_number: string;
   tenant_id: number;
-  tenant_name?: string;
-  tenant_email?: string;
-  tenant_phone?: string;
-  property_title?: string;
+  tenant_name?: string | null;
+  tenant_email?: string | null;
+  tenant_phone?: string | null;
+  property_title?: string | null;
   property?: {
-    title?: string;
+    title?: string | null;
     addresses?: {
-      street_address?: string;
-      city?: string;
-      state?: string;
-      country?: string;
+      street_address?: string | null;
+      city?: string | null;
+      state?: string | null;
+      country?: string | null;
     }[];
   };
-  street_address?: string;
-  city?: string;
-  state?: string;
-  country?: string;
+  street_address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
   start_date: string | Date;
   end_date: string | Date;
-  duration_months?: number;
+  duration_months?: number | null;
   monthly_rent: number;
   currency: string;
   payment_day: number;
   deposit_amount: number;
-  included_services?: string[] | string;
-  prohibitions?: string;
-  jurisdiction?: string;
+  included_services?: string[] | string | null;
+  prohibitions?: string | null;
+  jurisdiction?: string | null;
 }
 
 @Injectable()
@@ -318,7 +318,9 @@ export class PdfService {
     });
   }
 
-  private parseIncludedServices(raw: string[] | string | undefined): string[] {
+  private parseIncludedServices(
+    raw: string[] | string | null | undefined,
+  ): string[] {
     if (!raw) return [];
     if (Array.isArray(raw)) return raw;
     try {

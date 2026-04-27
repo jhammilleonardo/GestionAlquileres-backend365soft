@@ -3,6 +3,7 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ContractsService, ContractResult } from './contracts.service';
 import { ContractStatus } from './enums/contract-status.enum';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PdfService } from './pdf.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
@@ -47,6 +48,8 @@ function querySql(mock: jest.Mock, callIndex: number): string {
   return (mock.mock.calls[callIndex] as QueryCall)[0];
 }
 
+const mockAuditLog = { log: jest.fn().mockResolvedValue(undefined) };
+
 // ─── renew ────────────────────────────────────────────────────────────────────
 
 describe('ContractsService.renew', () => {
@@ -62,6 +65,7 @@ describe('ContractsService.renew', () => {
         { provide: NotificationsService, useValue: {} },
         { provide: LifecycleNotificationsService, useValue: {} },
         { provide: ContractTemplatesService, useValue: {} },
+        { provide: AuditLogsService, useValue: mockAuditLog },
       ],
     }).compile();
 
@@ -252,6 +256,30 @@ describe('ContractsService.renew', () => {
     const result = await service.renew(1, {}, 0);
     expect(result).toBeDefined();
   });
+
+  it('registra audit log con acción renewed', async () => {
+    const oldContract = makeContract({ status: ContractStatus.ACTIVO });
+    const newContract = makeContract({ id: 2, status: ContractStatus.BORRADOR });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }])
+      .mockResolvedValueOnce([newContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await service.renew(1, {}, 42);
+
+    expect(mockAuditLog.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 42,
+        action: 'renewed',
+        entityType: 'contract',
+        entityId: 1,
+      }),
+    );
+  });
 });
 
 // ─── getContractHistory ───────────────────────────────────────────────────────
@@ -269,6 +297,7 @@ describe('ContractsService.getContractHistory', () => {
         { provide: NotificationsService, useValue: {} },
         { provide: LifecycleNotificationsService, useValue: {} },
         { provide: ContractTemplatesService, useValue: {} },
+        { provide: AuditLogsService, useValue: mockAuditLog },
       ],
     }).compile();
 

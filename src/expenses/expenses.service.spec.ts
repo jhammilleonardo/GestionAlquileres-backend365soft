@@ -1,72 +1,40 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ExpensesService } from './expenses.service';
 import { Expense } from './entities/expense.entity';
 import { ExpenseCategoryEnum } from './enums/expense-category.enum';
-import {
-  CreateExpenseDto,
-  UpdateExpenseDto,
-  ExpenseFiltersDto,
-} from './dto';
+import { CreateExpenseDto, UpdateExpenseDto, ExpenseFiltersDto } from './dto';
 import { TenantConfigService } from '../tenant-config/tenant-config.service';
 
+type MockedExpenseRepository = jest.Mocked<
+  Pick<
+    Repository<Expense>,
+    'create' | 'save' | 'findOne' | 'delete' | 'createQueryBuilder' | 'merge'
+  >
+>;
+
 const makeDataSource = (queryImpl?: jest.Mock): Partial<DataSource> => ({
-  query: queryImpl ?? jest.fn().mockResolvedValue([{ custom_expense_categories: [] }]),
+  query:
+    queryImpl ??
+    jest.fn().mockResolvedValue([{ custom_expense_categories: [] }]),
 });
 
-const makeMockRepository = (): Partial<Repository<Expense>> => ({
+const makeMockRepository = (): MockedExpenseRepository => ({
   create: jest.fn(),
   save: jest.fn(),
   findOne: jest.fn(),
   delete: jest.fn(),
-  createQueryBuilder: jest.fn(() => ({
-    where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    select: jest.fn().mockReturnThis(),
-    addSelect: jest.fn().mockReturnThis(),
-    groupBy: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    addOrderBy: jest.fn().mockReturnThis(),
-    skip: jest.fn().mockReturnThis(),
-    take: jest.fn().mockReturnThis(),
-    getManyAndCount: jest.fn(),
-    getRawOne: jest.fn(),
-    getRawMany: jest.fn(),
-    getCount: jest.fn(),
-    clone: jest.fn().mockReturnThis(),
-  })),
+  createQueryBuilder: jest.fn(),
   merge: jest.fn(),
 });
 
 const makeMockTenantConfigService = (): Partial<TenantConfigService> => ({});
 
-const makeModule = async () => {
-  const module: TestingModule = await Test.createTestingModule({
-    providers: [
-      ExpensesService,
-      {
-        provide: getRepositoryToken(Expense),
-        useValue: makeMockRepository(),
-      },
-      {
-        provide: DataSource,
-        useValue: makeDataSource(),
-      },
-      {
-        provide: TenantConfigService,
-        useValue: makeMockTenantConfigService(),
-      },
-    ],
-  }).compile();
-
-  return module.get<ExpensesService>(ExpensesService);
-};
-
 describe('ExpensesService', () => {
   let service: ExpensesService;
-  let mockRepository: Partial<Repository<Expense>>;
+  let mockRepository: MockedExpenseRepository;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -88,7 +56,7 @@ describe('ExpensesService', () => {
     }).compile();
 
     service = module.get<ExpensesService>(ExpensesService);
-    mockRepository = module.get<Partial<Repository<Expense>>>(
+    mockRepository = module.get<MockedExpenseRepository>(
       getRepositoryToken(Expense),
     );
   });
@@ -330,9 +298,7 @@ describe('ExpensesService', () => {
     it('debe lanzar NotFoundException si no existe', async () => {
       (mockRepository.findOne as jest.Mock).mockResolvedValue(null);
 
-      await expect(service.findOne(999)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findOne(999)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -458,7 +424,7 @@ describe('ExpensesService', () => {
   });
 
   describe('cálculo correcto de balance ingresos - gastos', () => {
-    it('debe proporcionar métodos para calcular P&L = Ingresos - Gastos', async () => {
+    it('debe proporcionar métodos para calcular P&L = Ingresos - Gastos', () => {
       expect(typeof service.getTotalExpensesByPeriod).toBe('function');
       expect(typeof service.getExpensesByCategory).toBe('function');
       expect(typeof service.getSummary).toBe('function');

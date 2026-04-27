@@ -52,10 +52,6 @@ export class RenewContractDto {
   grace_days?: number;
 
   @IsOptional()
-  @IsString()
-  jurisdiction?: string;
-
-  @IsOptional()
   @IsBoolean()
   auto_renew?: boolean;
 
@@ -97,4 +93,8 @@ export class RenewContractDto {
   @IsOptional()
   @IsString()
   termination_terms?: string;
+
+  @IsOptional()
+  @IsString()
+  jurisdiction?: string;
 }

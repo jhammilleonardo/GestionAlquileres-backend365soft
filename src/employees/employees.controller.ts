@@ -92,11 +92,13 @@ export class EmployeesController {
     @Param('id') id: string,
     @CurrentTenant() tenant: any,
     @Body() updatePermissionsDto: UpdatePermissionsDto,
+    @Request() req,
   ) {
     return this.employeesService.updatePermissions(
       tenant.schema_name,
       +id,
       updatePermissionsDto.permissions,
+      req.user?.userId ?? 0,
     );
   }
 
@@ -105,7 +107,15 @@ export class EmployeesController {
   @ApiOperation({ summary: 'Desactivar acceso del empleado (soft delete)' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', description: 'ID del empleado', type: Number })
-  async remove(@Param('id') id: string, @CurrentTenant() tenant: any) {
-    return this.employeesService.remove(tenant.schema_name, +id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentTenant() tenant: any,
+    @Request() req,
+  ) {
+    return this.employeesService.remove(
+      tenant.schema_name,
+      +id,
+      req.user?.userId ?? 0,
+    );
   }
 }

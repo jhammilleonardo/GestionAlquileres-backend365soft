@@ -19,6 +19,7 @@ Esta documentación está diseñada para el frontend público donde los usuarios
 2. [Detalle de Propiedad Pública](#2-detalle-de-propiedad-pública)
 3. [Información de Organización/Tenant](#3-información-de-organizacióntenant)
 4. [Health Check](#4-health-check)
+5. [Sitio Web Público del Tenant](#5-sitio-web-público-del-tenant)
 
 ---
 
@@ -1069,3 +1070,251 @@ GET http://localhost:3000/health
 ---
 
 **Fin de la Documentación del Catálogo Público**
+
+---
+
+## 5. Sitio Web Público del Tenant
+
+Los endpoints del sitio web público usan el prefijo `/public/:subdomain` (no `/:slug/...`).
+El `subdomain` corresponde al **slug** del tenant configurado al registrarse.
+
+> **Routing con Nginx:** En producción, `miinmobiliaria.365soft.com` se mapea a `/public/miinmobiliaria` mediante rewrite de Nginx. Ver sección de Nginx al final.
+
+---
+
+### 5.1 Obtener Sitio Web Público
+
+**Endpoint:** `GET /public/:subdomain`
+**Auth:** No requerida
+
+Retorna la configuración del sitio web del tenant y el catálogo de propiedades disponibles en un solo request. Solo responde si el sitio está publicado (`is_published = true`).
+
+**URL Params:**
+- `subdomain` — slug del tenant (ej: `miinmobiliaria`)
+
+**Response (200):**
+
+```json
+{
+  "id": 1,
+  "subdomain": "miinmobiliaria",
+  "company_description": "Somos una inmobiliaria con más de 10 años de experiencia en el mercado boliviano.",
+  "logo_url": "https://storage.365soft.com/logos/mi-logo.png",
+  "primary_color": "#1976d2",
+  "secondary_color": "#424242",
+  "contact_email": "info@miinmobiliaria.com",
+  "contact_phone": "+591 2 2123456",
+  "social_links": {
+    "facebook": "https://facebook.com/miinmobiliaria",
+    "instagram": "https://instagram.com/miinmobiliaria",
+    "whatsapp": "+59172000000"
+  },
+  "meta_title": "Mi Inmobiliaria — Alquileres en La Paz",
+  "meta_description": "Encuentra tu próximo hogar con Mi Inmobiliaria. Departamentos y casas en alquiler en La Paz, Bolivia.",
+  "is_published": true,
+  "created_at": "2026-01-15T10:00:00.000Z",
+  "updated_at": "2026-04-01T09:30:00.000Z",
+  "properties": [
+    {
+      "id": 1,
+      "title": "Departamento moderno en Miraflores",
+      "description": "Hermoso departamento con vista panorámica.",
+      "monthly_rent": 3500,
+      "currency": "BOB",
+      "square_meters": 85,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "parking_spaces": 1,
+      "is_furnished": false,
+      "images": ["/storage/properties/foto1.jpg"],
+      "amenities": ["WiFi", "Lavandería", "Seguridad 24h"],
+      "rental_type": "LONG_TERM",
+      "property_type": "Departamento",
+      "city": "La Paz",
+      "street_address": "Calle 21 de Calacoto, Torre A, Piso 8"
+    }
+  ]
+}
+```
+
+**Response (404) — tenant no existe o sitio no publicado:**
+
+```json
+{
+  "statusCode": 404,
+  "message": "Sitio 'miinmobiliaria' no publicado"
+}
+```
+
+---
+
+### 5.2 Enviar Formulario de Contacto
+
+**Endpoint:** `POST /public/:subdomain/contact`
+**Auth:** No requerida
+**Rate limit:** 20 requests/minuto por IP
+
+Guarda el mensaje en `website_contacts` para que el admin lo gestione. Solo funciona si el sitio está publicado.
+
+**URL Params:**
+- `subdomain` — slug del tenant
+
+**Body:**
+
+```json
+{
+  "name": "Juan Pérez",
+  "email": "juan@correo.com",
+  "phone": "70123456",
+  "message": "Me interesa alquilar. ¿Tienen departamentos de 2 dormitorios disponibles?"
+}
+```
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `name` | string | Sí | Nombre completo (máx. 255 chars) |
+| `email` | string | Sí | Email válido |
+| `phone` | string | No | Teléfono de contacto (máx. 50 chars) |
+| `message` | string | Sí | Mensaje del visitante |
+
+**Response (201):**
+
+```json
+{
+  "id": 42,
+  "message": "Mensaje enviado correctamente"
+}
+```
+
+**Response (400) — sitio no publicado:**
+
+```json
+{
+  "statusCode": 400,
+  "message": "El sitio no está disponible"
+}
+```
+
+**Response (429) — rate limit excedido:**
+
+```json
+{
+  "statusCode": 429,
+  "message": "ThrottlerException: Too Many Requests"
+}
+```
+
+---
+
+### 5.3 Endpoints Admin del Sitio Web
+
+Los siguientes endpoints son para que el ADMIN configure el sitio. Requieren JWT.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/:slug/admin/website` | Obtener configuración actual (crea row por defecto si no existe) |
+| `PATCH` | `/:slug/admin/website` | Actualizar campos del sitio |
+| `PATCH` | `/:slug/admin/website/publish` | Toggle publicar/despublicar |
+
+**Body PATCH `/:slug/admin/website`** (todos opcionales):
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `subdomain` | string | Subdominio personalizado (solo a-z, 0-9, guiones) |
+| `company_description` | string | Descripción de la empresa |
+| `logo_url` | URL | URL del logo |
+| `primary_color` | string | Color primario en formato `#RRGGBB` |
+| `secondary_color` | string | Color secundario en formato `#RRGGBB` |
+| `contact_email` | email | Email de contacto público |
+| `contact_phone` | string | Teléfono de contacto público |
+| `social_links` | object | `{ facebook, instagram, whatsapp, ... }` |
+| `meta_title` | string | Título SEO (máx. 200 chars) |
+| `meta_description` | string | Descripción SEO (máx. 500 chars) |
+
+**Ejemplo PATCH:**
+
+```http
+PATCH /miinmobiliaria/admin/website
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "company_description": "Alquileres en La Paz desde 2015.",
+  "primary_color": "#0d47a1",
+  "contact_email": "info@miinmobiliaria.com",
+  "social_links": {
+    "facebook": "https://facebook.com/miinmobiliaria",
+    "whatsapp": "+59172000000"
+  },
+  "meta_title": "Mi Inmobiliaria — La Paz, Bolivia"
+}
+```
+
+**Ejemplo toggle publicar:**
+
+```http
+PATCH /miinmobiliaria/admin/website/publish
+Authorization: Bearer <token>
+```
+
+```json
+{
+  "id": 1,
+  "is_published": true,
+  ...
+}
+```
+
+---
+
+### 5.4 Esquema de Base de Datos
+
+**Tabla `tenant_website`** (una fila por tenant):
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | SERIAL PK | — |
+| `subdomain` | VARCHAR(100) UNIQUE | Subdominio personalizado |
+| `company_description` | TEXT | — |
+| `logo_url` | VARCHAR(500) | — |
+| `primary_color` | VARCHAR(7) | Default `#1976d2` |
+| `secondary_color` | VARCHAR(7) | Default `#424242` |
+| `contact_email` | VARCHAR(255) | — |
+| `contact_phone` | VARCHAR(50) | — |
+| `social_links` | JSONB | Default `{}` |
+| `meta_title` | VARCHAR(200) | — |
+| `meta_description` | VARCHAR(500) | — |
+| `is_published` | BOOLEAN | Default `false` |
+
+**Tabla `website_contacts`** (mensajes recibidos del formulario):
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | SERIAL PK | — |
+| `name` | VARCHAR(255) | — |
+| `email` | VARCHAR(255) | — |
+| `phone` | VARCHAR(50) | Nullable |
+| `message` | TEXT | — |
+| `status` | VARCHAR(50) | `PENDING` / `CONTACTED` / `CLOSED` |
+| `user_ip` | VARCHAR(45) | IP del visitante |
+| `created_at` | TIMESTAMP | — |
+
+---
+
+### 5.5 Configuración de Nginx (Referencia)
+
+Para enrutar `miinmobiliaria.365soft.com → /public/miinmobiliaria`:
+
+```nginx
+server {
+    listen 80;
+    server_name ~^(?<subdomain>.+)\.365soft\.com$;
+
+    location / {
+        proxy_pass http://localhost:3000/public/$subdomain$request_uri;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```

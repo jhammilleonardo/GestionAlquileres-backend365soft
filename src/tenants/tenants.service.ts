@@ -81,6 +81,8 @@ export class TenantsService implements OnModuleInit {
         ['createLifecycleNotificationLog', () => this.createLifecycleNotificationLog(schema_name)],
         ['createContractTemplatesTable', () => this.createContractTemplatesTable(schema_name)],
         ['createAuditLogsTable', () => this.createAuditLogsTable(schema_name)],
+        ['createTenantWebsiteTable', () => this.createTenantWebsiteTable(schema_name)],
+        ['createWebsiteContactsTable', () => this.createWebsiteContactsTable(schema_name)],
       ];
 
       for (const [stepName, step] of steps) {
@@ -762,7 +764,11 @@ export class TenantsService implements OnModuleInit {
       // 17. Crear tabla de audit logs
       await this.createAuditLogsTable(tenant.schema_name);
 
-      // 18. Insertar datos iniciales (seed data)
+      // 18. Crear tablas del sitio web público del tenant
+      await this.createTenantWebsiteTable(tenant.schema_name);
+      await this.createWebsiteContactsTable(tenant.schema_name);
+
+      // 19. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
       // 17. Otorgar permisos al usuario de la aplicación
@@ -1966,6 +1972,56 @@ Tenant Signature                    Landlord Signature`;
         ON ${q}.audit_logs(user_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_action
         ON ${q}.audit_logs(action);
+    `);
+  }
+
+  private async createTenantWebsiteTable(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.tenant_website (
+        id                  SERIAL PRIMARY KEY,
+        subdomain           VARCHAR(100) UNIQUE,
+        company_description TEXT,
+        logo_url            VARCHAR(500),
+        primary_color       VARCHAR(7)   NOT NULL DEFAULT '#1976d2',
+        secondary_color     VARCHAR(7)   NOT NULL DEFAULT '#424242',
+        contact_email       VARCHAR(255),
+        contact_phone       VARCHAR(50),
+        social_links        JSONB        NOT NULL DEFAULT '{}',
+        meta_title          VARCHAR(200),
+        meta_description    VARCHAR(500),
+        is_published        BOOLEAN      NOT NULL DEFAULT false,
+        created_at          TIMESTAMP    NOT NULL DEFAULT now(),
+        updated_at          TIMESTAMP    NOT NULL DEFAULT now()
+      );
+    `);
+  }
+
+  private async createWebsiteContactsTable(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.website_contacts (
+        id         SERIAL PRIMARY KEY,
+        name       VARCHAR(255) NOT NULL,
+        email      VARCHAR(255) NOT NULL,
+        phone      VARCHAR(50),
+        message    TEXT         NOT NULL,
+        status     VARCHAR(50)  NOT NULL DEFAULT 'PENDING',
+        user_ip    VARCHAR(45),
+        created_at TIMESTAMP    NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP    NOT NULL DEFAULT now()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_website_contacts_email
+        ON ${q}.website_contacts(email);
+      CREATE INDEX IF NOT EXISTS idx_website_contacts_status
+        ON ${q}.website_contacts(status);
+      CREATE INDEX IF NOT EXISTS idx_website_contacts_created_at
+        ON ${q}.website_contacts(created_at DESC);
     `);
   }
 

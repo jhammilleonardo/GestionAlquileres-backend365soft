@@ -23,7 +23,6 @@ export interface ContractResult {
   contract_number: string;
   tenant_id: number;
   property_id: number;
-  unit_id?: number;
   start_date: string | Date;
   end_date: string | Date;
   duration_months?: number | null;

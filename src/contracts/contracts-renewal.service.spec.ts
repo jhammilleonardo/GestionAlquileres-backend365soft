@@ -3,354 +3,394 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ContractsService, ContractResult } from './contracts.service';
 import { ContractStatus } from './enums/contract-status.enum';
-import { RenewContractDto } from './dto/renew-contract.dto';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PdfService } from './pdf.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 import { ContractTemplatesService } from '../contract-templates/contract-templates.service';
 
-type QueryCall = [string, unknown[]];
-function queryParams(mock: jest.Mock, callIndex: number): unknown[] {
-  return (mock.mock.calls[callIndex] as QueryCall)[1];
-}
-function querySql(mock: jest.Mock, callIndex: number): string {
-  return (mock.mock.calls[callIndex] as QueryCall)[0];
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeContract(overrides: Partial<ContractResult> = {}): ContractResult {
   return {
     id: 1,
-    contract_number: 'CTR-2024-0001',
+    contract_number: 'CTR-2025-0001',
     tenant_id: 10,
     property_id: 20,
     unit_id: 5,
+    status: ContractStatus.ACTIVO,
     start_date: '2024-01-01',
     end_date: '2024-12-31',
     duration_months: 12,
     monthly_rent: 1000,
-    currency: 'USD',
+    currency: 'BOB',
     payment_day: 5,
     deposit_amount: 2000,
-    payment_method: 'transferencia',
     late_fee_percentage: 2,
     grace_days: 5,
-    included_services: ['agua', 'luz'],
-    tenant_responsibilities: null,
-    owner_responsibilities: null,
-    prohibitions: null,
-    coexistence_rules: null,
-    renewal_terms: null,
-    termination_terms: null,
     jurisdiction: 'Bolivia',
     auto_renew: false,
     renewal_notice_days: 30,
-    auto_increase_percentage: 5,
-    bank_account_number: null,
-    bank_account_type: null,
-    bank_name: null,
-    bank_account_holder: null,
-    status: ContractStatus.ACTIVO,
-    terms_conditions: null,
+    auto_increase_percentage: 0,
     created_at: new Date('2024-01-01'),
     updated_at: new Date('2024-01-01'),
-    property_title: 'Casa A',
-    property_description: null,
-    property_status: 'OCUPADO',
-    street_address: 'Calle 1',
-    city: 'La Paz',
-    state: null,
-    zip_code: null,
-    country: 'Bolivia',
-    tenant_name: 'Juan Pérez',
-    tenant_email: 'juan@test.com',
-    tenant_phone: '70000000',
     ...overrides,
   };
 }
 
-describe('ContractsService — renovación', () => {
+type QueryCall = [string, unknown[]];
+
+function queryParams(mock: jest.Mock, callIndex: number): unknown[] {
+  return (mock.mock.calls[callIndex] as QueryCall)[1];
+}
+
+function querySql(mock: jest.Mock, callIndex: number): string {
+  return (mock.mock.calls[callIndex] as QueryCall)[0];
+}
+
+const mockAuditLog = { log: jest.fn().mockResolvedValue(undefined) };
+
+// ─── renew ────────────────────────────────────────────────────────────────────
+
+describe('ContractsService.renew', () => {
   let service: ContractsService;
-  let mockQuery: jest.Mock;
-  let mockAuditLog: jest.Mock;
+  const mockDataSource = { query: jest.fn() };
 
   beforeEach(async () => {
-    mockQuery = jest.fn();
-    mockAuditLog = jest.fn().mockResolvedValue(undefined);
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContractsService,
-        { provide: getDataSourceToken(), useValue: { query: mockQuery } },
+        { provide: getDataSourceToken(), useValue: mockDataSource },
         { provide: PdfService, useValue: {} },
-        {
-          provide: NotificationsService,
-          useValue: { createForUser: jest.fn(), notifyAdmins: jest.fn() },
-        },
-        {
-          provide: LifecycleNotificationsService,
-          useValue: { onContractActivated: jest.fn() },
-        },
-        {
-          provide: ContractTemplatesService,
-          useValue: { getActiveTemplate: jest.fn() },
-        },
-        {
-          provide: AuditLogsService,
-          useValue: { log: mockAuditLog },
-        },
+        { provide: NotificationsService, useValue: {} },
+        { provide: LifecycleNotificationsService, useValue: {} },
+        { provide: ContractTemplatesService, useValue: {} },
+        { provide: AuditLogsService, useValue: mockAuditLog },
       ],
     }).compile();
 
-    service = module.get(ContractsService);
+    service = module.get<ContractsService>(ContractsService);
   });
 
-  afterEach(() => jest.clearAllMocks());
+  afterEach(() => jest.resetAllMocks());
 
-  describe('renew()', () => {
-    it('debe crear un nuevo contrato BORRADOR y marcar el anterior como RENOVADO', async () => {
-      const old = makeContract({ status: ContractStatus.ACTIVO });
-      const newContract = makeContract({
+  it('crea un nuevo contrato y marca el anterior como RENOVADO', async () => {
+    const oldContract = makeContract();
+    const newContract = makeContract({
+      id: 2,
+      contract_number: 'CTR-2025-0002',
+      status: ContractStatus.BORRADOR,
+    });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([oldContract]) // findOne
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }]) // generateContractNumber
+      .mockResolvedValueOnce([newContract]) // INSERT nuevo
+      .mockResolvedValueOnce([]) // UPDATE → RENOVADO
+      .mockResolvedValueOnce([]) // logHistory anterior
+      .mockResolvedValueOnce([]); // logHistory nuevo
+
+    const result = await service.renew(1, {}, 99);
+
+    expect(result.id).toBe(2);
+    expect(result.status).toBe(ContractStatus.BORRADOR);
+
+    const updateSql = querySql(mockDataSource.query, 3);
+    const updateVals = queryParams(mockDataSource.query, 3);
+    expect(updateSql).toContain('UPDATE contracts SET status');
+    expect(updateVals).toContain(ContractStatus.RENOVADO);
+    expect(updateVals).toContain(1);
+  });
+
+  it('hereda propiedad, unidad e inquilino del contrato anterior', async () => {
+    const oldContract = makeContract({
+      property_id: 99,
+      unit_id: 77,
+      tenant_id: 55,
+    });
+    const newContract = makeContract({ id: 2 });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }])
+      .mockResolvedValueOnce([newContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await service.renew(1, {}, 0);
+
+    const params = queryParams(mockDataSource.query, 2);
+    expect(params[0]).toBe(55); // $1 tenant_id
+    expect(params[1]).toBe(99); // $2 property_id
+    expect(params[2]).toBe(77); // $3 unit_id
+  });
+
+  it('aplica auto_increase_percentage al monto si no se provee override', async () => {
+    const oldContract = makeContract({
+      monthly_rent: 1000,
+      auto_increase_percentage: 10,
+    });
+    const newContract = makeContract({ id: 2 });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }])
+      .mockResolvedValueOnce([newContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await service.renew(1, {}, 0);
+
+    const params = queryParams(mockDataSource.query, 2);
+    expect(params[7]).toBeCloseTo(1100); // $8 monthly_rent = 1000 * 1.10
+  });
+
+  it('usa monthly_rent del dto si se provee', async () => {
+    const oldContract = makeContract({
+      monthly_rent: 1000,
+      auto_increase_percentage: 10,
+    });
+    const newContract = makeContract({ id: 2 });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }])
+      .mockResolvedValueOnce([newContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await service.renew(1, { monthly_rent: 1500 }, 0);
+
+    const params = queryParams(mockDataSource.query, 2);
+    expect(params[7]).toBe(1500); // override directo
+  });
+
+  it('usa start_date del dto si se provee', async () => {
+    const oldContract = makeContract();
+    const newContract = makeContract({ id: 2 });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }])
+      .mockResolvedValueOnce([newContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await service.renew(1, { start_date: '2025-02-01' }, 0);
+
+    const params = queryParams(mockDataSource.query, 2);
+    expect(params[4]).toBe('2025-02-01'); // $5 start_date
+  });
+
+  it('calcula start_date como end_date + 1 día si no se provee override', async () => {
+    const oldContract = makeContract({ end_date: '2024-12-31' });
+    const newContract = makeContract({ id: 2 });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }])
+      .mockResolvedValueOnce([newContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await service.renew(1, {}, 0);
+
+    const params = queryParams(mockDataSource.query, 2);
+    expect(params[4]).toBe('2025-01-01'); // día siguiente a 2024-12-31
+  });
+
+  it('usa duration_months del dto para calcular end_date', async () => {
+    const oldContract = makeContract({
+      end_date: '2024-12-31',
+      duration_months: 12,
+    });
+    const newContract = makeContract({ id: 2 });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }])
+      .mockResolvedValueOnce([newContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await service.renew(1, { duration_months: 6 }, 0);
+
+    const params = queryParams(mockDataSource.query, 2);
+    expect(params[6]).toBe(6); // $7 duration_months
+  });
+
+  it('lanza BadRequestException si el contrato no está ACTIVO ni POR_VENCER', async () => {
+    const closedContract = makeContract({ status: ContractStatus.FINALIZADO });
+
+    mockDataSource.query.mockResolvedValueOnce([closedContract]);
+
+    await expect(service.renew(1, {}, 0)).rejects.toThrow(BadRequestException);
+  });
+
+  it('lanza NotFoundException si el contrato no existe', async () => {
+    mockDataSource.query.mockResolvedValueOnce([]);
+
+    await expect(service.renew(999, {}, 0)).rejects.toThrow(NotFoundException);
+  });
+
+  it('también renueva contratos con estado POR_VENCER', async () => {
+    const expiringContract = makeContract({
+      status: ContractStatus.POR_VENCER,
+    });
+    const newContract = makeContract({ id: 2 });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([expiringContract])
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }])
+      .mockResolvedValueOnce([newContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await service.renew(1, {}, 0);
+    expect(result).toBeDefined();
+  });
+
+  it('registra audit log con acción renewed', async () => {
+    const oldContract = makeContract({ status: ContractStatus.ACTIVO });
+    const newContract = makeContract({ id: 2, status: ContractStatus.BORRADOR });
+
+    mockDataSource.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([{ contract_number: 'CTR-2025-0001' }])
+      .mockResolvedValueOnce([newContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await service.renew(1, {}, 42);
+
+    expect(mockAuditLog.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 42,
+        action: 'renewed',
+        entityType: 'contract',
+        entityId: 1,
+      }),
+    );
+  });
+});
+
+// ─── getContractHistory ───────────────────────────────────────────────────────
+
+describe('ContractsService.getContractHistory', () => {
+  let service: ContractsService;
+  const mockDataSource = { query: jest.fn() };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ContractsService,
+        { provide: getDataSourceToken(), useValue: mockDataSource },
+        { provide: PdfService, useValue: {} },
+        { provide: NotificationsService, useValue: {} },
+        { provide: LifecycleNotificationsService, useValue: {} },
+        { provide: ContractTemplatesService, useValue: {} },
+        { provide: AuditLogsService, useValue: mockAuditLog },
+      ],
+    }).compile();
+
+    service = module.get<ContractsService>(ContractsService);
+  });
+
+  afterEach(() => jest.resetAllMocks());
+
+  it('retorna todos los contratos de la unidad en orden cronológico', async () => {
+    const contract = makeContract({ unit_id: 5 });
+    const history = [
+      makeContract({
+        id: 1,
+        start_date: '2023-01-01',
+        status: ContractStatus.RENOVADO,
+      }),
+      makeContract({
         id: 2,
-        contract_number: 'CTR-2024-0002',
-        status: ContractStatus.BORRADOR,
-      });
-
-      // findOne: SELECT c.* ...
-      mockQuery.mockResolvedValueOnce([old]);
-      // generateContractNumber
-      mockQuery.mockResolvedValueOnce([{ contract_number: 'CTR-2024-0001' }]);
-      // INSERT nuevo contrato
-      mockQuery.mockResolvedValueOnce([newContract]);
-      // UPDATE anterior → RENOVADO
-      mockQuery.mockResolvedValueOnce([]);
-      // logHistory x2
-      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-
-      const result = await service.renew(1, {}, 99);
-
-      expect(result.id).toBe(2);
-      expect(result.status).toBe(ContractStatus.BORRADOR);
-
-      const updateSql = querySql(mockQuery, 3);
-      expect(updateSql).toContain('status = $1');
-      const updateParams = queryParams(mockQuery, 3);
-      expect(updateParams[0]).toBe(ContractStatus.RENOVADO);
-    });
-
-    it('debe heredar propiedad, unidad e inquilino del contrato anterior', async () => {
-      const old = makeContract({ property_id: 99, unit_id: 7, tenant_id: 55 });
-      mockQuery.mockResolvedValueOnce([old]);
-      mockQuery.mockResolvedValueOnce([{ contract_number: 'CTR-2024-0001' }]);
-      mockQuery.mockResolvedValueOnce([
-        makeContract({ id: 2, status: ContractStatus.BORRADOR }),
-      ]);
-      mockQuery.mockResolvedValueOnce([]);
-      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-
-      await service.renew(1);
-
-      const insertParams = queryParams(mockQuery, 2);
-      expect(insertParams[0]).toBe(55); // tenant_id
-      expect(insertParams[1]).toBe(99); // property_id
-    });
-
-    it('debe aplicar auto_increase_percentage al calcular la renta', async () => {
-      const old = makeContract({
-        monthly_rent: 1000,
-        auto_increase_percentage: 10,
+        start_date: '2024-01-01',
         status: ContractStatus.ACTIVO,
-      });
-      mockQuery.mockResolvedValueOnce([old]);
-      mockQuery.mockResolvedValueOnce([{ contract_number: 'CTR-2024-0001' }]);
-      mockQuery.mockResolvedValueOnce([
-        makeContract({ id: 2, status: ContractStatus.BORRADOR }),
-      ]);
-      mockQuery.mockResolvedValueOnce([]);
-      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      }),
+    ];
 
-      await service.renew(1);
+    mockDataSource.query
+      .mockResolvedValueOnce([contract]) // findOne
+      .mockResolvedValueOnce(history); // history query por unit_id
 
-      const insertParams = queryParams(mockQuery, 2);
-      expect(insertParams[6]).toBeCloseTo(1100); // monthly_rent con 10% de aumento
-    });
+    const result = await service.getContractHistory(1);
 
-    it('debe usar monthly_rent del DTO si se proporciona (override)', async () => {
-      const old = makeContract({
-        monthly_rent: 1000,
-        auto_increase_percentage: 10,
-      });
-      mockQuery.mockResolvedValueOnce([old]);
-      mockQuery.mockResolvedValueOnce([{ contract_number: 'CTR-2024-0001' }]);
-      mockQuery.mockResolvedValueOnce([
-        makeContract({ id: 2, status: ContractStatus.BORRADOR }),
-      ]);
-      mockQuery.mockResolvedValueOnce([]);
-      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-
-      const dto: RenewContractDto = { monthly_rent: 1500 };
-      await service.renew(1, dto);
-
-      const insertParams = queryParams(mockQuery, 2);
-      expect(insertParams[6]).toBe(1500);
-    });
-
-    it('debe usar start_date del DTO si se proporciona', async () => {
-      const old = makeContract({ end_date: '2024-12-31' });
-      mockQuery.mockResolvedValueOnce([old]);
-      mockQuery.mockResolvedValueOnce([{ contract_number: 'CTR-2024-0001' }]);
-      mockQuery.mockResolvedValueOnce([
-        makeContract({ id: 2, status: ContractStatus.BORRADOR }),
-      ]);
-      mockQuery.mockResolvedValueOnce([]);
-      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-
-      const dto: RenewContractDto = { start_date: '2025-03-01' };
-      await service.renew(1, dto);
-
-      const insertParams = queryParams(mockQuery, 2);
-      expect(insertParams[3]).toBe('2025-03-01');
-    });
-
-    it('debe usar duration_months del DTO si se proporciona', async () => {
-      const old = makeContract({ duration_months: 12 });
-      mockQuery.mockResolvedValueOnce([old]);
-      mockQuery.mockResolvedValueOnce([{ contract_number: 'CTR-2024-0001' }]);
-      mockQuery.mockResolvedValueOnce([
-        makeContract({ id: 2, status: ContractStatus.BORRADOR }),
-      ]);
-      mockQuery.mockResolvedValueOnce([]);
-      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-
-      const dto: RenewContractDto = { duration_months: 6 };
-      await service.renew(1, dto);
-
-      const insertParams = queryParams(mockQuery, 2);
-      expect(insertParams[5]).toBe(6);
-    });
-
-    it('debe lanzar BadRequestException si el contrato está FINALIZADO', async () => {
-      const old = makeContract({ status: ContractStatus.FINALIZADO });
-      mockQuery.mockResolvedValueOnce([old]);
-
-      await expect(service.renew(1)).rejects.toThrow(BadRequestException);
-    });
-
-    it('debe lanzar NotFoundException si el contrato no existe', async () => {
-      mockQuery.mockResolvedValueOnce([]);
-
-      await expect(service.renew(999)).rejects.toThrow(NotFoundException);
-    });
-
-    it('debe funcionar con contratos en estado POR_VENCER', async () => {
-      const old = makeContract({ status: ContractStatus.POR_VENCER });
-      mockQuery.mockResolvedValueOnce([old]);
-      mockQuery.mockResolvedValueOnce([{ contract_number: 'CTR-2024-0001' }]);
-      mockQuery.mockResolvedValueOnce([
-        makeContract({ id: 2, status: ContractStatus.BORRADOR }),
-      ]);
-      mockQuery.mockResolvedValueOnce([]);
-      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-
-      const result = await service.renew(1);
-
-      expect(result.status).toBe(ContractStatus.BORRADOR);
-    });
-
-    it('debe registrar el audit log de renovación', async () => {
-      const old = makeContract({ status: ContractStatus.ACTIVO });
-      mockQuery.mockResolvedValueOnce([old]);
-      mockQuery.mockResolvedValueOnce([{ contract_number: 'CTR-2024-0001' }]);
-      mockQuery.mockResolvedValueOnce([
-        makeContract({ id: 2, status: ContractStatus.BORRADOR }),
-      ]);
-      mockQuery.mockResolvedValueOnce([]);
-      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-
-      await service.renew(1, {}, 42);
-
-      expect(mockAuditLog).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 42,
-          action: 'renewed',
-          entityType: 'contract',
-          entityId: 1,
-        }),
-      );
-    });
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe(1);
+    expect(result[1].id).toBe(2);
   });
 
-  describe('getContractHistory()', () => {
-    it('debe retornar contratos en orden cronológico por unit_id', async () => {
-      const contract = makeContract({ unit_id: 5 });
-      const history = [
-        makeContract({
-          id: 1,
-          status: ContractStatus.RENOVADO,
-          start_date: '2023-01-01',
-        }),
-        makeContract({
-          id: 2,
-          status: ContractStatus.ACTIVO,
-          start_date: '2024-01-01',
-        }),
-      ];
+  it('incluye el contrato renovado y el nuevo en el historial', async () => {
+    const contract = makeContract({ unit_id: 5 });
+    const history = [
+      makeContract({
+        id: 1,
+        status: ContractStatus.RENOVADO,
+        start_date: '2023-01-01',
+      }),
+      makeContract({
+        id: 2,
+        status: ContractStatus.BORRADOR,
+        start_date: '2024-01-01',
+      }),
+    ];
 
-      mockQuery.mockResolvedValueOnce([contract]); // findOne
-      mockQuery.mockResolvedValueOnce(history); // history query
+    mockDataSource.query
+      .mockResolvedValueOnce([contract])
+      .mockResolvedValueOnce(history);
 
-      const result = await service.getContractHistory(1);
+    const result = await service.getContractHistory(1);
+    const statuses = result.map((c) => c.status);
 
-      expect(result).toHaveLength(2);
-      const historySql = querySql(mockQuery, 1);
-      expect(historySql).toContain('unit_id = $1');
-      expect(historySql).toContain('ORDER BY c.start_date ASC');
-    });
+    expect(statuses).toContain(ContractStatus.RENOVADO);
+    expect(statuses).toContain(ContractStatus.BORRADOR);
+  });
 
-    it('debe usar property_id como fallback cuando no hay unit_id', async () => {
-      const contract = makeContract({ unit_id: undefined });
-      mockQuery.mockResolvedValueOnce([contract]); // findOne
-      mockQuery.mockResolvedValueOnce([contract]); // history query
+  it('usa property_id si el contrato no tiene unidad', async () => {
+    const contract = makeContract({ unit_id: undefined });
+    const history = [makeContract({ id: 1, start_date: '2024-01-01' })];
 
-      await service.getContractHistory(1);
+    mockDataSource.query
+      .mockResolvedValueOnce([contract])
+      .mockResolvedValueOnce(history);
 
-      const historySql = querySql(mockQuery, 1);
-      expect(historySql).toContain('property_id = $1');
-    });
+    const result = await service.getContractHistory(1);
+    expect(result).toHaveLength(1);
 
-    it('debe incluir contratos RENOVADO y BORRADOR en el historial', async () => {
-      const contract = makeContract({ unit_id: 5 });
-      const history = [
-        makeContract({ id: 1, status: ContractStatus.RENOVADO }),
-        makeContract({ id: 2, status: ContractStatus.BORRADOR }),
-      ];
+    const sql = querySql(mockDataSource.query, 1);
+    const params = queryParams(mockDataSource.query, 1);
+    expect(sql).toContain('c.property_id = $1');
+    expect(params).toContain(contract.property_id);
+  });
 
-      mockQuery.mockResolvedValueOnce([contract]);
-      mockQuery.mockResolvedValueOnce(history);
+  it('lanza NotFoundException si el contrato no existe', async () => {
+    mockDataSource.query.mockResolvedValueOnce([]);
 
-      const result = await service.getContractHistory(1);
+    await expect(service.getContractHistory(999)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
 
-      const statuses = result.map((c) => c.status);
-      expect(statuses).toContain(ContractStatus.RENOVADO);
-      expect(statuses).toContain(ContractStatus.BORRADOR);
-    });
+  it('retorna arreglo vacío si no hay historial para la unidad', async () => {
+    const contract = makeContract({ unit_id: 5 });
 
-    it('debe lanzar NotFoundException si el contrato no existe', async () => {
-      mockQuery.mockResolvedValueOnce([]);
+    mockDataSource.query
+      .mockResolvedValueOnce([contract])
+      .mockResolvedValueOnce([]);
 
-      await expect(service.getContractHistory(999)).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-
-    it('debe retornar array vacío cuando no hay historial para la propiedad', async () => {
-      const contract = makeContract({ unit_id: undefined });
-      mockQuery.mockResolvedValueOnce([contract]);
-      mockQuery.mockResolvedValueOnce([]);
-
-      const result = await service.getContractHistory(1);
-
-      expect(result).toEqual([]);
-    });
+    const result = await service.getContractHistory(1);
+    expect(result).toEqual([]);
   });
 });

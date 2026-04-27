@@ -23,6 +23,7 @@ export interface ContractResult {
   contract_number: string;
   tenant_id: number;
   property_id: number;
+  unit_id?: number;
   start_date: string | Date;
   end_date: string | Date;
   duration_months?: number | null;
@@ -734,12 +735,10 @@ export class ContractsService {
 
       // Obtener número de unidad si el contrato tiene unit_id
       let unitNumber = '';
-      const contractUnitId = (contract as ContractResult & { unit_id?: number })
-        .unit_id;
-      if (contractUnitId) {
+      if (contract.unit_id) {
         const unitRows = await this.dataSource.query<{ unit_number: string }[]>(
           'SELECT unit_number FROM units WHERE id = $1',
-          [contractUnitId],
+          [contract.unit_id],
         );
         unitNumber = unitRows[0]?.unit_number ?? '';
       }
@@ -748,9 +747,7 @@ export class ContractsService {
         contract_number: contract.contract_number ?? '',
         tenant_name: contract.tenant_name ?? '',
         tenant_email: contract.tenant_email ?? '',
-        tenant_phone:
-          (contract as ContractResult & { tenant_phone?: string })
-            .tenant_phone ?? '',
+        tenant_phone: contract.tenant_phone ?? '',
         property_title: contract.property_title ?? '',
         property_address: fullAddress || 'No especificada',
         unit_number: unitNumber,
@@ -816,41 +813,46 @@ export class ContractsService {
       );
     }
 
-    const baseStartDate = new Date(oldContract.end_date as string);
-    baseStartDate.setDate(baseStartDate.getDate() + 1);
+    const durationMonths =
+      dto.duration_months ?? oldContract.duration_months ?? 12;
+
     const newStartDate = dto.start_date
       ? new Date(dto.start_date)
-      : baseStartDate;
-
-    const durationMonths =
-      dto.duration_months ?? (oldContract.duration_months as number) ?? 12;
+      : (() => {
+          const d = new Date(oldContract.end_date as string);
+          d.setDate(d.getDate() + 1);
+          return d;
+        })();
 
     const newEndDate = new Date(newStartDate);
     newEndDate.setMonth(newEndDate.getMonth() + durationMonths);
 
-    const autoIncrease =
-      dto.auto_increase_percentage ??
-      (oldContract.auto_increase_percentage as number) ??
-      0;
     const newRent =
-      dto.monthly_rent ?? oldContract.monthly_rent * (1 + autoIncrease / 100);
+      dto.monthly_rent ??
+      oldContract.monthly_rent *
+        (1 + (oldContract.auto_increase_percentage ?? 0) / 100);
 
     const newContractNumber = await this.generateContractNumber();
 
+    const includedServices =
+      dto.included_services ?? oldContract.included_services;
+
+
     const insertResult = await this.dataSource.query<ContractResult[]>(
       `INSERT INTO contracts
-       (tenant_id, property_id, contract_number, start_date, end_date, duration_months,
+       (tenant_id, property_id, unit_id, contract_number, start_date, end_date, duration_months,
         monthly_rent, currency, payment_day, deposit_amount, payment_method,
         late_fee_percentage, grace_days, included_services, tenant_responsibilities,
         owner_responsibilities, prohibitions, coexistence_rules, renewal_terms, termination_terms,
         jurisdiction, auto_renew, renewal_notice_days, auto_increase_percentage,
         previous_contract_id, bank_account_number, bank_account_type, bank_name, bank_account_holder,
         status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, NOW(), NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, NOW(), NOW())
        RETURNING *`,
       [
         oldContract.tenant_id,
         oldContract.property_id,
+        oldContract.unit_id ?? null,
         newContractNumber,
         newStartDate.toISOString().split('T')[0],
         newEndDate.toISOString().split('T')[0],
@@ -859,29 +861,31 @@ export class ContractsService {
         dto.currency ?? oldContract.currency,
         dto.payment_day ?? oldContract.payment_day,
         dto.deposit_amount ?? oldContract.deposit_amount,
-        dto.payment_method ?? oldContract.payment_method,
-        dto.late_fee_percentage ?? oldContract.late_fee_percentage,
-        dto.grace_days ?? oldContract.grace_days,
-        (dto.included_services ?? oldContract.included_services)
-          ? JSON.stringify(
-              dto.included_services ?? oldContract.included_services,
-            )
-          : null,
-        dto.tenant_responsibilities ?? oldContract.tenant_responsibilities,
-        dto.owner_responsibilities ?? oldContract.owner_responsibilities,
-        dto.prohibitions ?? oldContract.prohibitions,
-        dto.coexistence_rules ?? oldContract.coexistence_rules,
-        dto.renewal_terms ?? oldContract.renewal_terms,
-        dto.termination_terms ?? oldContract.termination_terms,
-        dto.jurisdiction ?? oldContract.jurisdiction,
-        dto.auto_renew ?? oldContract.auto_renew,
-        dto.renewal_notice_days ?? oldContract.renewal_notice_days,
-        autoIncrease,
+        dto.payment_method ?? oldContract.payment_method ?? null,
+        dto.late_fee_percentage ?? oldContract.late_fee_percentage ?? 0,
+        dto.grace_days ?? oldContract.grace_days ?? 0,
+        includedServices ? JSON.stringify(includedServices) : null,
+        dto.tenant_responsibilities ??
+          oldContract.tenant_responsibilities ??
+          null,
+        dto.owner_responsibilities ??
+          oldContract.owner_responsibilities ??
+          null,
+        dto.prohibitions ?? oldContract.prohibitions ?? null,
+        dto.coexistence_rules ?? oldContract.coexistence_rules ?? null,
+        dto.renewal_terms ?? oldContract.renewal_terms ?? null,
+        dto.termination_terms ?? oldContract.termination_terms ?? null,
+        dto.jurisdiction ?? oldContract.jurisdiction ?? 'Bolivia',
+        dto.auto_renew ?? oldContract.auto_renew ?? false,
+        dto.renewal_notice_days ?? oldContract.renewal_notice_days ?? 30,
+        dto.auto_increase_percentage ??
+          oldContract.auto_increase_percentage ??
+          0,
         oldContract.id,
-        oldContract.bank_account_number,
-        oldContract.bank_account_type,
-        oldContract.bank_name,
-        oldContract.bank_account_holder,
+        oldContract.bank_account_number ?? null,
+        oldContract.bank_account_type ?? null,
+        oldContract.bank_name ?? null,
+        oldContract.bank_account_holder ?? null,
         ContractStatus.BORRADOR,
       ],
     );
@@ -929,27 +933,33 @@ export class ContractsService {
   async getContractHistory(id: number): Promise<ContractResult[]> {
     const contract = await this.findOne(id);
 
-    const baseQuery = `
-      SELECT c.*,
-             p.title as property_title, p.status as property_status,
-             pa.street_address, pa.city, pa.country,
-             u.name as tenant_name, u.email as tenant_email, u.phone as tenant_phone
-      FROM contracts c
-      LEFT JOIN properties p ON c.property_id = p.id
-      LEFT JOIN property_addresses pa
-        ON c.property_id = pa.property_id AND pa.address_type = 'address_1'
-      LEFT JOIN "user" u ON c.tenant_id = u.id
-    `;
-
     if (contract.unit_id) {
       return this.dataSource.query<ContractResult[]>(
-        `${baseQuery} WHERE c.unit_id = $1 ORDER BY c.start_date ASC`,
+        `SELECT c.*,
+                p.title as property_title, p.status as property_status,
+                pa.street_address, pa.city, pa.state, pa.zip_code, pa.country,
+                u.name as tenant_name, u.email as tenant_email, u.phone as tenant_phone
+         FROM contracts c
+         LEFT JOIN properties p ON c.property_id = p.id
+         LEFT JOIN property_addresses pa ON c.property_id = pa.property_id AND pa.address_type = 'address_1'
+         LEFT JOIN "user" u ON c.tenant_id = u.id
+         WHERE c.unit_id = $1
+         ORDER BY c.start_date ASC`,
         [contract.unit_id],
       );
     }
 
     return this.dataSource.query<ContractResult[]>(
-      `${baseQuery} WHERE c.property_id = $1 ORDER BY c.start_date ASC`,
+      `SELECT c.*,
+              p.title as property_title, p.status as property_status,
+              pa.street_address, pa.city, pa.state, pa.zip_code, pa.country,
+              u.name as tenant_name, u.email as tenant_email, u.phone as tenant_phone
+       FROM contracts c
+       LEFT JOIN properties p ON c.property_id = p.id
+       LEFT JOIN property_addresses pa ON c.property_id = pa.property_id AND pa.address_type = 'address_1'
+       LEFT JOIN "user" u ON c.tenant_id = u.id
+       WHERE c.property_id = $1
+       ORDER BY c.start_date ASC`,
       [contract.property_id],
     );
   }

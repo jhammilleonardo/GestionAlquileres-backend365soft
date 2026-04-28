@@ -22,18 +22,18 @@ export class ReportsService {
         t.id as tenant_id,
         t.first_name || ' ' || t.last_name as tenant_name,
         c.id as contract_id,
-        c.rent_amount,
-        c.security_deposit,
+        c.monthly_rent as rent_amount,
+        c.deposit_amount as security_deposit,
         c.start_date,
         c.end_date,
         c.status as contract_status,
         COALESCE(
-          (SELECT sum(amount_due - amount_paid) FROM invoices i WHERE i.contract_id = c.id AND i.status != 'PAID'), 0
+          (SELECT sum(amount) FROM payments i WHERE i.contract_id = c.id AND i.status != 'APPROVED'), 0
         ) as current_balance
       FROM properties p
       LEFT JOIN units u ON u.property_id = p.id
       LEFT JOIN contracts c ON c.unit_id = u.id AND c.status = COALESCE($1, c.status) AND c.status IN ('ACTIVE', 'PENDING')
-      LEFT JOIN users t ON t.id = c.tenant_id
+      LEFT JOIN "user" t ON t.id = c.tenant_id
       WHERE p.deleted_at IS NULL
     `;
 
@@ -93,14 +93,14 @@ export class ReportsService {
         u.unit_number,
         p.name as property_name,
         c.id as contract_id,
-        SUM(i.amount_due - i.amount_paid) as total_owed,
+        SUM(i.amount) as total_owed,
         MAX(CURRENT_DATE - i.due_date) as max_days_late
-      FROM invoices i
+      FROM payments i
       JOIN contracts c ON c.id = i.contract_id
-      JOIN users t ON t.id = c.tenant_id
+      JOIN "user" t ON t.id = c.tenant_id
       JOIN units u ON u.id = c.unit_id
       JOIN properties p ON p.id = u.property_id
-      WHERE i.status = COALESCE($1, i.status) AND i.status IN ('UNPAID', 'PARTIAL') AND i.due_date < CURRENT_DATE
+      WHERE i.status = COALESCE($1, i.status) AND i.status != 'APPROVED' AND i.due_date < CURRENT_DATE
     `;
 
     const params: any[] = [filters.status || null];
@@ -126,13 +126,13 @@ export class ReportsService {
 
     if (filters.from) {
       incomeFilter += ` AND p.payment_date >= $${paramCount}`;
-      expenseFilter += ` AND e.expense_date >= $${paramCount}`;
+      expenseFilter += ` AND e.date >= $${paramCount}`;
       params.push(filters.from);
       paramCount++;
     }
     if (filters.to) {
       incomeFilter += ` AND p.payment_date <= $${paramCount}`;
-      expenseFilter += ` AND e.expense_date <= $${paramCount}`;
+      expenseFilter += ` AND e.date <= $${paramCount}`;
       params.push(filters.to);
       paramCount++;
     }
@@ -145,19 +145,15 @@ export class ReportsService {
 
     const query = `
       WITH income AS (
-        SELECT r.id as property_id, SUM(p.amount) as total_income
+        SELECT p.property_id, SUM(p.amount) as total_income
         FROM payments p
-        JOIN invoices i ON p.invoice_id = i.id
-        JOIN contracts c ON i.contract_id = c.id
-        JOIN units u ON c.unit_id = u.id
-        JOIN properties r ON u.property_id = r.id
-        WHERE p.status = 'COMPLETED' ${incomeFilter} ${filterByProperty}
-        GROUP BY r.id
+        WHERE p.status = 'APPROVED' ${incomeFilter} ${filters.property_id ? ` AND p.property_id = $${paramCount}` : ''}
+        GROUP BY p.property_id
       ),
       expenses AS (
         SELECT e.property_id, SUM(e.amount) as total_expenses
         FROM expenses e
-        WHERE e.status IN ('PAID', 'APPROVED') ${expenseFilter} ${filters.property_id ? ` AND e.property_id = $${paramCount}` : ''}
+        WHERE 1=1 ${expenseFilter} ${filters.property_id ? ` AND e.property_id = $${paramCount}` : ''}
         GROUP BY e.property_id
       )
       SELECT
@@ -199,11 +195,11 @@ export class ReportsService {
     const occupiedUnits = parseInt(occupiedUnitsResult?.count || '0');
     const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
 
-    let incomeQuery = `SELECT SUM(amount) as total FROM payments WHERE status = 'COMPLETED'`;
+    let incomeQuery = `SELECT SUM(amount) as total FROM payments WHERE status = 'APPROVED'`;
     // Month to date
     incomeQuery += ` AND date_trunc('month', payment_date) = date_trunc('month', CURRENT_DATE)`;
 
-    const pendingPaymentsQuery = `SELECT count(*) as count FROM invoices WHERE status IN ('UNPAID', 'PARTIAL')`;
+    const pendingPaymentsQuery = `SELECT count(*) as count FROM payments WHERE status != 'APPROVED'`;
     const openMaintenanceQuery = `SELECT count(*) as count FROM maintenance_requests WHERE status IN ('OPEN', 'IN_PROGRESS', 'PENDING')`;
 
     const [[incomeResult], [pendingPmtResult], [maintResult]] = await Promise.all([

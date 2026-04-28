@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, UseGuards, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { ReportsService } from './reports.service';
 import { ReportsExportService } from './reports-export.service';
@@ -9,7 +10,7 @@ import { ReportFilterDto } from './dto/report-filter.dto';
 
 @ApiTags('Admin Reports')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller(':slug/admin/reports')
 export class ReportsController {
   constructor(

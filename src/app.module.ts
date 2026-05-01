@@ -38,6 +38,7 @@ import { BillingCronModule } from './billing-cron/billing-cron.module';
 import { ContractTemplatesModule } from './contract-templates/contract-templates.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { TenantWebsiteModule } from './tenant-website/tenant-website.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -120,6 +121,7 @@ import { TenantWebsiteModule } from './tenant-website/tenant-website.module';
     ContractTemplatesModule,
     AuditLogsModule,
     TenantWebsiteModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

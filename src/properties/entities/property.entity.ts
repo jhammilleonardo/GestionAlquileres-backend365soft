@@ -50,10 +50,22 @@ export class Property {
   status: string;
 
   // Coordinates (added in details)
-  @Column({ type: 'decimal', precision: 10, scale: 8, nullable: true, transformer: decimalTransformer })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 8,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   latitude: number;
 
-  @Column({ type: 'decimal', precision: 11, scale: 8, nullable: true, transformer: decimalTransformer })
+  @Column({
+    type: 'decimal',
+    precision: 11,
+    scale: 8,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   longitude: number;
 
   // Images
@@ -61,7 +73,12 @@ export class Property {
   images: string[];
 
   // Security Deposit (Reservation)
-  @Column('decimal', { precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
+  @Column('decimal', {
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   security_deposit_amount: number;
 
   // Amenities (stored as JSON string in PostgreSQL)
@@ -73,14 +90,26 @@ export class Property {
   included_items: string[];
 
   // Financial
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   monthly_rent: number;
 
   @Column({ default: 'BOB' })
   currency: string;
 
   // Property characteristics
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   square_meters: number;
 
   @Column({ type: 'int', nullable: true })

@@ -15,7 +15,12 @@ import {
   RejectPaymentDto,
 } from './dto';
 import { Payment, PaymentStats } from './interfaces/payment.interface';
-import { PaymentStatus, PaymentProcessor, PaymentMethod, PaymentMethodLabels } from './enums';
+import {
+  PaymentStatus,
+  PaymentProcessor,
+  PaymentMethod,
+  PaymentMethodLabels,
+} from './enums';
 import { TenantsService } from '../tenants/tenants.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
@@ -64,7 +69,9 @@ export class PaymentsService {
       // CRITICAL: Establecer el schema correcto del tenant
       if (tenantSlug) {
         const tenant = await this.tenantsService.findBySlug(tenantSlug);
-        await queryRunner.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+        await queryRunner.query(
+          `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+        );
       }
 
       // Si no se proporciona contractId, obtener el contrato activo del tenant
@@ -165,7 +172,9 @@ export class PaymentsService {
   ): Promise<Payment[]> {
     // Establecer el schema correcto del tenant
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
-    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+    await this.dataSource.query(
+      `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+    );
 
     const payments = await this.dataSource.query(
       `SELECT
@@ -201,7 +210,9 @@ export class PaymentsService {
   ): Promise<PaymentStats> {
     // Establecer el schema correcto del tenant
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
-    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+    await this.dataSource.query(
+      `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+    );
 
     const stats = await this.dataSource.query(
       `SELECT
@@ -394,7 +405,9 @@ export class PaymentsService {
     try {
       // Establecer el schema del tenant en esta conexión
       if (schemaName) {
-        await queryRunner.query(`SET search_path TO ${quoteIdent(schemaName)}, public`);
+        await queryRunner.query(
+          `SET search_path TO ${quoteIdent(schemaName)}, public`,
+        );
       }
 
       // Verificar que el contrato existe y pertenece al tenant
@@ -773,7 +786,9 @@ export class PaymentsService {
    */
   async deletePayment(id: number, schemaName?: string): Promise<void> {
     if (schemaName) {
-      await this.dataSource.query(`SET search_path TO ${quoteIdent(schemaName)}, public`);
+      await this.dataSource.query(
+        `SET search_path TO ${quoteIdent(schemaName)}, public`,
+      );
     }
     const result = await this.dataSource.query(
       'DELETE FROM payments WHERE id = $1',
@@ -838,14 +853,14 @@ export class PaymentsService {
    */
   isValidStatusTransition(from: string, to: string): boolean {
     const allowed: Record<string, string[]> = {
-      PENDING:    ['PROCESSING', 'APPROVED', 'REJECTED', 'FAILED'],
+      PENDING: ['PROCESSING', 'APPROVED', 'REJECTED', 'FAILED'],
       PROCESSING: ['APPROVED', 'FAILED'],
-      APPROVED:   ['REFUNDED', 'REVERSED', 'DISPUTED'],
-      DISPUTED:   ['APPROVED', 'REVERSED'],
-      REJECTED:   [],
-      FAILED:     [],
-      REFUNDED:   [],
-      REVERSED:   [],
+      APPROVED: ['REFUNDED', 'REVERSED', 'DISPUTED'],
+      DISPUTED: ['APPROVED', 'REVERSED'],
+      REJECTED: [],
+      FAILED: [],
+      REFUNDED: [],
+      REVERSED: [],
     };
     return (allowed[from] ?? []).includes(to);
   }
@@ -872,7 +887,10 @@ export class PaymentsService {
     }
     const payment = rows[0];
 
-    if (payment.status !== PaymentStatus.PENDING && payment.status !== PaymentStatus.PROCESSING) {
+    if (
+      payment.status !== PaymentStatus.PENDING &&
+      payment.status !== PaymentStatus.PROCESSING
+    ) {
       throw new BadRequestException(
         `Solo se pueden aprobar pagos en estado PENDING o PROCESSING. Estado actual: ${payment.status}`,
       );
@@ -915,7 +933,8 @@ export class PaymentsService {
         schemaName: schema,
       });
     } catch (splitError: unknown) {
-      const msg = splitError instanceof Error ? splitError.message : String(splitError);
+      const msg =
+        splitError instanceof Error ? splitError.message : String(splitError);
       this.logger.error(`Split payment falló para pago #${id}: ${msg}`);
     }
 
@@ -925,7 +944,10 @@ export class PaymentsService {
       entityType: 'payment',
       entityId: id,
       oldValues: { status: payment.status },
-      newValues: { status: PaymentStatus.APPROVED, admin_notes: dto.admin_notes },
+      newValues: {
+        status: PaymentStatus.APPROVED,
+        admin_notes: dto.admin_notes,
+      },
     });
 
     return updated[0];
@@ -953,7 +975,10 @@ export class PaymentsService {
     }
     const payment = rows[0];
 
-    if (payment.status !== PaymentStatus.PENDING && payment.status !== PaymentStatus.PROCESSING) {
+    if (
+      payment.status !== PaymentStatus.PENDING &&
+      payment.status !== PaymentStatus.PROCESSING
+    ) {
       throw new BadRequestException(
         `Solo se pueden rechazar pagos en estado PENDING o PROCESSING. Estado actual: ${payment.status}`,
       );
@@ -968,7 +993,13 @@ export class PaymentsService {
            updated_at       = NOW()
        WHERE id = $5
        RETURNING *`,
-      [PaymentStatus.REJECTED, dto.rejection_reason, dto.admin_notes || null, adminId, id],
+      [
+        PaymentStatus.REJECTED,
+        dto.rejection_reason,
+        dto.admin_notes || null,
+        adminId,
+        id,
+      ],
     );
 
     // Notificar al inquilino con el motivo

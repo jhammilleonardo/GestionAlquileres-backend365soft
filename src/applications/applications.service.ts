@@ -19,6 +19,7 @@ import { ContractsService } from '../contracts/contracts.service';
 import { BlacklistService } from '../blacklist/blacklist.service';
 import { DocumentType } from '../blacklist/enums/blacklist.enum';
 import { TenantsService } from '../tenants/tenants.service';
+import { quoteIdent } from '../common/utils/sql-identifier';
 
 interface BlacklistAlertInfo {
   is_blacklisted: boolean;
@@ -92,13 +93,22 @@ export class ApplicationsService {
     private readonly tenantsService: TenantsService,
   ) {}
 
+  private async setTenantSchema(tenantSlug: string): Promise<void> {
+    const tenant = await this.tenantsService.findBySlug(tenantSlug);
+    await this.dataSource.query(
+      `SET search_path TO ${quoteIdent(tenant.schema_name)}, public`,
+    );
+  }
+
   async approveAndCreateContract(
     id: number,
     approveDto: ApproveApplicationDto,
     adminId: number,
+    tenantSlug: string,
   ) {
+    await this.setTenantSchema(tenantSlug);
     // 1. Obtener la solicitud con datos de la propiedad
-    const application = await this.findOne(id);
+    const application = await this.findOne(id, tenantSlug);
 
     if (application.status === ApplicationStatus.APROBADA) {
       throw new BadRequestException('Esta solicitud ya ha sido aprobada');
@@ -122,12 +132,16 @@ export class ApplicationsService {
     const depositAmount = approveDto.deposit_amount ?? approveDto.monthly_rent;
 
     // 3. Actualizar estado de la solicitud a APROBADA
-    const updatedApplication = await this.updateStatus(id, {
-      status: ApplicationStatus.APROBADA,
-      admin_feedback:
-        approveDto.admin_feedback ||
-        `Solicitud aprobada para la propiedad "${String(application.property_title)}".`,
-    });
+    const updatedApplication = await this.updateStatus(
+      id,
+      {
+        status: ApplicationStatus.APROBADA,
+        admin_feedback:
+          approveDto.admin_feedback ||
+          `Solicitud aprobada para la propiedad "${String(application.property_title)}".`,
+      },
+      tenantSlug,
+    );
 
     // 4. Crear el contrato usando LOS DATOS DEL DTO
     // Si falla, revertir el estado de la solicitud y propagar el error real
@@ -222,7 +236,12 @@ export class ApplicationsService {
     };
   }
 
-  async create(createApplicationDto: CreateApplicationDto, userId: number, tenantSlug: string) {
+  async create(
+    createApplicationDto: CreateApplicationDto,
+    userId: number,
+    tenantSlug: string,
+  ) {
+    await this.setTenantSchema(tenantSlug);
     // 0. Validar que el solicitante sea INQUILINO (nunca un ADMIN)
     const userResult = await this.dataSource.query<{ role: string }[]>(
       'SELECT role FROM "user" WHERE id = $1',
@@ -259,7 +278,8 @@ export class ApplicationsService {
 
     // 2. VERIFICACIÓN DE BLACKLIST - Chequear documento del aplicante
     let blacklistAlert: BlacklistAlertInfo | null = null;
-    const documentNumber = createApplicationDto.personal_data?.identity_document;
+    const documentNumber =
+      createApplicationDto.personal_data?.identity_document;
     if (documentNumber) {
       try {
         const checkResult = await this.blacklistService.checkBlacklist(
@@ -281,7 +301,7 @@ export class ApplicationsService {
             reported_by: checkResult.details?.reported_by_tenant_name,
             message: checkResult.message,
           };
-          
+
           this.logger.warn(
             `[BLACKLIST ALERT] Inquilino VETADO intenta aplicar: ${documentNumber} para propiedad ${createApplicationDto.property_id}`,
           );
@@ -330,7 +350,7 @@ export class ApplicationsService {
         const title = blacklistAlert
           ? '⚠️ ALERTA: Solicitud de inquilino VETADO'
           : 'Nueva solicitud de alquiler';
-        
+
         const description = blacklistAlert
           ? `⚠️ ALERTA: Inquilino en lista negra - ${blacklistAlert.reason} (reportado por: ${blacklistAlert.reported_by}). Solicitud para propiedad: ${String(property.title)}`
           : `Se ha recibido una nueva solicitud para la propiedad: ${String(property.title)}`;
@@ -345,6 +365,7 @@ export class ApplicationsService {
             propertyId: Number(property.id),
             blacklist_alert: blacklistAlert,
           },
+          tenantSlug,
         );
       }
     } catch (e) {
@@ -354,7 +375,8 @@ export class ApplicationsService {
     return application;
   }
 
-  async findAll(status?: ApplicationStatus) {
+  async findAll(tenantSlug: string, status?: ApplicationStatus) {
+    await this.setTenantSchema(tenantSlug);
     let query = `
       SELECT ra.*, p.title as property_title, u.name as applicant_name, u.email as applicant_email
       FROM rental_applications ra
@@ -378,7 +400,8 @@ export class ApplicationsService {
     return result;
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, tenantSlug: string) {
+    await this.setTenantSchema(tenantSlug);
     const result = await this.dataSource.query<ApplicationResult[]>(
       `SELECT ra.*, p.title as property_title, u.name as applicant_name, u.email as applicant_email
        FROM rental_applications ra
@@ -395,7 +418,8 @@ export class ApplicationsService {
     return result[0];
   }
 
-  async findByApplicant(userId: number) {
+  async findByApplicant(userId: number, tenantSlug: string) {
+    await this.setTenantSchema(tenantSlug);
     const result = await this.dataSource.query<ApplicationResult[]>(
       `SELECT ra.*, p.title as property_title
        FROM rental_applications ra
@@ -407,8 +431,13 @@ export class ApplicationsService {
     return result;
   }
 
-  async updateStatus(id: number, updateDto: UpdateApplicationStatusDto) {
-    const application = await this.findOne(id);
+  async updateStatus(
+    id: number,
+    updateDto: UpdateApplicationStatusDto,
+    tenantSlug: string,
+  ) {
+    await this.setTenantSchema(tenantSlug);
+    const application = await this.findOne(id, tenantSlug);
 
     const result = await this.dataSource.query<ApplicationResult[]>(
       `UPDATE rental_applications
@@ -434,6 +463,7 @@ export class ApplicationsService {
           status: updateDto.status,
           feedback: updateDto.admin_feedback,
         },
+        tenantSlug,
       );
     } catch (e) {
       this.logger.error('Error al notificar al inquilino', e);
@@ -448,7 +478,8 @@ export class ApplicationsService {
     types: string[],
     tenantSlug: string,
   ): Promise<{ message: string; documents: UploadedDocumentRef[] }> {
-    await this.findOne(id);
+    await this.setTenantSchema(tenantSlug);
+    await this.findOne(id, tenantSlug);
 
     const baseUrl = `/storage/applications/${tenantSlug}/${id}`;
     const newDocs: UploadedDocumentRef[] = files.map((file, index) => ({
@@ -458,10 +489,9 @@ export class ApplicationsService {
     }));
 
     // Obtener documentos existentes y concatenar
-    const [existing] = await this.dataSource.query<{ documents: UploadedDocumentRef[] }[]>(
-      `SELECT documents FROM rental_applications WHERE id = $1`,
-      [id],
-    );
+    const [existing] = await this.dataSource.query<
+      { documents: UploadedDocumentRef[] }[]
+    >(`SELECT documents FROM rental_applications WHERE id = $1`, [id]);
     const current: UploadedDocumentRef[] = existing?.documents ?? [];
 
     await this.dataSource.query(
@@ -476,12 +506,14 @@ export class ApplicationsService {
     id: number,
     dto: UpdateScreeningDto,
     adminId: number,
+    tenantSlug: string,
   ): Promise<{
     message: string;
     screening: ScreeningChecklistRow;
     contract?: Record<string, unknown>;
   }> {
-    const application = await this.findOne(id);
+    await this.setTenantSchema(tenantSlug);
+    const application = await this.findOne(id, tenantSlug);
 
     const now = dto.final_status ? new Date() : null;
 
@@ -560,20 +592,42 @@ export class ApplicationsService {
     }
 
     if (!dto.final_status) {
-      return { message: 'Checklist de screening actualizado', screening: checklist };
+      return {
+        message: 'Checklist de screening actualizado',
+        screening: checklist,
+      };
     }
 
     // Procesar resultado final
     if (dto.final_status === ScreeningFinalStatus.APPROVED) {
-      return this.handleScreeningApproved(id, dto, adminId, application, checklist);
+      return this.handleScreeningApproved(
+        id,
+        dto,
+        adminId,
+        application,
+        checklist,
+        tenantSlug,
+      );
     }
 
     if (dto.final_status === ScreeningFinalStatus.REJECTED) {
-      return this.handleScreeningRejected(id, dto, application, checklist);
+      return this.handleScreeningRejected(
+        id,
+        dto,
+        application,
+        checklist,
+        tenantSlug,
+      );
     }
 
     // REQUIRES_COSIGNER
-    return this.handleScreeningRequiresCosigner(id, dto, application, checklist);
+    return this.handleScreeningRequiresCosigner(
+      id,
+      dto,
+      application,
+      checklist,
+      tenantSlug,
+    );
   }
 
   private async handleScreeningApproved(
@@ -582,7 +636,12 @@ export class ApplicationsService {
     adminId: number,
     application: ApplicationResult,
     checklist: ScreeningChecklistRow,
-  ): Promise<{ message: string; screening: ScreeningChecklistRow; contract?: Record<string, unknown> }> {
+    tenantSlug: string,
+  ): Promise<{
+    message: string;
+    screening: ScreeningChecklistRow;
+    contract?: Record<string, unknown>;
+  }> {
     if (!dto.monthly_rent) {
       throw new BadRequestException(
         'Se requiere monthly_rent para aprobar una solicitud y generar el contrato',
@@ -598,7 +657,12 @@ export class ApplicationsService {
         dto.admin_feedback ?? `Solicitud aprobada tras screening completo.`,
     };
 
-    const result = await this.approveAndCreateContract(id, approveDto, adminId);
+    const result = await this.approveAndCreateContract(
+      id,
+      approveDto,
+      adminId,
+      tenantSlug,
+    );
 
     return {
       message: 'Solicitud aprobada: contrato generado automáticamente',
@@ -612,11 +676,18 @@ export class ApplicationsService {
     dto: UpdateScreeningDto,
     application: ApplicationResult,
     checklist: ScreeningChecklistRow,
+    tenantSlug: string,
   ): Promise<{ message: string; screening: ScreeningChecklistRow }> {
-    await this.updateStatus(id, {
-      status: ApplicationStatus.RECHAZADA,
-      admin_feedback: dto.admin_feedback ?? 'Solicitud rechazada tras el proceso de screening.',
-    });
+    await this.updateStatus(
+      id,
+      {
+        status: ApplicationStatus.RECHAZADA,
+        admin_feedback:
+          dto.admin_feedback ??
+          'Solicitud rechazada tras el proceso de screening.',
+      },
+      tenantSlug,
+    );
 
     try {
       await this.notificationsService.createForUser(
@@ -625,12 +696,16 @@ export class ApplicationsService {
         'Resultado de tu solicitud de alquiler',
         `Tu solicitud para la propiedad ${String(application.property_title)} ha sido rechazada. ${dto.admin_feedback ?? ''}`.trim(),
         { applicationId: id, final_status: ScreeningFinalStatus.REJECTED },
+        tenantSlug,
       );
     } catch (e) {
       this.logger.error('Error al notificar rechazo al inquilino', e);
     }
 
-    return { message: 'Solicitud rechazada. Inquilino notificado.', screening: checklist };
+    return {
+      message: 'Solicitud rechazada. Inquilino notificado.',
+      screening: checklist,
+    };
   }
 
   private async handleScreeningRequiresCosigner(
@@ -638,12 +713,18 @@ export class ApplicationsService {
     dto: UpdateScreeningDto,
     application: ApplicationResult,
     checklist: ScreeningChecklistRow,
+    tenantSlug: string,
   ): Promise<{ message: string; screening: ScreeningChecklistRow }> {
-    await this.updateStatus(id, {
-      status: ApplicationStatus.EN_REVISION,
-      admin_feedback:
-        dto.admin_feedback ?? 'Se requiere un co-firmante para continuar con la solicitud.',
-    });
+    await this.updateStatus(
+      id,
+      {
+        status: ApplicationStatus.EN_REVISION,
+        admin_feedback:
+          dto.admin_feedback ??
+          'Se requiere un co-firmante para continuar con la solicitud.',
+      },
+      tenantSlug,
+    );
 
     try {
       await this.notificationsService.createForUser(
@@ -651,20 +732,29 @@ export class ApplicationsService {
         'application.status.changed' as NotificationEventType,
         'Acción requerida en tu solicitud',
         `Tu solicitud para la propiedad ${String(application.property_title)} requiere un co-firmante. Comunícate con la administración.`,
-        { applicationId: id, final_status: ScreeningFinalStatus.REQUIRES_COSIGNER },
+        {
+          applicationId: id,
+          final_status: ScreeningFinalStatus.REQUIRES_COSIGNER,
+        },
+        tenantSlug,
       );
     } catch (e) {
       this.logger.error('Error al notificar co-firmante al inquilino', e);
     }
 
     return {
-      message: 'Solicitud marcada como requiere co-firmante. Inquilino notificado.',
+      message:
+        'Solicitud marcada como requiere co-firmante. Inquilino notificado.',
       screening: checklist,
     };
   }
 
-  async markScreeningFeePaid(id: number): Promise<{ message: string }> {
-    await this.findOne(id);
+  async markScreeningFeePaid(
+    id: number,
+    tenantSlug: string,
+  ): Promise<{ message: string }> {
+    await this.setTenantSchema(tenantSlug);
+    await this.findOne(id, tenantSlug);
 
     await this.dataSource.query(
       `UPDATE rental_applications SET screening_fee_paid = TRUE, updated_at = NOW() WHERE id = $1`,

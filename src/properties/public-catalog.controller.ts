@@ -9,12 +9,7 @@ import {
   BadRequestException,
   ParseIntPipe,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiParam,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { PropertiesService } from './properties.service';
 import { FilterCatalogPropertiesDto } from './dto/filter-catalog-properties.dto';
 import { CreatePropertyContactDto } from './dto/create-property-contact.dto';
@@ -32,7 +27,7 @@ export class PublicCatalogController {
   /**
    * Listar propiedades disponibles con filtros, paginación y ordenamiento
    * GET /:slug/catalog/properties
-   * 
+   *
    * Filtros soportados:
    * - type: property type code (residential, commercial, etc)
    * - min_price: precio mínimo
@@ -139,7 +134,7 @@ export class PublicCatalogController {
   /**
    * Obtener detalle completo de una propiedad
    * GET /:slug/catalog/properties/:id
-   * 
+   *
    * - Retorna: Detalle completo con fotos, amenidades, reglas, servicios
    * - Efecto colateral: Incrementa el contador de vistas
    * - Registra: IP del cliente y timestamp de visualización
@@ -186,7 +181,7 @@ export class PublicCatalogController {
   /**
    * Registrar un contacto/lead para una propiedad
    * POST /:slug/catalog/properties/:id/contact
-   * 
+   *
    * - NO requiere autenticación
    * - Guarda: Información del interesado como Lead
    * - Notifica: Al administrador sobre el nuevo lead

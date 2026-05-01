@@ -142,7 +142,11 @@ export class AdminBlacklistController {
     description: 'Solo ADMIN puede eliminar registros de la lista negra',
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID del registro en blacklist' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID del registro en blacklist',
+  })
   @ApiResponse({
     status: 200,
     description: 'Inquilino eliminado exitosamente',
@@ -286,7 +290,8 @@ export class PublicBlacklistController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Verificar documento en lista negra (POST)',
-    description: 'Verificación de documento - método POST como alternativa a GET',
+    description:
+      'Verificación de documento - método POST como alternativa a GET',
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiBody({ type: CheckBlacklistDto })

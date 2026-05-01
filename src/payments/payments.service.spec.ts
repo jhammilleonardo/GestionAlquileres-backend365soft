@@ -107,7 +107,9 @@ describe('PaymentsService — lógica de negocio', () => {
     });
 
     it('debe permitir PENDING → PROCESSING', () => {
-      expect(service.isValidStatusTransition('PENDING', 'PROCESSING')).toBe(true);
+      expect(service.isValidStatusTransition('PENDING', 'PROCESSING')).toBe(
+        true,
+      );
     });
 
     it('debe permitir PENDING → REJECTED', () => {
@@ -119,23 +121,33 @@ describe('PaymentsService — lógica de negocio', () => {
     });
 
     it('debe permitir PROCESSING → APPROVED', () => {
-      expect(service.isValidStatusTransition('PROCESSING', 'APPROVED')).toBe(true);
+      expect(service.isValidStatusTransition('PROCESSING', 'APPROVED')).toBe(
+        true,
+      );
     });
 
     it('debe permitir PROCESSING → FAILED', () => {
-      expect(service.isValidStatusTransition('PROCESSING', 'FAILED')).toBe(true);
+      expect(service.isValidStatusTransition('PROCESSING', 'FAILED')).toBe(
+        true,
+      );
     });
 
     it('debe permitir APPROVED → REFUNDED', () => {
-      expect(service.isValidStatusTransition('APPROVED', 'REFUNDED')).toBe(true);
+      expect(service.isValidStatusTransition('APPROVED', 'REFUNDED')).toBe(
+        true,
+      );
     });
 
     it('debe permitir APPROVED → DISPUTED', () => {
-      expect(service.isValidStatusTransition('APPROVED', 'DISPUTED')).toBe(true);
+      expect(service.isValidStatusTransition('APPROVED', 'DISPUTED')).toBe(
+        true,
+      );
     });
 
     it('debe rechazar REJECTED → APPROVED (estado terminal)', () => {
-      expect(service.isValidStatusTransition('REJECTED', 'APPROVED')).toBe(false);
+      expect(service.isValidStatusTransition('REJECTED', 'APPROVED')).toBe(
+        false,
+      );
     });
 
     it('debe rechazar FAILED → APPROVED (estado terminal)', () => {
@@ -143,15 +155,21 @@ describe('PaymentsService — lógica de negocio', () => {
     });
 
     it('debe rechazar REFUNDED → PENDING (estado terminal)', () => {
-      expect(service.isValidStatusTransition('REFUNDED', 'PENDING')).toBe(false);
+      expect(service.isValidStatusTransition('REFUNDED', 'PENDING')).toBe(
+        false,
+      );
     });
 
     it('debe rechazar PENDING → REFUNDED (saltar estados)', () => {
-      expect(service.isValidStatusTransition('PENDING', 'REFUNDED')).toBe(false);
+      expect(service.isValidStatusTransition('PENDING', 'REFUNDED')).toBe(
+        false,
+      );
     });
 
     it('debe rechazar transiciones con estado desconocido', () => {
-      expect(service.isValidStatusTransition('UNKNOWN', 'APPROVED')).toBe(false);
+      expect(service.isValidStatusTransition('UNKNOWN', 'APPROVED')).toBe(
+        false,
+      );
     });
   });
 });

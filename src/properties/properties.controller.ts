@@ -26,10 +26,7 @@ import {
 import type { Response } from 'express';
 import { PropertiesService } from './properties.service';
 import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
-import {
-  CreatePropertyDto,
-  AssignOwnerDto,
-} from './dto/create-property.dto';
+import { CreatePropertyDto, AssignOwnerDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { UpdatePropertyDetailsDto } from './dto/update-property-details.dto';
 import { FilterPropertiesDto } from './dto/filter-properties.dto';
@@ -56,7 +53,7 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Obtener estadisticas de propiedades' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   async getStats(@Param('slug') slug: string) {
-    return this.propertiesService.getStats();
+    return this.propertiesService.getStats(slug);
   }
 
   // =============================================
@@ -70,7 +67,7 @@ export class AdminPropertiesController {
     @Param('slug') slug: string,
     @Body() createPropertyDto: CreatePropertyDto,
   ) {
-    return this.propertiesService.create(createPropertyDto);
+    return this.propertiesService.create(slug, createPropertyDto);
   }
 
   @Get('properties')
@@ -80,7 +77,7 @@ export class AdminPropertiesController {
     @Param('slug') slug: string,
     @Query() filters: FilterPropertiesDto,
   ) {
-    return this.propertiesService.findAll(filters);
+    return this.propertiesService.findAll(filters, slug);
   }
 
   @Get('properties/:id')
@@ -91,7 +88,7 @@ export class AdminPropertiesController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.propertiesService.findOne(id);
+    return this.propertiesService.findOne(id, slug);
   }
 
   @Patch('properties/:id')
@@ -103,7 +100,7 @@ export class AdminPropertiesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updatePropertyDto: UpdatePropertyDto,
   ) {
-    return this.propertiesService.update(id, updatePropertyDto);
+    return this.propertiesService.update(id, updatePropertyDto, slug);
   }
 
   @Delete('properties/:id')
@@ -114,7 +111,7 @@ export class AdminPropertiesController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.propertiesService.remove(id);
+    return this.propertiesService.remove(id, slug);
   }
 
   // =============================================
@@ -130,7 +127,7 @@ export class AdminPropertiesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDetailsDto: UpdatePropertyDetailsDto,
   ) {
-    return this.propertiesService.updateDetails(id, updateDetailsDto);
+    return this.propertiesService.updateDetails(id, updateDetailsDto, slug);
   }
 
   // =============================================
@@ -151,7 +148,7 @@ export class AdminPropertiesController {
       throw new BadRequestException('No file uploaded');
     }
 
-    const property = await this.propertiesService.findOne(id);
+    const property = await this.propertiesService.findOne(id, slug);
     const images = Array.isArray(property.images) ? [...property.images] : [];
     const imageUrl = file.path
       .replace(process.cwd(), '')
@@ -159,7 +156,7 @@ export class AdminPropertiesController {
       .replace(/^\//, ''); // Remove leading slash
     images.push(imageUrl);
 
-    return this.propertiesService.updateDetails(id, { images });
+    return this.propertiesService.updateDetails(id, { images }, slug);
   }
 
   @Delete('properties/:id/images')
@@ -171,7 +168,7 @@ export class AdminPropertiesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { image_url: string },
   ) {
-    const property = await this.propertiesService.findOne(id);
+    const property = await this.propertiesService.findOne(id, slug);
     const images = property.images || [];
 
     const index = images.indexOf(body.image_url);
@@ -179,7 +176,7 @@ export class AdminPropertiesController {
       images.splice(index, 1);
     }
 
-    return this.propertiesService.updateDetails(id, { images });
+    return this.propertiesService.updateDetails(id, { images }, slug);
   }
 
   // =============================================
@@ -195,7 +192,7 @@ export class AdminPropertiesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() assignDto: AssignOwnerDto,
   ) {
-    return this.propertiesService.assignOwnerToProperty(id, assignDto);
+    return this.propertiesService.assignOwnerToProperty(id, assignDto, slug);
   }
 
   @Delete('properties/:id/owners/:ownerRelationId')
@@ -208,7 +205,11 @@ export class AdminPropertiesController {
     @Param('id', ParseIntPipe) id: number,
     @Param('ownerRelationId', ParseIntPipe) ownerRelationId: number,
   ) {
-    return this.propertiesService.removeOwnerFromProperty(id, ownerRelationId);
+    return this.propertiesService.removeOwnerFromProperty(
+      id,
+      ownerRelationId,
+      slug,
+    );
   }
 
   // =============================================
@@ -219,7 +220,7 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Obtener tipos de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   async getPropertyTypes(@Param('slug') slug: string) {
-    return this.propertiesService.getPropertyTypes();
+    return this.propertiesService.getPropertyTypes(slug);
   }
 
   @Get('property-subtypes')
@@ -231,10 +232,10 @@ export class AdminPropertiesController {
     @Query('typeId') typeId?: number,
   ) {
     return this.propertiesService.getPropertySubtypes(
+      slug,
       typeId ? +typeId : undefined,
     );
   }
-
 }
 
 // Catalogo Publico - Propiedades disponibles para todos
@@ -250,7 +251,7 @@ export class PublicPropertiesController {
     @Param('slug') slug: string,
     @Query() filters: FilterPropertiesDto,
   ) {
-    return this.propertiesService.findAvailable(filters);
+    return this.propertiesService.findAvailable(filters, slug);
   }
 
   @Get('properties/:id')
@@ -261,7 +262,7 @@ export class PublicPropertiesController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.propertiesService.findOne(id);
+    return this.propertiesService.findOne(id, slug);
   }
 }
 
@@ -281,7 +282,7 @@ export class TenantPropertiesController {
     @Query() filters: FilterPropertiesDto,
     @Req() req: TenantRequest,
   ) {
-    return this.propertiesService.findByTenant(req.user!.userId, filters);
+    return this.propertiesService.findByTenant(req.user!.userId, filters, slug);
   }
 
   @Get('properties/:id')
@@ -292,7 +293,7 @@ export class TenantPropertiesController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.propertiesService.findOne(id);
+    return this.propertiesService.findOne(id, slug);
   }
 }
 
@@ -302,7 +303,9 @@ export class TenantPropertiesController {
 @Controller(':slug/owner/properties')
 @UseGuards(JwtAuthGuard)
 export class OwnerPropertiesPortalController {
-  constructor(private readonly ownerStatementsService: OwnerStatementsService) {}
+  constructor(
+    private readonly ownerStatementsService: OwnerStatementsService,
+  ) {}
 
   /**
    * GET /:slug/owner/properties/:propertyId/statements/:statementId/pdf
@@ -311,12 +314,26 @@ export class OwnerPropertiesPortalController {
   @Get(':propertyId/statements/:statementId/pdf')
   @ApiOperation({
     summary: 'Descargar PDF de liquidación personal desde propiedades',
-    description: 'El propietario descarga el PDF de su liquidación desde el portal de propiedades',
+    description:
+      'El propietario descarga el PDF de su liquidación desde el portal de propiedades',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiParam({ name: 'propertyId', type: Number, description: 'ID de la propiedad' })
-  @ApiParam({ name: 'statementId', type: Number, description: 'ID del estado de cuenta' })
-  @ApiQuery({ name: 'lang', enum: ['es', 'en'], required: false, description: 'Idioma del PDF' })
+  @ApiParam({
+    name: 'propertyId',
+    type: Number,
+    description: 'ID de la propiedad',
+  })
+  @ApiParam({
+    name: 'statementId',
+    type: Number,
+    description: 'ID del estado de cuenta',
+  })
+  @ApiQuery({
+    name: 'lang',
+    enum: ['es', 'en'],
+    required: false,
+    description: 'Idioma del PDF',
+  })
   async downloadStatementPdfFromProperty(
     @Param('slug') _slug: string,
     @Param('propertyId', ParseIntPipe) _propertyId: number,
@@ -324,7 +341,7 @@ export class OwnerPropertiesPortalController {
     @Query('lang') lang?: 'es' | 'en',
     @Res() res?: Response,
   ) {
-    const language = (lang === 'en' ? 'en' : 'es') as 'es' | 'en';
+    const language = lang === 'en' ? 'en' : 'es';
 
     try {
       const filePath = await this.ownerStatementsService.generatePdf(

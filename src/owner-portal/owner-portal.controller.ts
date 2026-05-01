@@ -81,7 +81,9 @@ export class OwnerPortalController {
   @ApiQuery({ name: 'lang', enum: ['es', 'en'], required: false })
   @ApiOkResponse({ description: 'PDF de la liquidación' })
   @ApiNotFoundResponse({ description: 'Liquidación no encontrada' })
-  @ApiForbiddenResponse({ description: 'La liquidación no pertenece al propietario' })
+  @ApiForbiddenResponse({
+    description: 'La liquidación no pertenece al propietario',
+  })
   async downloadStatementPdf(
     @Param('id', ParseIntPipe) id: number,
     @Query('lang') lang: 'es' | 'en' | undefined,
@@ -121,15 +123,23 @@ export class OwnerPortalController {
   @Patch('maintenance/:id/authorize')
   @ApiOperation({ summary: 'Autorizar gasto de mantenimiento (solo Bolivia)' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID de la solicitud de mantenimiento' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la solicitud de mantenimiento',
+  })
   @ApiOkResponse({ description: 'Gasto autorizado correctamente' })
-  @ApiForbiddenResponse({ description: 'La solicitud no pertenece al propietario o no es de Bolivia' })
+  @ApiForbiddenResponse({
+    description: 'La solicitud no pertenece al propietario o no es de Bolivia',
+  })
   async authorizeMaintenance(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: OwnerUser,
   ) {
     await this.ownerPortalService.authorizeMaintenance(id, user.rentalOwnerId);
-    return { message: 'Gasto autorizado. El técnico puede iniciar el trabajo.' };
+    return {
+      message: 'Gasto autorizado. El técnico puede iniciar el trabajo.',
+    };
   }
 
   // ─── Contratos ────────────────────────────────────────────────────────────

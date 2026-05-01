@@ -8,6 +8,7 @@ import { PdfService } from './pdf.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 import { ContractTemplatesService } from '../contract-templates/contract-templates.service';
+import { TenantsService } from '../tenants/tenants.service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ describe('ContractsService.renew', () => {
         { provide: LifecycleNotificationsService, useValue: {} },
         { provide: ContractTemplatesService, useValue: {} },
         { provide: AuditLogsService, useValue: mockAuditLog },
+        { provide: TenantsService, useValue: {} },
       ],
     }).compile();
 
@@ -259,7 +261,10 @@ describe('ContractsService.renew', () => {
 
   it('registra audit log con acción renewed', async () => {
     const oldContract = makeContract({ status: ContractStatus.ACTIVO });
-    const newContract = makeContract({ id: 2, status: ContractStatus.BORRADOR });
+    const newContract = makeContract({
+      id: 2,
+      status: ContractStatus.BORRADOR,
+    });
 
     mockDataSource.query
       .mockResolvedValueOnce([oldContract])
@@ -298,6 +303,7 @@ describe('ContractsService.getContractHistory', () => {
         { provide: LifecycleNotificationsService, useValue: {} },
         { provide: ContractTemplatesService, useValue: {} },
         { provide: AuditLogsService, useValue: mockAuditLog },
+        { provide: TenantsService, useValue: {} },
       ],
     }).compile();
 

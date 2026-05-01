@@ -30,7 +30,11 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ViolationsService } from './violations.service';
-import { CreateViolationDto, UpdateViolationStatusDto, ViolationFiltersDto } from './dto';
+import {
+  CreateViolationDto,
+  UpdateViolationStatusDto,
+  ViolationFiltersDto,
+} from './dto';
 
 interface JwtUser {
   userId: number;
@@ -86,7 +90,9 @@ export class ViolationsController {
   @ApiOperation({ summary: 'Enviar notificación formal al inquilino' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Notificación enviada y estado actualizado a notified' })
+  @ApiOkResponse({
+    description: 'Notificación enviada y estado actualizado a notified',
+  })
   @ApiNotFoundResponse({ description: 'Infracción no encontrada' })
   async notifyTenant(@Param('id', ParseIntPipe) id: number) {
     await this.violationsService.notifyTenant(id);
@@ -100,10 +106,7 @@ export class ViolationsController {
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'PDF de la carta de notificación' })
   @ApiNotFoundResponse({ description: 'Infracción no encontrada' })
-  async getPdf(
-    @Param('id', ParseIntPipe) id: number,
-    @Res() res: Response,
-  ) {
+  async getPdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     try {
       const filePath = await this.violationsService.generatePdf(id);
       res.download(filePath, `violacion_${id}.pdf`, (err) => {

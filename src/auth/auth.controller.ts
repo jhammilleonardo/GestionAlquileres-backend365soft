@@ -69,10 +69,7 @@ export class AuthController {
   @Throttle({ default: { limit: 15, ttl: 120000 } }) // 15 intentos cada 2 minutos
   @Post(':slug/owner/login')
   @HttpCode(HttpStatus.OK)
-  async loginOwner(
-    @Param('slug') slug: string,
-    @Body() loginDto: LoginDto,
-  ) {
+  async loginOwner(@Param('slug') slug: string, @Body() loginDto: LoginDto) {
     return this.authService.loginOwner(loginDto.email, loginDto.password, slug);
   }
 

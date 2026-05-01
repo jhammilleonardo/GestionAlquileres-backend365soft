@@ -1,4 +1,11 @@
-import { IsInt, Min, Max, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsInt,
+  Min,
+  Max,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RateVendorDto {
@@ -8,7 +15,10 @@ export class RateVendorDto {
   @Max(5)
   rating: number;
 
-  @ApiPropertyOptional({ example: 'Trabajo bien hecho y puntual', description: 'Comentario sobre el trabajo' })
+  @ApiPropertyOptional({
+    example: 'Trabajo bien hecho y puntual',
+    description: 'Comentario sobre el trabajo',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(500)

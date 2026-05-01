@@ -225,7 +225,14 @@ export class TenantPaymentsController {
     const receiptPath = receipt
       ? `storage/receipts/${slug}/${receipt.filename}`
       : undefined;
-    return this.paymentsService.createPayment(tenantId, dto, slug, undefined, undefined, receiptPath);
+    return this.paymentsService.createPayment(
+      tenantId,
+      dto,
+      slug,
+      undefined,
+      undefined,
+      receiptPath,
+    );
   }
 
   /**

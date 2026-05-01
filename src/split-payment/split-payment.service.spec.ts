@@ -5,7 +5,10 @@ import { DataSource } from 'typeorm';
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 function buildService(queryMock?: jest.Mock): SplitPaymentService {
-  const ds = { createQueryRunner: jest.fn(), query: queryMock ?? jest.fn() } as unknown as DataSource;
+  const ds = {
+    createQueryRunner: jest.fn(),
+    query: queryMock ?? jest.fn(),
+  } as unknown as DataSource;
   return new SplitPaymentService(ds);
 }
 
@@ -64,7 +67,9 @@ describe('SplitPaymentService — calculateSplit (lógica pura)', () => {
     expect(result.commissionAmount).toBe(333.33);
     expect(result.netAmount).toBe(3000);
     // Verificar que el resultado tiene exactamente 2 decimales como máximo
-    expect(Number(result.commissionAmount.toFixed(2))).toBe(result.commissionAmount);
+    expect(Number(result.commissionAmount.toFixed(2))).toBe(
+      result.commissionAmount,
+    );
   });
 
   it('6 — comisión 0%: propietario recibe todo (menos mantenimiento)', () => {
@@ -120,9 +125,15 @@ describe('SplitPaymentService — validatePaymentStatus', () => {
   });
 
   it('10 — pago rechazado no genera split (lanza BadRequestException)', () => {
-    expect(() => service.validatePaymentStatus('REJECTED')).toThrow(BadRequestException);
-    expect(() => service.validatePaymentStatus('PENDING')).toThrow(BadRequestException);
-    expect(() => service.validatePaymentStatus('PROCESSING')).toThrow(BadRequestException);
+    expect(() => service.validatePaymentStatus('REJECTED')).toThrow(
+      BadRequestException,
+    );
+    expect(() => service.validatePaymentStatus('PENDING')).toThrow(
+      BadRequestException,
+    );
+    expect(() => service.validatePaymentStatus('PROCESSING')).toThrow(
+      BadRequestException,
+    );
   });
 
   it('pago APPROVED no lanza excepción', () => {
@@ -151,7 +162,9 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
     ownership_percentage: 100,
   };
 
-  function setupQueryRunner(overrides: { querySequence?: unknown[][]; shouldFail?: boolean } = {}) {
+  function setupQueryRunner(
+    overrides: { querySequence?: unknown[][]; shouldFail?: boolean } = {},
+  ) {
     const { querySequence = [], shouldFail = false } = overrides;
 
     let callIndex = 0;
@@ -171,7 +184,9 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
       query: queryMock,
     };
 
-    ds = { createQueryRunner: jest.fn().mockReturnValue(qr) } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
+    ds = {
+      createQueryRunner: jest.fn().mockReturnValue(qr),
+    } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
     service = new SplitPaymentService(ds as unknown as DataSource);
     return { qr, queryMock };
   }
@@ -196,10 +211,14 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
       }),
     };
 
-    ds = { createQueryRunner: jest.fn().mockReturnValue(qr) } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
+    ds = {
+      createQueryRunner: jest.fn().mockReturnValue(qr),
+    } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
     service = new SplitPaymentService(ds as unknown as DataSource);
 
-    await expect(service.executeSplit(BASE_PARAMS)).rejects.toThrow('DB constraint error');
+    await expect(service.executeSplit(BASE_PARAMS)).rejects.toThrow(
+      'DB constraint error',
+    );
 
     expect(qr.rollbackTransaction).toHaveBeenCalledTimes(1);
     expect(qr.commitTransaction).not.toHaveBeenCalled();
@@ -218,11 +237,17 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
       query: jest.fn().mockImplementation((sql: string) => {
         call++;
         if (sql.includes('SET search_path')) return Promise.resolve([]);
-        if (sql.includes('tenant_config')) return Promise.resolve([{ commission_percentage: 10 }]);
-        if (sql.includes('maintenance_requests')) return Promise.resolve([{ total: '0' }]);
-        if (sql.includes('property_owners')) return Promise.resolve([OWNER_ROW]);
+        if (sql.includes('tenant_config'))
+          return Promise.resolve([{ commission_percentage: 10 }]);
+        if (sql.includes('maintenance_requests'))
+          return Promise.resolve([{ total: '0' }]);
+        if (sql.includes('property_owners'))
+          return Promise.resolve([OWNER_ROW]);
         if (sql.includes('payment_splits')) return Promise.resolve([]);
-        if (sql.includes('SELECT id FROM') && sql.includes('owner_statements')) {
+        if (
+          sql.includes('SELECT id FROM') &&
+          sql.includes('owner_statements')
+        ) {
           // Existe un statement previo
           return Promise.resolve([{ id: 42 }]);
         }
@@ -233,7 +258,9 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
       }),
     };
 
-    ds = { createQueryRunner: jest.fn().mockReturnValue(qr) } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
+    ds = {
+      createQueryRunner: jest.fn().mockReturnValue(qr),
+    } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
     service = new SplitPaymentService(ds as unknown as DataSource);
 
     await service.executeSplit(BASE_PARAMS);
@@ -241,13 +268,15 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
     expect(qr.commitTransaction).toHaveBeenCalledTimes(1);
 
     // Verificar que se usó UPDATE, no INSERT
-    const updateCall = (qr.query as jest.Mock).mock.calls.find(
-      ([sql]: [string]) => sql.includes('UPDATE') && sql.includes('owner_statements'),
+    const updateCall = qr.query.mock.calls.find(
+      ([sql]: [string]) =>
+        sql.includes('UPDATE') && sql.includes('owner_statements'),
     );
     expect(updateCall).toBeDefined();
 
-    const insertCall = (qr.query as jest.Mock).mock.calls.find(
-      ([sql]: [string]) => sql.includes('INSERT INTO') && sql.includes('owner_statements'),
+    const insertCall = qr.query.mock.calls.find(
+      ([sql]: [string]) =>
+        sql.includes('INSERT INTO') && sql.includes('owner_statements'),
     );
     expect(insertCall).toBeUndefined();
   });
@@ -269,7 +298,9 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
       }),
     };
 
-    ds = { createQueryRunner: jest.fn().mockReturnValue(qr) } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
+    ds = {
+      createQueryRunner: jest.fn().mockReturnValue(qr),
+    } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
     service = new SplitPaymentService(ds as unknown as DataSource);
 
     await expect(service.executeSplit(BASE_PARAMS)).resolves.toBeUndefined();

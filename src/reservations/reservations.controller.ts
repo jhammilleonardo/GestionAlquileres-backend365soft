@@ -43,9 +43,21 @@ export class PublicAvailabilityController {
   @ApiOperation({ summary: 'Disponibilidad mensual de una propiedad' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la propiedad' })
-  @ApiQuery({ name: 'month', required: true, example: '2026-05', description: 'Mes en formato YYYY-MM' })
-  @ApiQuery({ name: 'unit_id', required: false, type: Number, description: 'Filtrar por unidad específica' })
-  @ApiOkResponse({ description: 'Array de fechas con su estado de disponibilidad' })
+  @ApiQuery({
+    name: 'month',
+    required: true,
+    example: '2026-05',
+    description: 'Mes en formato YYYY-MM',
+  })
+  @ApiQuery({
+    name: 'unit_id',
+    required: false,
+    type: Number,
+    description: 'Filtrar por unidad específica',
+  })
+  @ApiOkResponse({
+    description: 'Array de fechas con su estado de disponibilidad',
+  })
   async getAvailability(
     @Param('id', ParseIntPipe) propertyId: number,
     @Query('month') month: string,
@@ -82,7 +94,12 @@ export class AdminReservationsController {
     @Body() dto: BlockDatesDto,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.reservationsService.blockDates(propertyId, unitId, dto, user.userId);
+    return this.reservationsService.blockDates(
+      propertyId,
+      unitId,
+      dto,
+      user.userId,
+    );
   }
 }
 

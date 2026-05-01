@@ -55,19 +55,28 @@ export class CreateUnitDto {
   @IsEnum(RentalType)
   rental_type?: RentalType;
 
-  @ApiPropertyOptional({ example: 500, description: 'Precio mensual de alquiler' })
+  @ApiPropertyOptional({
+    example: 500,
+    description: 'Precio mensual de alquiler',
+  })
   @IsOptional()
   @IsNumber()
   @IsPositive()
   price_per_month?: number;
 
-  @ApiPropertyOptional({ example: 80, description: 'Precio por noche (alquiler corto plazo)' })
+  @ApiPropertyOptional({
+    example: 80,
+    description: 'Precio por noche (alquiler corto plazo)',
+  })
   @IsOptional()
   @IsNumber()
   @IsPositive()
   price_per_night?: number;
 
-  @ApiPropertyOptional({ example: 1000, description: 'Monto del depósito de garantía' })
+  @ApiPropertyOptional({
+    example: 1000,
+    description: 'Monto del depósito de garantía',
+  })
   @IsOptional()
   @IsNumber()
   @IsPositive()
@@ -75,32 +84,51 @@ export class CreateUnitDto {
 
   // ─── Campos exclusivos de alquiler corto plazo ────────────────────────────
 
-  @ApiPropertyOptional({ example: 2, description: 'Noches mínimas por reserva' })
+  @ApiPropertyOptional({
+    example: 2,
+    description: 'Noches mínimas por reserva',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)
   min_nights?: number;
 
-  @ApiPropertyOptional({ example: 30, description: 'Noches máximas por reserva' })
+  @ApiPropertyOptional({
+    example: 30,
+    description: 'Noches máximas por reserva',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(365)
   max_nights?: number;
 
-  @ApiPropertyOptional({ example: '14:00', description: 'Hora de check-in (HH:MM)' })
+  @ApiPropertyOptional({
+    example: '14:00',
+    description: 'Hora de check-in (HH:MM)',
+  })
   @IsOptional()
   @IsString()
-  @Matches(/^\d{2}:\d{2}$/, { message: 'checkin_time debe tener formato HH:MM' })
+  @Matches(/^\d{2}:\d{2}$/, {
+    message: 'checkin_time debe tener formato HH:MM',
+  })
   checkin_time?: string;
 
-  @ApiPropertyOptional({ example: '11:00', description: 'Hora de check-out (HH:MM)' })
+  @ApiPropertyOptional({
+    example: '11:00',
+    description: 'Hora de check-out (HH:MM)',
+  })
   @IsOptional()
   @IsString()
-  @Matches(/^\d{2}:\d{2}$/, { message: 'checkout_time debe tener formato HH:MM' })
+  @Matches(/^\d{2}:\d{2}$/, {
+    message: 'checkout_time debe tener formato HH:MM',
+  })
   checkout_time?: string;
 
-  @ApiPropertyOptional({ example: 30, description: 'Tarifa de limpieza por estadía' })
+  @ApiPropertyOptional({
+    example: 30,
+    description: 'Tarifa de limpieza por estadía',
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)

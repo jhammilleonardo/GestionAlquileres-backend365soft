@@ -59,9 +59,14 @@ export class TenantConnectionInterceptor implements NestInterceptor {
     // empiece, para que cualquier query del interceptor de salida también
     // use la conexión correcta.
     let resolveSetup: () => void;
-    const setupDone = new Promise<void>((resolve) => { resolveSetup = resolve; });
+    const setupDone = new Promise<void>((resolve) => {
+      resolveSetup = resolve;
+    });
 
-    const store = { queryRunner: null as ReturnType<DataSource['createQueryRunner']> | null, schemaName };
+    const store = {
+      queryRunner: null as ReturnType<DataSource['createQueryRunner']> | null,
+      schemaName,
+    };
 
     const result$ = new Observable((subscriber) => {
       const queryRunner = this.dataSource.createQueryRunner();

@@ -71,7 +71,9 @@ export class AdminUnitsController {
 
   @Delete(':unitId')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Eliminar una unidad (solo si no tiene contratos activos)' })
+  @ApiOperation({
+    summary: 'Eliminar una unidad (solo si no tiene contratos activos)',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
   @ApiParam({ name: 'unitId', type: Number })
@@ -90,7 +92,9 @@ export class PublicUnitsController {
   constructor(private readonly unitsService: UnitsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar unidades disponibles de una propiedad (público, sin auth)' })
+  @ApiOperation({
+    summary: 'Listar unidades disponibles de una propiedad (público, sin auth)',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
   async findAvailable(

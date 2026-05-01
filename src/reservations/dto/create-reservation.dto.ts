@@ -19,15 +19,24 @@ export class CreateReservationDto {
   @IsPositive()
   unit_id: number;
 
-  @ApiProperty({ example: '2026-05-10', description: 'Fecha de ingreso (YYYY-MM-DD)' })
+  @ApiProperty({
+    example: '2026-05-10',
+    description: 'Fecha de ingreso (YYYY-MM-DD)',
+  })
   @IsDateString()
   checkin_date: string;
 
-  @ApiProperty({ example: '2026-05-15', description: 'Fecha de salida (YYYY-MM-DD)' })
+  @ApiProperty({
+    example: '2026-05-15',
+    description: 'Fecha de salida (YYYY-MM-DD)',
+  })
   @IsDateString()
   checkout_date: string;
 
-  @ApiPropertyOptional({ example: 'Llegamos a las 15:00', description: 'Notas del huésped' })
+  @ApiPropertyOptional({
+    example: 'Llegamos a las 15:00',
+    description: 'Notas del huésped',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(500)

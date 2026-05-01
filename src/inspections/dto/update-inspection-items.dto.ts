@@ -14,7 +14,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InspectionArea, ItemCondition } from './create-inspection.dto';
 
 export class UpsertInspectionItemDto {
-  @ApiPropertyOptional({ description: 'ID del ítem existente para actualizar; omitir para crear nuevo' })
+  @ApiPropertyOptional({
+    description:
+      'ID del ítem existente para actualizar; omitir para crear nuevo',
+  })
   @IsOptional()
   @IsInt()
   id?: number;

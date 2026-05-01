@@ -34,7 +34,9 @@ async function bootstrap() {
   );
 
   // ── CORS — origins desde variable de entorno en producción ──────────────
-  const allowedOrigins = (process.env.FRONTEND_URLS ?? 'http://localhost:4200,http://localhost:4201')
+  const allowedOrigins = (
+    process.env.FRONTEND_URLS ?? 'http://localhost:4200,http://localhost:4201'
+  )
     .split(',')
     .map((u) => u.trim());
 

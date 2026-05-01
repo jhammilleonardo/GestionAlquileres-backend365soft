@@ -1,4 +1,12 @@
-import { Controller, Get, UseGuards, Param, Query, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  UseGuards,
+  Param,
+  Query,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +33,9 @@ export class UsersController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   async findAll(@Param('slug') slug: string, @CurrentTenant() tenant: any) {
     if (!tenant) {
-      throw new InternalServerErrorException('Tenant no encontrado en el request');
+      throw new InternalServerErrorException(
+        'Tenant no encontrado en el request',
+      );
     }
 
     return await this.usersService.findAll(tenant.schema_name);

@@ -36,7 +36,13 @@ export class Unit {
   @Column({ type: 'int', nullable: true })
   bathrooms: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   square_meters: number;
 
   @Column({
@@ -53,13 +59,31 @@ export class Unit {
   })
   rental_type: RentalType;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   price_per_month: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   price_per_night: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   deposit_amount: number;
 
   // ─── Campos exclusivos de alquiler corto plazo ────────────────────────────
@@ -76,7 +100,13 @@ export class Unit {
   @Column({ type: 'varchar', length: 5, nullable: true })
   checkout_time: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: decimalTransformer })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   cleaning_fee: number;
 
   // Amenidades específicas de la unidad (distinto a las de la propiedad)

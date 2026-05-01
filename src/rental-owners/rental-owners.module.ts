@@ -7,7 +7,10 @@ import { PropertyOwner } from '../properties/entities/property-owner.entity';
 import { OwnerStatementsModule } from '../owner-statements/owner-statements.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RentalOwner, PropertyOwner]), OwnerStatementsModule],
+  imports: [
+    TypeOrmModule.forFeature([RentalOwner, PropertyOwner]),
+    OwnerStatementsModule,
+  ],
   providers: [RentalOwnersService],
   controllers: [RentalOwnersController],
   exports: [RentalOwnersService],

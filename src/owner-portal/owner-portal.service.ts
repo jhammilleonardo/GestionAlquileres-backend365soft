@@ -101,55 +101,60 @@ export class OwnerPortalService {
   async getDashboard(rentalOwnerId: number): Promise<OwnerDashboardDto> {
     this.logger.log(`Dashboard solicitado para propietario ${rentalOwnerId}`);
 
-    const [propertiesResult, tenantsResult, balanceResult, maintenanceResult, statementsResult] =
-      await Promise.all([
-        // Cantidad de propiedades del propietario
-        this.dataSource.query<{ count: string }[]>(
-          `SELECT COUNT(DISTINCT po.property_id)::int AS count
+    const [
+      propertiesResult,
+      tenantsResult,
+      balanceResult,
+      maintenanceResult,
+      statementsResult,
+    ] = await Promise.all([
+      // Cantidad de propiedades del propietario
+      this.dataSource.query<{ count: string }[]>(
+        `SELECT COUNT(DISTINCT po.property_id)::int AS count
            FROM property_owners po
            WHERE po.rental_owner_id = $1`,
-          [rentalOwnerId],
-        ),
+        [rentalOwnerId],
+      ),
 
-        // Cantidad de inquilinos con contrato activo en sus propiedades
-        this.dataSource.query<{ count: string; currency: string }[]>(
-          `SELECT COUNT(DISTINCT c.tenant_id)::int AS count
+      // Cantidad de inquilinos con contrato activo en sus propiedades
+      this.dataSource.query<{ count: string; currency: string }[]>(
+        `SELECT COUNT(DISTINCT c.tenant_id)::int AS count
            FROM property_owners po
            JOIN contracts c ON c.property_id = po.property_id
            WHERE po.rental_owner_id = $1
              AND c.status IN ('ACTIVO', 'POR_VENCER')`,
-          [rentalOwnerId],
-        ),
+        [rentalOwnerId],
+      ),
 
-        // Saldo pendiente: liquidaciones en estado 'pending'
-        this.dataSource.query<{ pending_balance: string; currency: string }[]>(
-          `SELECT COALESCE(SUM(os.net_amount), 0)::numeric AS pending_balance,
+      // Saldo pendiente: liquidaciones en estado 'pending'
+      this.dataSource.query<{ pending_balance: string; currency: string }[]>(
+        `SELECT COALESCE(SUM(os.net_amount), 0)::numeric AS pending_balance,
                   COALESCE(MAX(os.currency), 'BOB')        AS currency
            FROM owner_statements os
            WHERE os.rental_owner_id = $1
              AND os.status = 'pending'`,
-          [rentalOwnerId],
-        ),
+        [rentalOwnerId],
+      ),
 
-        // Solicitudes de mantenimiento activas en sus propiedades
-        this.dataSource.query<{ count: string }[]>(
-          `SELECT COUNT(mr.id)::int AS count
+      // Solicitudes de mantenimiento activas en sus propiedades
+      this.dataSource.query<{ count: string }[]>(
+        `SELECT COUNT(mr.id)::int AS count
            FROM maintenance_requests mr
            JOIN property_owners po ON po.property_id = mr.property_id
            WHERE po.rental_owner_id = $1
              AND mr.status IN ('NEW', 'IN_PROGRESS')`,
-          [rentalOwnerId],
-        ),
+        [rentalOwnerId],
+      ),
 
-        // Liquidaciones pendientes de transferencia
-        this.dataSource.query<{ count: string }[]>(
-          `SELECT COUNT(id)::int AS count
+      // Liquidaciones pendientes de transferencia
+      this.dataSource.query<{ count: string }[]>(
+        `SELECT COUNT(id)::int AS count
            FROM owner_statements
            WHERE rental_owner_id = $1
              AND status = 'pending'`,
-          [rentalOwnerId],
-        ),
-      ]);
+        [rentalOwnerId],
+      ),
+    ]);
 
     return {
       property_count: Number(propertiesResult[0]?.count ?? 0),
@@ -197,7 +202,9 @@ export class OwnerPortalService {
   /**
    * Historial de liquidaciones del propietario, ordenadas por período descendente.
    */
-  async getStatements(rentalOwnerId: number): Promise<OwnerStatementSummaryDto[]> {
+  async getStatements(
+    rentalOwnerId: number,
+  ): Promise<OwnerStatementSummaryDto[]> {
     const rows = await this.dataSource.query<OwnerStatementSummaryDto[]>(
       `SELECT
          os.id,
@@ -268,7 +275,9 @@ export class OwnerPortalService {
     );
 
     if (!result || result.length === 0) {
-      throw new NotFoundException(`No se encontraron datos para la liquidación ${statementId}`);
+      throw new NotFoundException(
+        `No se encontraron datos para la liquidación ${statementId}`,
+      );
     }
 
     const data = result[0];

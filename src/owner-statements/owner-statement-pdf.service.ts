@@ -51,7 +51,11 @@ interface I18nTexts {
 @Injectable()
 export class OwnerStatementPdfService {
   private readonly logger = new Logger(OwnerStatementPdfService.name);
-  private readonly uploadDir = path.join(process.cwd(), 'uploads', 'owner-statements');
+  private readonly uploadDir = path.join(
+    process.cwd(),
+    'uploads',
+    'owner-statements',
+  );
 
   constructor() {
     this.ensureUploadDir();
@@ -87,7 +91,8 @@ export class OwnerStatementPdfService {
         issuedBy: 'Emitido por: Sistema de Gestión 365Soft',
         digitalSignature: 'Firma Digital',
         confidential: 'DOCUMENTO CONFIDENCIAL',
-        footer: 'Este documento es un comprobante oficial de la liquidación realizada. Conserve para sus registros contables.',
+        footer:
+          'Este documento es un comprobante oficial de la liquidación realizada. Conserve para sus registros contables.',
       },
       en: {
         title: 'MONTHLY LIQUIDATION RECEIPT',
@@ -111,7 +116,8 @@ export class OwnerStatementPdfService {
         issuedBy: 'Issued by: 365Soft Management System',
         digitalSignature: 'Digital Signature',
         confidential: 'CONFIDENTIAL DOCUMENT',
-        footer: 'This document is an official receipt of the liquidation performed. Keep it for your accounting records.',
+        footer:
+          'This document is an official receipt of the liquidation performed. Keep it for your accounting records.',
       },
     };
 
@@ -182,7 +188,10 @@ export class OwnerStatementPdfService {
     doc.moveDown(0.5);
 
     // Horizontal line
-    doc.moveTo(40, doc.y).lineTo(pageWidth - 40, doc.y).stroke('#333333');
+    doc
+      .moveTo(40, doc.y)
+      .lineTo(pageWidth - 40, doc.y)
+      .stroke('#333333');
     doc.moveDown(0.5);
 
     // --- METADATA SECTION ---
@@ -191,7 +200,9 @@ export class OwnerStatementPdfService {
 
     // Left column
     doc.text(`${texts.statementNumber}: ${data.id}`, 40);
-    doc.text(`${texts.issueDate}: ${new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')}`);
+    doc.text(
+      `${texts.issueDate}: ${new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')}`,
+    );
 
     // Right column
     doc.fontSize(10).fillColor('#333333');
@@ -208,7 +219,9 @@ export class OwnerStatementPdfService {
 
     doc.fontSize(10).fillColor('#000000');
     doc.text(`${texts.propertyTitle}: ${data.property_title}`);
-    doc.text(`${texts.address}: ${data.property_address}, ${data.property_city}, ${data.property_country}`);
+    doc.text(
+      `${texts.address}: ${data.property_address}, ${data.property_city}, ${data.property_country}`,
+    );
 
     if (data.tenant_name) {
       doc.text(`${texts.tenant}: ${data.tenant_name}`);
@@ -251,10 +264,13 @@ export class OwnerStatementPdfService {
     doc.text(texts.digitalSignature, { align: 'center' });
 
     doc.moveDown(0.5);
-    doc.fontSize(8).fillColor('#999999').text(texts.footer, {
-      align: 'center',
-      width: pageWidth - 80,
-    });
+    doc
+      .fontSize(8)
+      .fillColor('#999999')
+      .text(texts.footer, {
+        align: 'center',
+        width: pageWidth - 80,
+      });
 
     // --- PAGE FOOTER ---
     doc.fontSize(7).fillColor('#cccccc');
@@ -277,7 +293,9 @@ export class OwnerStatementPdfService {
     const colWidth = 280;
 
     // Table header background
-    doc.rect(40, tableTop, colWidth, rowHeight).fillAndStroke('#1a5490', '#1a5490');
+    doc
+      .rect(40, tableTop, colWidth, rowHeight)
+      .fillAndStroke('#1a5490', '#1a5490');
 
     // Table header text
     doc.fontSize(11).fillColor('#ffffff').font('Helvetica-Bold');
@@ -285,7 +303,14 @@ export class OwnerStatementPdfService {
     doc.text('Monto', 220, tableTop + 5);
 
     // Row 1: Gross Rent
-    this.drawTableRow(doc, tableTop + rowHeight, rowHeight, texts.grossRent, data.gross_rent, data.currency);
+    this.drawTableRow(
+      doc,
+      tableTop + rowHeight,
+      rowHeight,
+      texts.grossRent,
+      data.gross_rent,
+      data.currency,
+    );
 
     // Row 2: Maintenance Deduction
     if (data.maintenance_deduction > 0) {
@@ -312,11 +337,18 @@ export class OwnerStatementPdfService {
     );
 
     // Row 4: Net Amount (highlighted)
-    const netRowY = tableTop + rowHeight * (data.maintenance_deduction > 0 ? 4 : 3);
-    doc.rect(40, netRowY, colWidth, rowHeight).fillAndStroke('#e8f0f7', '#1a5490');
+    const netRowY =
+      tableTop + rowHeight * (data.maintenance_deduction > 0 ? 4 : 3);
+    doc
+      .rect(40, netRowY, colWidth, rowHeight)
+      .fillAndStroke('#e8f0f7', '#1a5490');
     doc.fontSize(11).fillColor('#1a5490').font('Helvetica-Bold');
     doc.text(texts.netAmount, 50, netRowY + 5);
-    doc.text(`${data.currency} ${this.formatCurrency(data.net_amount)}`, 220, netRowY + 5);
+    doc.text(
+      `${data.currency} ${this.formatCurrency(data.net_amount)}`,
+      220,
+      netRowY + 5,
+    );
 
     doc.y = netRowY + rowHeight;
   }
@@ -337,7 +369,9 @@ export class OwnerStatementPdfService {
     doc.fontSize(10).fillColor('#000000').font('Helvetica');
     doc.text(label, 50, y + 5);
 
-    const amountText = isDeduction ? `${currency} -${this.formatCurrency(amount)}` : `${currency} ${this.formatCurrency(amount)}`;
+    const amountText = isDeduction
+      ? `${currency} -${this.formatCurrency(amount)}`
+      : `${currency} ${this.formatCurrency(amount)}`;
     doc.fillColor(isDeduction ? '#d64545' : '#27ae60');
     doc.text(amountText, 220, y + 5);
   }
@@ -347,10 +381,15 @@ export class OwnerStatementPdfService {
   }
 
   private formatCurrency(value: number): string {
-    return Math.abs(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return Math.abs(value)
+      .toFixed(2)
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
-  async getPdfPath(statementId: number, ownerName: string): Promise<string | null> {
+  async getPdfPath(
+    statementId: number,
+    ownerName: string,
+  ): Promise<string | null> {
     const fileName = `liquidacion_${statementId}_${ownerName.replace(/\s+/g, '_')}.pdf`;
     const filePath = path.join(this.uploadDir, fileName);
 

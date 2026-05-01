@@ -183,7 +183,7 @@ export class BlacklistService {
 
       if (blacklistedRecords.length > 0) {
         const record = blacklistedRecords[0];
-        
+
         // Si NO es ADMIN, retorna solo la alerta sin detalles sensibles
         if (!isAdmin) {
           return {
@@ -282,9 +282,7 @@ export class BlacklistService {
         `Error al listar blacklist: ${error.message}`,
         error.stack,
       );
-      throw new InternalServerErrorException(
-        'Error al obtener lista negra',
-      );
+      throw new InternalServerErrorException('Error al obtener lista negra');
     }
   }
 
@@ -314,9 +312,7 @@ export class BlacklistService {
       );
 
       if (record.length === 0) {
-        throw new NotFoundException(
-          'Registro en lista negra no encontrado',
-        );
+        throw new NotFoundException('Registro en lista negra no encontrado');
       }
 
       // Eliminar registro

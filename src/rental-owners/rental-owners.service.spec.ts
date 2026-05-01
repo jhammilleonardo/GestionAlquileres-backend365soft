@@ -55,7 +55,10 @@ describe('RentalOwnersService', () => {
 
   describe('findAll', () => {
     it('debe retornar lista de propietarios con saldo y cantidad de propiedades', async () => {
-      const rows = [mockOwnerRow(), mockOwnerRow({ id: 2, name: 'Ana Quispe', pending_balance: '0' })];
+      const rows = [
+        mockOwnerRow(),
+        mockOwnerRow({ id: 2, name: 'Ana Quispe', pending_balance: '0' }),
+      ];
       mockDataSource.query.mockResolvedValueOnce(rows);
 
       const result = await service.findAll();
@@ -110,9 +113,12 @@ describe('RentalOwnersService', () => {
     };
 
     it('debe crear el propietario con datos bancarios', async () => {
-      const saved = mockOwnerRow({ name: 'Nuevo Propietario', primary_email: 'nuevo@test.com' });
+      const saved = mockOwnerRow({
+        name: 'Nuevo Propietario',
+        primary_email: 'nuevo@test.com',
+      });
       mockDataSource.query
-        .mockResolvedValueOnce([])      // assertEmailUnique → sin duplicado
+        .mockResolvedValueOnce([]) // assertEmailUnique → sin duplicado
         .mockResolvedValueOnce([saved]); // INSERT RETURNING
 
       const result = await service.create(createDto);
@@ -124,7 +130,9 @@ describe('RentalOwnersService', () => {
     it('debe lanzar ConflictException si el email ya existe', async () => {
       mockDataSource.query.mockResolvedValueOnce([{ id: 5 }]); // email duplicado
 
-      await expect(service.create(createDto)).rejects.toThrow(ConflictException);
+      await expect(service.create(createDto)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -134,9 +142,9 @@ describe('RentalOwnersService', () => {
     it('debe actualizar los campos enviados', async () => {
       const updated = mockOwnerRow({ name: 'Nombre Actualizado' });
       mockDataSource.query
-        .mockResolvedValueOnce([mockOwnerRow()])     // findOne (existencia)
-        .mockResolvedValueOnce(undefined)            // UPDATE
-        .mockResolvedValueOnce([updated]);           // findOne (retorno)
+        .mockResolvedValueOnce([mockOwnerRow()]) // findOne (existencia)
+        .mockResolvedValueOnce(undefined) // UPDATE
+        .mockResolvedValueOnce([updated]); // findOne (retorno)
 
       const result = await service.update(1, { name: 'Nombre Actualizado' });
 
@@ -157,8 +165,8 @@ describe('RentalOwnersService', () => {
 
     it('debe lanzar ConflictException si el nuevo email ya pertenece a otro propietario', async () => {
       mockDataSource.query
-        .mockResolvedValueOnce([mockOwnerRow()])  // findOne
-        .mockResolvedValueOnce([{ id: 99 }]);     // assertEmailUnique → duplicado
+        .mockResolvedValueOnce([mockOwnerRow()]) // findOne
+        .mockResolvedValueOnce([{ id: 99 }]); // assertEmailUnique → duplicado
 
       await expect(
         service.update(1, { primary_email: 'otro@test.com' }),
@@ -171,9 +179,9 @@ describe('RentalOwnersService', () => {
   describe('deactivate', () => {
     it('debe desactivar el propietario si no tiene propiedades activas', async () => {
       mockDataSource.query
-        .mockResolvedValueOnce([mockOwnerRow()])  // findOne
-        .mockResolvedValueOnce([])               // assertNoActiveProperties → ninguna
-        .mockResolvedValueOnce(undefined);       // UPDATE is_active = false
+        .mockResolvedValueOnce([mockOwnerRow()]) // findOne
+        .mockResolvedValueOnce([]) // assertNoActiveProperties → ninguna
+        .mockResolvedValueOnce(undefined); // UPDATE is_active = false
 
       const result = await service.deactivate(1);
 
@@ -181,7 +189,9 @@ describe('RentalOwnersService', () => {
     });
 
     it('debe retornar mensaje si ya estaba inactivo', async () => {
-      mockDataSource.query.mockResolvedValueOnce([mockOwnerRow({ is_active: false })]);
+      mockDataSource.query.mockResolvedValueOnce([
+        mockOwnerRow({ is_active: false }),
+      ]);
 
       const result = await service.deactivate(1);
 
@@ -190,8 +200,8 @@ describe('RentalOwnersService', () => {
 
     it('debe lanzar BadRequestException si tiene propiedades activas', async () => {
       mockDataSource.query
-        .mockResolvedValueOnce([mockOwnerRow()])           // findOne
-        .mockResolvedValueOnce([{ property_id: 10 }]);    // propiedad activa
+        .mockResolvedValueOnce([mockOwnerRow()]) // findOne
+        .mockResolvedValueOnce([{ property_id: 10 }]); // propiedad activa
 
       await expect(service.deactivate(1)).rejects.toThrow(BadRequestException);
     });
@@ -202,12 +212,22 @@ describe('RentalOwnersService', () => {
   describe('getProperties', () => {
     it('debe retornar las propiedades del propietario', async () => {
       const properties = [
-        { id: 10, title: 'Depto 2A', status: 'OCUPADO', monthly_rent: '500', currency: 'BOB',
-          ownership_percentage: 100, is_primary: true, street_address: 'Calle 1', city: 'La Paz', country: 'Bolivia' },
+        {
+          id: 10,
+          title: 'Depto 2A',
+          status: 'OCUPADO',
+          monthly_rent: '500',
+          currency: 'BOB',
+          ownership_percentage: 100,
+          is_primary: true,
+          street_address: 'Calle 1',
+          city: 'La Paz',
+          country: 'Bolivia',
+        },
       ];
       mockDataSource.query
-        .mockResolvedValueOnce([mockOwnerRow()])  // findOne
-        .mockResolvedValueOnce(properties);       // SELECT propiedades
+        .mockResolvedValueOnce([mockOwnerRow()]) // findOne
+        .mockResolvedValueOnce(properties); // SELECT propiedades
 
       const result = await service.getProperties(1);
 
@@ -221,13 +241,20 @@ describe('RentalOwnersService', () => {
   describe('getStatements', () => {
     it('debe retornar el historial de pagos por período y propiedad', async () => {
       const statements = [
-        { period: '2025-01', property_id: 10, property_title: 'Depto 2A',
-          total_collected: '500', currency: 'BOB', payment_count: 1,
-          confirmed_amount: '500', pending_amount: '0' },
+        {
+          period: '2025-01',
+          property_id: 10,
+          property_title: 'Depto 2A',
+          total_collected: '500',
+          currency: 'BOB',
+          payment_count: 1,
+          confirmed_amount: '500',
+          pending_amount: '0',
+        },
       ];
       mockDataSource.query
-        .mockResolvedValueOnce([mockOwnerRow()])  // findOne
-        .mockResolvedValueOnce(statements);       // SELECT statements
+        .mockResolvedValueOnce([mockOwnerRow()]) // findOne
+        .mockResolvedValueOnce(statements); // SELECT statements
 
       const result = await service.getStatements(1);
 
@@ -238,7 +265,9 @@ describe('RentalOwnersService', () => {
     it('debe lanzar NotFoundException si el propietario no existe', async () => {
       mockDataSource.query.mockResolvedValueOnce([]);
 
-      await expect(service.getStatements(999)).rejects.toThrow(NotFoundException);
+      await expect(service.getStatements(999)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

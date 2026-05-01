@@ -13,7 +13,13 @@ import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UnitStatus } from './enums/unit-status.enum';
 
 // Estados de contrato que bloquean el borrado de una unidad
-const ACTIVE_CONTRACT_STATUSES = ['BORRADOR', 'PENDIENTE', 'FIRMADO', 'ACTIVO', 'POR_VENCER'];
+const ACTIVE_CONTRACT_STATUSES = [
+  'BORRADOR',
+  'PENDIENTE',
+  'FIRMADO',
+  'ACTIVO',
+  'POR_VENCER',
+];
 
 @Injectable()
 export class UnitsService {
@@ -60,7 +66,10 @@ export class UnitsService {
     return unit;
   }
 
-  async create(propertyId: number, createUnitDto: CreateUnitDto): Promise<Unit> {
+  async create(
+    propertyId: number,
+    createUnitDto: CreateUnitDto,
+  ): Promise<Unit> {
     await this.assertPropertyExists(propertyId);
     await this.assertUnitNumberUnique(propertyId, createUnitDto.unit_number);
 
@@ -87,10 +96,17 @@ export class UnitsService {
       updateUnitDto.unit_number &&
       updateUnitDto.unit_number !== unit.unit_number
     ) {
-      await this.assertUnitNumberUnique(propertyId, updateUnitDto.unit_number, unitId);
+      await this.assertUnitNumberUnique(
+        propertyId,
+        updateUnitDto.unit_number,
+        unitId,
+      );
     }
 
-    if (updateUnitDto.rental_type && updateUnitDto.rental_type !== unit.rental_type) {
+    if (
+      updateUnitDto.rental_type &&
+      updateUnitDto.rental_type !== unit.rental_type
+    ) {
       await this.assertRentalTypeCoherence(updateUnitDto.rental_type);
     }
 
@@ -98,7 +114,10 @@ export class UnitsService {
     return this.getUnitRepository().save(unit);
   }
 
-  async remove(propertyId: number, unitId: number): Promise<{ message: string }> {
+  async remove(
+    propertyId: number,
+    unitId: number,
+  ): Promise<{ message: string }> {
     await this.findOne(propertyId, unitId);
     await this.assertNoActiveContracts(unitId);
 
@@ -143,7 +162,9 @@ export class UnitsService {
     }
   }
 
-  private async assertRentalTypeCoherence(unitRentalType: string): Promise<void> {
+  private async assertRentalTypeCoherence(
+    unitRentalType: string,
+  ): Promise<void> {
     const rows: Array<{ rental_type: string }> = await this.dataSource.query(
       `SELECT rental_type FROM tenant_config LIMIT 1`,
     );

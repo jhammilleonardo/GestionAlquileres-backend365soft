@@ -54,10 +54,8 @@ export class PropertiesService {
     return this.dataSource.getRepository(PropertyOwner);
   }
 
-  // Helper method para establecer el schema del tenant
-  private async setTenantSchema(tenantSlug: string) {
-    // Obtener el tenant desde la tabla pública
-    const tenants = await this.dataSource.query(
+  private async getTenantSchemaName(tenantSlug: string): Promise<string> {
+    const tenants = await this.dataSource.query<{ schema_name: string }[]>(
       'SELECT schema_name FROM public.tenant WHERE slug = $1',
       [tenantSlug],
     );
@@ -66,11 +64,20 @@ export class PropertiesService {
       throw new NotFoundException(`Tenant with slug '${tenantSlug}' not found`);
     }
 
-    // Establecer el search_path
-    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenants[0].schema_name)}`);
+    return tenants[0].schema_name;
   }
 
-  async create(createPropertyDto: CreatePropertyDto) {
+  // Helper method para establecer el schema del tenant
+  private async setTenantSchema(tenantSlug: string) {
+    const schemaName = await this.getTenantSchemaName(tenantSlug);
+
+    // Establecer el search_path
+    await this.dataSource.query(`SET search_path TO ${quoteIdent(schemaName)}`);
+  }
+
+  async create(tenantSlug: string, createPropertyDto: CreatePropertyDto) {
+    await this.setTenantSchema(tenantSlug);
+
     // Validate property type and subtype using SQL queries (respetan search_path)
     const propertyTypes = await this.dataSource.query(
       'SELECT * FROM property_types WHERE id = $1',
@@ -239,10 +246,14 @@ export class PropertiesService {
       }
     }
 
-    return this.findOne(savedProperty.id);
+    return this.findOne(savedProperty.id, tenantSlug);
   }
 
-  async findAll(filters?: FilterPropertiesDto) {
+  async findAll(filters?: FilterPropertiesDto, tenantSlug?: string) {
+    if (tenantSlug) {
+      await this.setTenantSchema(tenantSlug);
+    }
+
     // Build WHERE clause
     let whereSql = 'WHERE 1=1';
     const params: any[] = [];
@@ -343,7 +354,7 @@ export class PropertiesService {
     if (tenantSlug) {
       await this.setTenantSchema(tenantSlug);
     }
-    return this.findAll({ ...filters, status: 'DISPONIBLE' });
+    return this.findAll({ ...filters, status: 'DISPONIBLE' }, tenantSlug);
   }
 
   async findOne(id: number, tenantSlug?: string) {
@@ -452,7 +463,15 @@ export class PropertiesService {
     };
   }
 
-  async update(id: number, updatePropertyDto: UpdatePropertyDto) {
+  async update(
+    id: number,
+    updatePropertyDto: UpdatePropertyDto,
+    tenantSlug?: string,
+  ) {
+    if (tenantSlug) {
+      await this.setTenantSchema(tenantSlug);
+    }
+
     try {
       // Verify property exists
       const properties = await this.dataSource.query(
@@ -657,7 +676,7 @@ export class PropertiesService {
         }
       }
 
-      return this.findOne(id);
+      return this.findOne(id, tenantSlug);
     } catch (error) {
       if (error?.status && error.status < 500) throw error; // re-throw 4xx
       console.error('❌❌ UPDATE FULL ERROR:', error.message);
@@ -666,7 +685,15 @@ export class PropertiesService {
     }
   }
 
-  async updateDetails(id: number, updateDetailsDto: UpdatePropertyDetailsDto) {
+  async updateDetails(
+    id: number,
+    updateDetailsDto: UpdatePropertyDetailsDto,
+    tenantSlug?: string,
+  ) {
+    if (tenantSlug) {
+      await this.setTenantSchema(tenantSlug);
+    }
+
     // Verify property exists
     const properties = await this.dataSource.query(
       'SELECT id FROM properties WHERE id = $1',
@@ -748,10 +775,14 @@ export class PropertiesService {
       );
     }
 
-    return this.findOne(id);
+    return this.findOne(id, tenantSlug);
   }
 
-  async remove(id: number) {
+  async remove(id: number, tenantSlug?: string) {
+    if (tenantSlug) {
+      await this.setTenantSchema(tenantSlug);
+    }
+
     // Verify property exists
     const properties = await this.dataSource.query(
       'SELECT id FROM properties WHERE id = $1',
@@ -769,18 +800,22 @@ export class PropertiesService {
   }
 
   // Property Types and Subtypes management
-  async getPropertyTypes() {
+  async getPropertyTypes(tenantSlug: string) {
+    const schemaName = await this.getTenantSchemaName(tenantSlug);
+
     return this.dataSource.query(
-      'SELECT * FROM property_types ORDER BY name ASC',
+      `SELECT * FROM ${quoteIdent(schemaName)}.property_types ORDER BY name ASC`,
     );
   }
 
-  async getPropertySubtypes(typeId?: number) {
+  async getPropertySubtypes(tenantSlug: string, typeId?: number) {
+    const schemaName = await this.getTenantSchemaName(tenantSlug);
+
     if (typeId) {
       return this.dataSource.query(
         `SELECT pst.*, pt.name as property_type_name, pt.code as property_type_code
-         FROM property_subtypes pst
-         LEFT JOIN property_types pt ON pst.property_type_id = pt.id
+         FROM ${quoteIdent(schemaName)}.property_subtypes pst
+         LEFT JOIN ${quoteIdent(schemaName)}.property_types pt ON pst.property_type_id = pt.id
          WHERE pst.property_type_id = $1
          ORDER BY pst.name ASC`,
         [typeId],
@@ -789,8 +824,8 @@ export class PropertiesService {
 
     return this.dataSource.query(
       `SELECT pst.*, pt.name as property_type_name, pt.code as property_type_code
-       FROM property_subtypes pst
-       LEFT JOIN property_types pt ON pst.property_type_id = pt.id
+       FROM ${quoteIdent(schemaName)}.property_subtypes pst
+       LEFT JOIN ${quoteIdent(schemaName)}.property_types pt ON pst.property_type_id = pt.id
        ORDER BY pst.name ASC`,
     );
   }
@@ -875,7 +910,10 @@ export class PropertiesService {
       ${whereSql}
     `;
 
-    const countResult = await this.dataSource.query(countSql, params.slice(0, paramIndex - 1));
+    const countResult = await this.dataSource.query(
+      countSql,
+      params.slice(0, paramIndex - 1),
+    );
     const total = parseInt(countResult[0].count);
 
     // Construir ORDER BY basado en sort param
@@ -945,7 +983,11 @@ export class PropertiesService {
    * Obtener detalle de propiedad pública e incrementar contador de vistas
    * Endpoint público: GET /:slug/catalog/properties/:id
    */
-  async findCatalogPropertyDetail(id: number, tenantSlug: string, userIP?: string) {
+  async findCatalogPropertyDetail(
+    id: number,
+    tenantSlug: string,
+    userIP?: string,
+  ) {
     await this.setTenantSchema(tenantSlug);
 
     // Obtener detalle de propiedad
@@ -1108,7 +1150,15 @@ export class PropertiesService {
     }
   }
 
-  async assignOwnerToProperty(propertyId: number, assignDto: any) {
+  async assignOwnerToProperty(
+    propertyId: number,
+    assignDto: any,
+    tenantSlug?: string,
+  ) {
+    if (tenantSlug) {
+      await this.setTenantSchema(tenantSlug);
+    }
+
     const props = await this.dataSource.query(
       'SELECT id FROM properties WHERE id = $1',
       [propertyId],
@@ -1133,7 +1183,15 @@ export class PropertiesService {
     return result[0];
   }
 
-  async removeOwnerFromProperty(propertyId: number, ownerRelationId: number) {
+  async removeOwnerFromProperty(
+    propertyId: number,
+    ownerRelationId: number,
+    tenantSlug?: string,
+  ) {
+    if (tenantSlug) {
+      await this.setTenantSchema(tenantSlug);
+    }
+
     const rows = await this.dataSource.query(
       'SELECT id FROM property_owners WHERE id = $1 AND property_id = $2',
       [ownerRelationId, propertyId],
@@ -1152,7 +1210,11 @@ export class PropertiesService {
     };
   }
 
-  async getStats() {
+  async getStats(tenantSlug?: string) {
+    if (tenantSlug) {
+      await this.setTenantSchema(tenantSlug);
+    }
+
     const [total] = await this.dataSource.query(
       `SELECT COUNT(*) AS total,
               COUNT(*) FILTER (WHERE status = 'DISPONIBLE') AS available,
@@ -1172,7 +1234,15 @@ export class PropertiesService {
     };
   }
 
-  async findByTenant(userId: number, filters?: FilterPropertiesDto) {
+  async findByTenant(
+    userId: number,
+    filters?: FilterPropertiesDto,
+    tenantSlug?: string,
+  ) {
+    if (tenantSlug) {
+      await this.setTenantSchema(tenantSlug);
+    }
+
     const rows = await this.dataSource.query(
       `SELECT DISTINCT p.*
        FROM properties p

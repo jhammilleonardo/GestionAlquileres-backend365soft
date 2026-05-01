@@ -45,10 +45,7 @@ export class InspectionsController {
   @RequirePermission('inspections', 'create')
   @ApiOperation({ summary: 'Crear nueva inspección' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  create(
-    @Req() req: TenantRequest,
-    @Body() dto: CreateInspectionDto,
-  ) {
+  create(@Req() req: TenantRequest, @Body() dto: CreateInspectionDto) {
     return this.inspectionsService.create(
       req.tenant!.schema_name,
       dto,
@@ -87,10 +84,7 @@ export class InspectionsController {
   @RequirePermission('inspections', 'view')
   @ApiOperation({ summary: 'Obtener inspección con ítems' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  findOne(
-    @Req() req: TenantRequest,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  findOne(@Req() req: TenantRequest, @Param('id', ParseIntPipe) id: number) {
     return this.inspectionsService.findOne(req.tenant!.schema_name, id);
   }
 
@@ -116,7 +110,11 @@ export class InspectionsController {
   @UseInterceptors(FilesInterceptor('files', 5, inspectionPhotoMulterConfig))
   @ApiOperation({ summary: 'Subir fotos a un ítem de la inspección' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  @ApiQuery({ name: 'item_id', type: Number, description: 'ID del ítem al que se asocian las fotos' })
+  @ApiQuery({
+    name: 'item_id',
+    type: Number,
+    description: 'ID del ítem al que se asocian las fotos',
+  })
   @ApiConsumes('multipart/form-data')
   uploadPhotos(
     @Req() req: TenantRequest,

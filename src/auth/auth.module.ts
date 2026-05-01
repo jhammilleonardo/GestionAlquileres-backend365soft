@@ -20,7 +20,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
         if (!secret || secret.length < 32) {
           throw new Error(
             'JWT_SECRET no está definido o tiene menos de 32 caracteres. ' +
-              'Generar uno con: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+              "Generar uno con: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
           );
         }
         return {

@@ -43,7 +43,8 @@ export class AddToBlacklistDto {
 
   @ApiProperty({
     description: 'Motivo por el cual se agrega a la lista negra (obligatorio)',
-    example: 'Incumplimiento de contrato, daños a la propiedad, no pago de renta',
+    example:
+      'Incumplimiento de contrato, daños a la propiedad, no pago de renta',
   })
   @IsString()
   @IsNotEmpty()

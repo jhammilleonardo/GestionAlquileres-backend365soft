@@ -27,9 +27,7 @@ export class QRBoliviaProcessor implements IPaymentProcessor {
   // TODO: inyectar QrPaymentService aquí
   // constructor(private readonly qrService: QrPaymentService) {}
 
-  async createPayment(
-    _input: ProcessorPaymentInput,
-  ): Promise<ProcessorResult> {
+  async createPayment(_input: ProcessorPaymentInput): Promise<ProcessorResult> {
     // TODO: delegar a QrPaymentService.generarQrDinamico()
     // El QR se genera con el alias del sistema (QR365T...) y se guarda en qr_payments.
     // El resultado incluye la imagen base64 del QR para mostrar al usuario.
@@ -44,12 +42,12 @@ export class QRBoliviaProcessor implements IPaymentProcessor {
     );
   }
 
-  async confirmPayment(
-    _transactionId: string,
-  ): Promise<ProcessorResult> {
+  async confirmPayment(_transactionId: string): Promise<ProcessorResult> {
     // TODO: delegar a QrPaymentService.verificarEstadoQr()
     // El alias del QR actúa como transactionId.
-    throw new NotImplementedException('QR Bolivia: confirmPayment no implementado');
+    throw new NotImplementedException(
+      'QR Bolivia: confirmPayment no implementado',
+    );
   }
 
   async refundPayment(
@@ -71,6 +69,8 @@ export class QRBoliviaProcessor implements IPaymentProcessor {
     // El banco MC4/SIP envía un callback cuando el pago es confirmado.
     // La verificación de firma ya está implementada en handleCallback().
     // return await this.qrService.handleCallback(slug, payload as QrCallbackDto);
-    throw new NotImplementedException('QR Bolivia: handleWebhook no implementado');
+    throw new NotImplementedException(
+      'QR Bolivia: handleWebhook no implementado',
+    );
   }
 }

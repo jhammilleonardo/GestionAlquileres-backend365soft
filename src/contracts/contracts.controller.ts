@@ -34,8 +34,8 @@ export class AdminContractsController {
 
   @Get('dashboard')
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async getDashboard() {
-    return this.contractsService.getMetrics();
+  async getDashboard(@Param('slug') slug: string) {
+    return this.contractsService.getMetrics(slug);
   }
 
   @Get()
@@ -50,11 +50,14 @@ export class AdminContractsController {
     const parsedPropertyId = property_id
       ? parseInt(property_id, 10)
       : undefined;
-    return this.contractsService.findAll({
-      status,
-      tenant_id: parsedTenantId,
-      property_id: parsedPropertyId,
-    });
+    return this.contractsService.findAll(
+      {
+        status,
+        tenant_id: parsedTenantId,
+        property_id: parsedPropertyId,
+      },
+      slug,
+    );
   }
 
   @Post()
@@ -65,7 +68,7 @@ export class AdminContractsController {
     @Req() req: TenantRequest,
   ): Promise<ContractResult> {
     const currentUserId = req.user?.userId || 0;
-    return this.contractsService.create(createContractDto, currentUserId);
+    return this.contractsService.create(createContractDto, currentUserId, slug);
   }
 
   @Patch(':id/status')
@@ -83,6 +86,7 @@ export class AdminContractsController {
       id,
       { status, update_reason: reason },
       currentUserId,
+      slug,
     );
   }
 
@@ -134,7 +138,7 @@ export class AdminContractsController {
     @Req() req: TenantRequest,
   ) {
     const currentUserId = req.user?.userId || 0;
-    return this.contractsService.renew(id, renewDto, currentUserId);
+    return this.contractsService.renew(id, renewDto, currentUserId, slug);
   }
 
   @Get(':id/history')
@@ -144,7 +148,7 @@ export class AdminContractsController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
   ): Promise<ContractResult[]> {
-    return this.contractsService.getContractHistory(id);
+    return this.contractsService.getContractHistory(id, slug);
   }
 
   @Patch(':id')
@@ -157,7 +161,7 @@ export class AdminContractsController {
     @Req() req: TenantRequest,
   ) {
     const currentUserId = req.user?.userId || 0;
-    return this.contractsService.update(id, updateContractDto, currentUserId);
+    return this.contractsService.update(id, updateContractDto, currentUserId, slug);
   }
 
   @Get(':id')
@@ -167,7 +171,7 @@ export class AdminContractsController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.contractsService.findOne(id);
+    return this.contractsService.findOne(id, slug);
   }
 }
 
@@ -185,10 +189,13 @@ export class TenantContractsController {
     @Req() req: TenantRequest,
   ) {
     const currentUserId = req.user?.userId || 0;
-    const contracts = await this.contractsService.findAll({
-      tenant_id: currentUserId,
-      status: ContractStatus.ACTIVO,
-    });
+    const contracts = await this.contractsService.findAll(
+      {
+        tenant_id: currentUserId,
+        status: ContractStatus.ACTIVO,
+      },
+      slug,
+    );
 
     if (contracts.length === 0) {
       return {
@@ -208,7 +215,10 @@ export class TenantContractsController {
     @Query('status') status?: ContractStatus,
   ) {
     const currentUserId = req.user?.userId || 0;
-    return this.contractsService.findAll({ tenant_id: currentUserId, status });
+    return this.contractsService.findAll(
+      { tenant_id: currentUserId, status },
+      slug,
+    );
   }
 
   @Post(':id/sign')
@@ -221,7 +231,7 @@ export class TenantContractsController {
   ) {
     const currentUserId = req.user?.userId || 0;
     const ip = req.ip || '0.0.0.0';
-    return this.contractsService.signContract(id, currentUserId, ip);
+    return this.contractsService.signContract(id, currentUserId, ip, slug);
   }
 
   @Get(':id/pdf')
@@ -233,7 +243,7 @@ export class TenantContractsController {
     @Req() req: TenantRequest,
     @Res() res: Response,
   ) {
-    const contract = await this.contractsService.findOne(id);
+    const contract = await this.contractsService.findOne(id, req.tenant?.slug);
     if (contract.tenant_id !== req.user?.userId) {
       throw new ForbiddenException('No tienes permiso para ver este contrato');
     }
@@ -259,7 +269,7 @@ export class TenantContractsController {
     @Param('id', ParseIntPipe) id: number,
     @Req() req: TenantRequest,
   ) {
-    const contract = await this.contractsService.findOne(id);
+    const contract = await this.contractsService.findOne(id, req.tenant?.slug);
     if (contract.tenant_id !== req.user?.userId) {
       throw new ForbiddenException('No tienes permiso para ver este contrato');
     }
@@ -280,7 +290,7 @@ export class TenantContractsController {
     @Param('id', ParseIntPipe) id: number,
     @Req() req: TenantRequest,
   ) {
-    const contract = await this.contractsService.findOne(id);
+    const contract = await this.contractsService.findOne(id, slug);
     if (contract.tenant_id !== req.user?.userId) {
       throw new ForbiddenException('No tienes permiso para ver este contrato');
     }

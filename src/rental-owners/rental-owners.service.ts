@@ -13,7 +13,12 @@ import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
 
 /** Estados de contrato que implican una propiedad "activa" para el propietario. */
-const ACTIVE_PROPERTY_STATUSES = ['DISPONIBLE', 'OCUPADO', 'RESERVADO', 'MANTENIMIENTO'];
+const ACTIVE_PROPERTY_STATUSES = [
+  'DISPONIBLE',
+  'OCUPADO',
+  'RESERVADO',
+  'MANTENIMIENTO',
+];
 
 @Injectable()
 export class RentalOwnersService {
@@ -244,7 +249,10 @@ export class RentalOwnersService {
 
   // ─── Helpers de validación ────────────────────────────────────────────────
 
-  private async assertEmailUnique(email: string, excludeId?: number): Promise<void> {
+  private async assertEmailUnique(
+    email: string,
+    excludeId?: number,
+  ): Promise<void> {
     const rows: { id: number }[] = await this.dataSource.query(
       `SELECT id FROM rental_owners WHERE primary_email = $1 ${excludeId ? 'AND id != $2' : ''}`,
       excludeId ? [email, excludeId] : [email],
@@ -258,7 +266,9 @@ export class RentalOwnersService {
   }
 
   private async assertNoActiveProperties(ownerId: number): Promise<void> {
-    const placeholders = ACTIVE_PROPERTY_STATUSES.map((_, i) => `$${i + 2}`).join(', ');
+    const placeholders = ACTIVE_PROPERTY_STATUSES.map(
+      (_, i) => `$${i + 2}`,
+    ).join(', ');
 
     const rows: unknown[] = await this.dataSource.query(
       `SELECT po.property_id
@@ -281,11 +291,16 @@ export class RentalOwnersService {
    * Genera una contraseña aleatoria, crea el usuario con role = 'PROPIETARIO'
    * y devuelve las credenciales temporales al admin.
    */
-  async createOwnerAccount(ownerId: number, tenantSlug: string): Promise<{ email: string; temporaryPassword: string }> {
+  async createOwnerAccount(
+    ownerId: number,
+    tenantSlug: string,
+  ): Promise<{ email: string; temporaryPassword: string }> {
     const owner = await this.findOne(ownerId);
 
     if (!owner.is_active) {
-      throw new BadRequestException('El propietario debe estar activo para tener una cuenta.');
+      throw new BadRequestException(
+        'El propietario debe estar activo para tener una cuenta.',
+      );
     }
 
     // Verificar si ya existe un usuario con su email
@@ -295,7 +310,9 @@ export class RentalOwnersService {
     );
 
     if (existingUser.length > 0) {
-      throw new ConflictException('Ya existe una cuenta de usuario con el email de este propietario.');
+      throw new ConflictException(
+        'Ya existe una cuenta de usuario con el email de este propietario.',
+      );
     }
 
     // Generar contraseña temporal
@@ -306,15 +323,12 @@ export class RentalOwnersService {
     await this.dataSource.query(
       `INSERT INTO "user" (email, password, name, phone, role, is_active, created_at, updated_at)
        VALUES ($1, $2, $3, $4, 'PROPIETARIO', true, NOW(), NOW())`,
-      [
-        owner.primary_email,
-        hashedPassword,
-        owner.name,
-        owner.phone_number,
-      ],
+      [owner.primary_email, hashedPassword, owner.name, owner.phone_number],
     );
 
-    this.logger.log(`Cuenta de PROPIETARIO creada: ${owner.primary_email} (tenant ${tenantSlug})`);
+    this.logger.log(
+      `Cuenta de PROPIETARIO creada: ${owner.primary_email} (tenant ${tenantSlug})`,
+    );
 
     return {
       email: owner.primary_email,
@@ -371,7 +385,10 @@ export interface RentalOwnerRow {
   updated_at: Date;
 }
 
-export interface RentalOwnerSummary extends Omit<RentalOwnerRow, 'pending_balance'> {
+export interface RentalOwnerSummary extends Omit<
+  RentalOwnerRow,
+  'pending_balance'
+> {
   property_count: number;
   pending_balance: number;
 }

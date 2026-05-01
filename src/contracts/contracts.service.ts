@@ -17,6 +17,8 @@ import { ContractTemplatesService } from '../contract-templates/contract-templat
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 import { RenewContractDto } from './dto/renew-contract.dto';
+import { TenantsService } from '../tenants/tenants.service';
+import { quoteIdent } from '../common/utils/sql-identifier';
 
 export interface ContractResult {
   id: number;
@@ -77,9 +79,21 @@ export class ContractsService {
     private lifecycleNotificationsService: LifecycleNotificationsService,
     private contractTemplatesService: ContractTemplatesService,
     private auditLogsService: AuditLogsService,
+    private tenantsService: TenantsService,
   ) {}
 
-  private async generateContractNumber(): Promise<string> {
+  private async setTenantSchema(tenantSlug?: string): Promise<void> {
+    if (!tenantSlug) {
+      return;
+    }
+    const tenant = await this.tenantsService.findBySlug(tenantSlug);
+    await this.dataSource.query(
+      `SET search_path TO ${quoteIdent(tenant.schema_name)}, public`,
+    );
+  }
+
+  private async generateContractNumber(tenantSlug?: string): Promise<string> {
+    await this.setTenantSchema(tenantSlug);
     const year = new Date().getFullYear();
     const prefix = `CTR-${year}-`;
 
@@ -101,7 +115,12 @@ export class ContractsService {
     return `${prefix}${nextNumber.toString().padStart(4, '0')}`;
   }
 
-  async create(createContractDto: CreateContractDto, adminUserId?: number) {
+  async create(
+    createContractDto: CreateContractDto,
+    adminUserId?: number,
+    tenantSlug?: string,
+  ) {
+    await this.setTenantSchema(tenantSlug);
     // 1. Validar que el admin no se esté creando un contrato a sí mismo
     // Esta validación NO aplica cuando el contrato viene de una solicitud aprobada,
     // ya que el solicitante es siempre un inquilino distinto al admin que aprueba.
@@ -213,7 +232,7 @@ export class ContractsService {
     }
 
     // 2. Generar número de contrato
-    const contractNumber = await this.generateContractNumber();
+    const contractNumber = await this.generateContractNumber(tenantSlug);
 
     // 3. Calcular duración en meses
     const startDate = new Date(createContractDto.start_date);
@@ -310,6 +329,7 @@ export class ContractsService {
         'Nuevo contrato disponible',
         `Se ha creado el contrato ${contractNumber}. Por favor revísalo y fírmalo.`,
         { contract_id: savedContract.id, contract_number: contractNumber },
+        tenantSlug,
       );
 
       const admins = await this.dataSource.query<{ id: number }[]>(
@@ -323,6 +343,7 @@ export class ContractsService {
           'Nuevo contrato creado',
           `Se ha creado el contrato ${contractNumber} para el inquilino ID ${tenantId}`,
           { contract_id: savedContract.id, contract_number: contractNumber },
+          tenantSlug,
         );
       }
     } catch {
@@ -332,11 +353,15 @@ export class ContractsService {
     return savedContract;
   }
 
-  async findAll(filters: {
-    status?: ContractStatus;
-    tenant_id?: number;
-    property_id?: number;
-  }) {
+  async findAll(
+    filters: {
+      status?: ContractStatus;
+      tenant_id?: number;
+      property_id?: number;
+    },
+    tenantSlug?: string,
+  ) {
+    await this.setTenantSchema(tenantSlug);
     // Construir query dinámicamente
     let query = 'SELECT c.*, ';
     query += 'p.title as property_title, p.status as property_status, ';
@@ -376,7 +401,8 @@ export class ContractsService {
     return await this.dataSource.query<ContractResult[]>(query, params);
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, tenantSlug?: string) {
+    await this.setTenantSchema(tenantSlug);
     const result = await this.dataSource.query<ContractResult[]>(
       `SELECT c.*,
               p.title as property_title, p.description as property_description,
@@ -402,8 +428,10 @@ export class ContractsService {
     id: number,
     updateContractDto: UpdateContractDto,
     userId: number = 0,
+    tenantSlug?: string,
   ) {
-    const contract = await this.findOne(id);
+    await this.setTenantSchema(tenantSlug);
+    const contract = await this.findOne(id, tenantSlug);
     const oldStatus = contract.status;
 
     // Construir query de actualización dinámicamente
@@ -467,7 +495,7 @@ export class ContractsService {
     }
 
     // Recargar para obtener el contrato actualizado
-    const updatedContract = await this.findOne(id);
+    const updatedContract = await this.findOne(id, tenantSlug);
 
     if (updateContractDto.status && updateContractDto.status !== oldStatus) {
       await this.logHistory(
@@ -531,6 +559,7 @@ export class ContractsService {
               notif.title,
               notif.msg,
               { contract_id: id, new_status: updateContractDto.status },
+              tenantSlug,
             );
           }
         }
@@ -554,8 +583,14 @@ export class ContractsService {
     return updatedContract;
   }
 
-  async signContract(id: number, userId: number, ip: string) {
-    const contract = await this.findOne(id);
+  async signContract(
+    id: number,
+    userId: number,
+    ip: string,
+    tenantSlug?: string,
+  ) {
+    await this.setTenantSchema(tenantSlug);
+    const contract = await this.findOne(id, tenantSlug);
 
     if (contract.tenant_id !== userId) {
       throw new BadRequestException(
@@ -613,6 +648,7 @@ export class ContractsService {
           'Contrato firmado',
           `El inquilino ID ${userId} ha firmado el contrato ID ${id}`,
           { contract_id: id },
+          tenantSlug,
         );
       }
     } catch {
@@ -636,10 +672,11 @@ export class ContractsService {
       ipAddress: ip,
     });
 
-    return await this.findOne(id);
+    return await this.findOne(id, tenantSlug);
   }
 
-  async getMetrics() {
+  async getMetrics(tenantSlug?: string) {
+    await this.setTenantSchema(tenantSlug);
     const activeContracts = await this.dataSource.query<{ total: string }[]>(
       "SELECT COUNT(*) as total FROM contracts WHERE status = 'ACTIVO'",
     );
@@ -699,7 +736,8 @@ export class ContractsService {
   }
 
   async generatePdf(id: number, tenantSlug: string, baseUrl: string = '') {
-    const contract = await this.findOne(id);
+    await this.setTenantSchema(tenantSlug);
+    const contract = await this.findOne(id, tenantSlug);
 
     // Información del tenant (empresa arrendadora) desde schema public
     const tenantInfo = await this.dataSource.query<
@@ -800,8 +838,10 @@ export class ContractsService {
     id: number,
     dto: RenewContractDto = {},
     userId: number = 0,
+    tenantSlug?: string,
   ): Promise<ContractResult> {
-    const oldContract = await this.findOne(id);
+    await this.setTenantSchema(tenantSlug);
+    const oldContract = await this.findOne(id, tenantSlug);
 
     if (
       oldContract.status !== ContractStatus.ACTIVO &&
@@ -831,11 +871,10 @@ export class ContractsService {
       oldContract.monthly_rent *
         (1 + (oldContract.auto_increase_percentage ?? 0) / 100);
 
-    const newContractNumber = await this.generateContractNumber();
+    const newContractNumber = await this.generateContractNumber(tenantSlug);
 
     const includedServices =
       dto.included_services ?? oldContract.included_services;
-
 
     const insertResult = await this.dataSource.query<ContractResult[]>(
       `INSERT INTO contracts
@@ -929,8 +968,12 @@ export class ContractsService {
     return savedContract;
   }
 
-  async getContractHistory(id: number): Promise<ContractResult[]> {
-    const contract = await this.findOne(id);
+  async getContractHistory(
+    id: number,
+    tenantSlug?: string,
+  ): Promise<ContractResult[]> {
+    await this.setTenantSchema(tenantSlug);
+    const contract = await this.findOne(id, tenantSlug);
 
     if (contract.unit_id) {
       return this.dataSource.query<ContractResult[]>(

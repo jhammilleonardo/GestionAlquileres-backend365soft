@@ -40,7 +40,9 @@ export class AuthService {
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
 
     // Setear el schema para esta query
-    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+    await this.dataSource.query(
+      `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+    );
 
     const user = await this.findUserByEmail(email);
 
@@ -103,7 +105,9 @@ export class AuthService {
   async loginOwner(email: string, password: string, tenantSlug: string) {
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
     const { quoteIdent } = await import('../common/utils/sql-identifier.js');
-    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+    await this.dataSource.query(
+      `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+    );
 
     const user = await this.findUserByEmail(email);
 
@@ -112,7 +116,9 @@ export class AuthService {
     }
 
     if (user.role !== 'PROPIETARIO') {
-      throw new UnauthorizedException('Acceso denegado: se requiere rol PROPIETARIO');
+      throw new UnauthorizedException(
+        'Acceso denegado: se requiere rol PROPIETARIO',
+      );
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -213,7 +219,9 @@ export class AuthService {
     const tenant = await this.tenantsService.findBySlug(user.tenantSlug);
 
     // Setear el schema para esta query
-    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+    await this.dataSource.query(
+      `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+    );
 
     // Obtener datos completos del usuario
     const userResult = await this.dataSource.query(
@@ -271,7 +279,9 @@ export class AuthService {
     const tenant = await this.tenantsService.findBySlug(tenantSlug);
 
     // Setear el schema para esta query
-    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+    await this.dataSource.query(
+      `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+    );
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
@@ -287,7 +297,9 @@ export class AuthService {
     // Crear notificación para los admins sobre el nuevo usuario registrado
     try {
       // Obtener todos los admins del tenant
-      await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+      await this.dataSource.query(
+        `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+      );
       const admins = await this.dataSource.query(
         `SELECT id FROM "user" WHERE role = 'ADMIN'`,
       );
@@ -376,7 +388,9 @@ export class AuthService {
     });
 
     // 4. Cambiar al schema del nuevo tenant
-    await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+    await this.dataSource.query(
+      `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+    );
 
     // 5. Crear el usuario admin
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
@@ -459,7 +473,9 @@ export class AuthService {
     // Buscar el email en cada tenant
     for (const tenant of tenants) {
       try {
-        await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+        await this.dataSource.query(
+          `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+        );
         const user = await this.findUserByEmail(email);
 
         if (user && user.role === 'ADMIN') {
@@ -487,7 +503,9 @@ export class AuthService {
 
     for (const tenant of tenants) {
       try {
-        await this.dataSource.query(`SET search_path TO ${quoteIdent(tenant.schema_name)}`);
+        await this.dataSource.query(
+          `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
+        );
         const user = await this.findUserByEmail(email);
         if (user) {
           await this.dataSource.query('SET search_path TO public');

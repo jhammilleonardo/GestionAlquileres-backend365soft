@@ -119,7 +119,8 @@ export class AdminExpensesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Eliminar gasto',
-    description: 'Si es recurrente, elimina también todas las instancias generadas.',
+    description:
+      'Si es recurrente, elimina también todas las instancias generadas.',
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })

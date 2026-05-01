@@ -15,6 +15,7 @@ const APPLICATION_ID = 1;
 const ADMIN_ID = 99;
 const APPLICANT_ID = 5;
 const PROPERTY_TITLE = 'Departamento Centro';
+const TENANT_SLUG = 'empresa1';
 
 function buildApplication(overrides = {}) {
   return {
@@ -65,6 +66,9 @@ describe('ApplicationsService — screening', () => {
     }).compile();
 
     service = module.get(ApplicationsService);
+    jest
+      .spyOn(service as any, 'setTenantSchema')
+      .mockResolvedValue(undefined);
   });
 
   // ─── uploadDocuments ──────────────────────────────────────────────────────
@@ -81,7 +85,12 @@ describe('ApplicationsService — screening', () => {
         { filename: 'abc.jpg', originalname: 'carnet_anverso.jpg' },
       ] as Express.Multer.File[];
 
-      const result = await service.uploadDocuments(APPLICATION_ID, files, ['carnet_anverso'], 'empresa1');
+      const result = await service.uploadDocuments(
+        APPLICATION_ID,
+        files,
+        ['carnet_anverso'],
+        TENANT_SLUG,
+      );
 
       expect(dataSource.query).toHaveBeenCalledTimes(3);
       expect(result.documents).toHaveLength(1);
@@ -92,7 +101,12 @@ describe('ApplicationsService — screening', () => {
       dataSource.query.mockResolvedValueOnce([]); // findOne sin resultados
 
       await expect(
-        service.uploadDocuments(999, [] as Express.Multer.File[], [], 'empresa1'),
+        service.uploadDocuments(
+          999,
+          [] as Express.Multer.File[],
+          [],
+          TENANT_SLUG,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -129,7 +143,12 @@ describe('ApplicationsService — screening', () => {
 
       const dto: UpdateScreeningDto = { documents_verified: true };
 
-      const result = await service.completeScreening(APPLICATION_ID, dto, ADMIN_ID);
+      const result = await service.completeScreening(
+        APPLICATION_ID,
+        dto,
+        ADMIN_ID,
+        TENANT_SLUG,
+      );
 
       expect(result.message).toContain('actualizado');
       expect(result.contract).toBeUndefined();
@@ -141,13 +160,17 @@ describe('ApplicationsService — screening', () => {
       dataSource.query
         .mockResolvedValueOnce([app]) // findOne
         .mockResolvedValueOnce([]) // SELECT checklist (no existe)
-        .mockResolvedValueOnce([{ ...checklist, final_status: ScreeningFinalStatus.APPROVED }]); // INSERT
+        .mockResolvedValueOnce([
+          { ...checklist, final_status: ScreeningFinalStatus.APPROVED },
+        ]); // INSERT
 
-      const dto: UpdateScreeningDto = { final_status: ScreeningFinalStatus.APPROVED };
+      const dto: UpdateScreeningDto = {
+        final_status: ScreeningFinalStatus.APPROVED,
+      };
 
-      await expect(service.completeScreening(APPLICATION_ID, dto, ADMIN_ID)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.completeScreening(APPLICATION_ID, dto, ADMIN_ID, TENANT_SLUG),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('debe generar contrato cuando final_status es APPROVED con monthly_rent', async () => {
@@ -173,10 +196,14 @@ describe('ApplicationsService — screening', () => {
       dataSource.query
         .mockResolvedValueOnce([app]) // completeScreening → findOne
         .mockResolvedValueOnce([]) // SELECT checklist (no existe)
-        .mockResolvedValueOnce([{ ...checklist, final_status: ScreeningFinalStatus.APPROVED }]) // INSERT
+        .mockResolvedValueOnce([
+          { ...checklist, final_status: ScreeningFinalStatus.APPROVED },
+        ]) // INSERT
         .mockResolvedValueOnce([app]) // approveAndCreateContract → findOne
         .mockResolvedValueOnce([app]) // updateStatus → findOne interno
-        .mockResolvedValueOnce([{ ...app, status: ApplicationStatus.APROBADA }]); // UPDATE status
+        .mockResolvedValueOnce([
+          { ...app, status: ApplicationStatus.APROBADA },
+        ]); // UPDATE status
 
       const dto: UpdateScreeningDto = {
         final_status: ScreeningFinalStatus.APPROVED,
@@ -184,7 +211,12 @@ describe('ApplicationsService — screening', () => {
         currency: 'BOB',
       };
 
-      const result = await service.completeScreening(APPLICATION_ID, dto, ADMIN_ID);
+      const result = await service.completeScreening(
+        APPLICATION_ID,
+        dto,
+        ADMIN_ID,
+        TENANT_SLUG,
+      );
 
       expect(contractsService.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -204,16 +236,25 @@ describe('ApplicationsService — screening', () => {
       dataSource.query
         .mockResolvedValueOnce([app]) // completeScreening → findOne
         .mockResolvedValueOnce([]) // SELECT checklist (no existe)
-        .mockResolvedValueOnce([{ ...checklist, final_status: ScreeningFinalStatus.REJECTED }]) // INSERT checklist
+        .mockResolvedValueOnce([
+          { ...checklist, final_status: ScreeningFinalStatus.REJECTED },
+        ]) // INSERT checklist
         .mockResolvedValueOnce([app]) // handleScreeningRejected → findOne (en updateStatus)
-        .mockResolvedValueOnce([{ ...app, status: ApplicationStatus.RECHAZADA }]); // UPDATE status
+        .mockResolvedValueOnce([
+          { ...app, status: ApplicationStatus.RECHAZADA },
+        ]); // UPDATE status
 
       const dto: UpdateScreeningDto = {
         final_status: ScreeningFinalStatus.REJECTED,
         admin_feedback: 'No cumple con los requisitos de ingresos.',
       };
 
-      const result = await service.completeScreening(APPLICATION_ID, dto, ADMIN_ID);
+      const result = await service.completeScreening(
+        APPLICATION_ID,
+        dto,
+        ADMIN_ID,
+        TENANT_SLUG,
+      );
 
       expect(result.message).toContain('rechazada');
       expect(notificationsService.createForUser).toHaveBeenCalledWith(
@@ -221,7 +262,10 @@ describe('ApplicationsService — screening', () => {
         'application.status.changed',
         'Resultado de tu solicitud de alquiler',
         expect.stringContaining('rechazada'),
-        expect.objectContaining({ final_status: ScreeningFinalStatus.REJECTED }),
+        expect.objectContaining({
+          final_status: ScreeningFinalStatus.REJECTED,
+        }),
+        TENANT_SLUG,
       );
     });
 
@@ -230,15 +274,27 @@ describe('ApplicationsService — screening', () => {
       dataSource.query
         .mockResolvedValueOnce([app]) // completeScreening → findOne
         .mockResolvedValueOnce([]) // SELECT checklist (no existe)
-        .mockResolvedValueOnce([{ ...checklist, final_status: ScreeningFinalStatus.REQUIRES_COSIGNER }]) // INSERT
+        .mockResolvedValueOnce([
+          {
+            ...checklist,
+            final_status: ScreeningFinalStatus.REQUIRES_COSIGNER,
+          },
+        ]) // INSERT
         .mockResolvedValueOnce([app]) // handleScreeningRequiresCosigner → findOne (en updateStatus)
-        .mockResolvedValueOnce([{ ...app, status: ApplicationStatus.EN_REVISION }]); // UPDATE status
+        .mockResolvedValueOnce([
+          { ...app, status: ApplicationStatus.EN_REVISION },
+        ]); // UPDATE status
 
       const dto: UpdateScreeningDto = {
         final_status: ScreeningFinalStatus.REQUIRES_COSIGNER,
       };
 
-      const result = await service.completeScreening(APPLICATION_ID, dto, ADMIN_ID);
+      const result = await service.completeScreening(
+        APPLICATION_ID,
+        dto,
+        ADMIN_ID,
+        TENANT_SLUG,
+      );
 
       expect(result.message).toContain('co-firmante');
       expect(notificationsService.createForUser).toHaveBeenCalledWith(
@@ -246,14 +302,21 @@ describe('ApplicationsService — screening', () => {
         'application.status.changed',
         'Acción requerida en tu solicitud',
         expect.stringContaining('co-firmante'),
-        expect.objectContaining({ final_status: ScreeningFinalStatus.REQUIRES_COSIGNER }),
+        expect.objectContaining({
+          final_status: ScreeningFinalStatus.REQUIRES_COSIGNER,
+        }),
+        TENANT_SLUG,
       );
     });
 
     it('debe actualizar checklist existente en lugar de crear uno nuevo (upsert)', async () => {
       const app = buildApplication();
       const existingId = { id: 7 };
-      const updatedChecklist = { ...checklist, id: 7, employer_call_name: 'Nuevo Corp' };
+      const updatedChecklist = {
+        ...checklist,
+        id: 7,
+        employer_call_name: 'Nuevo Corp',
+      };
 
       dataSource.query
         .mockResolvedValueOnce([app]) // findOne
@@ -262,7 +325,12 @@ describe('ApplicationsService — screening', () => {
 
       const dto: UpdateScreeningDto = { employer_call_name: 'Nuevo Corp' };
 
-      const result = await service.completeScreening(APPLICATION_ID, dto, ADMIN_ID);
+      const result = await service.completeScreening(
+        APPLICATION_ID,
+        dto,
+        ADMIN_ID,
+        TENANT_SLUG,
+      );
 
       expect(result.screening.employer_call_name).toBe('Nuevo Corp');
     });
@@ -277,7 +345,10 @@ describe('ApplicationsService — screening', () => {
         .mockResolvedValueOnce([app]) // findOne
         .mockResolvedValueOnce([]); // UPDATE
 
-      const result = await service.markScreeningFeePaid(APPLICATION_ID);
+      const result = await service.markScreeningFeePaid(
+        APPLICATION_ID,
+        TENANT_SLUG,
+      );
 
       expect(dataSource.query).toHaveBeenNthCalledWith(
         2,
@@ -290,7 +361,9 @@ describe('ApplicationsService — screening', () => {
     it('debe lanzar NotFoundException si la solicitud no existe', async () => {
       dataSource.query.mockResolvedValueOnce([]); // findOne sin resultados
 
-      await expect(service.markScreeningFeePaid(999)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.markScreeningFeePaid(999, TENANT_SLUG),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

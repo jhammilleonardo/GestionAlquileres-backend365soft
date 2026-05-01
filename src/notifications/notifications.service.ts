@@ -1,11 +1,35 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { NotificationEventType } from './dto/create-notification.dto';
+import {
+  NotificationsGateway,
+  RealtimeNotificationEvent,
+} from './notifications.gateway';
+import { tenantConnectionStore } from '../common/tenant/tenant-connection.store';
 
 @Injectable()
 export class NotificationsService {
-  constructor(@InjectDataSource() private dataSource: DataSource) {}
+  private readonly logger = new Logger(NotificationsService.name);
+
+  private readonly realtimeEventMap: Partial<
+    Record<NotificationEventType, RealtimeNotificationEvent>
+  > = {
+    [NotificationEventType.PAYMENT_CREATED]: 'payment.received',
+    [NotificationEventType.PAYMENT_APPROVED]: 'payment.approved',
+    [NotificationEventType.MAINTENANCE_REQUEST_CREATED]: 'maintenance.new',
+    [NotificationEventType.MAINTENANCE_STATUS_CHANGED]: 'maintenance.updated',
+    [NotificationEventType.MAINTENANCE_ASSIGNED]: 'maintenance.updated',
+    [NotificationEventType.MAINTENANCE_COMPLETED]: 'maintenance.updated',
+    [NotificationEventType.CONTRACT_SIGNED]: 'contract.signed',
+    [NotificationEventType.APPLICATION_STATUS_CHANGED]: 'screening.completed',
+    [NotificationEventType.MAINTENANCE_MESSAGE_RECEIVED]: 'message.new',
+  };
+
+  constructor(
+    @InjectDataSource() private dataSource: DataSource,
+    private readonly notificationsGateway: NotificationsGateway,
+  ) {}
 
   /**
    * Crear una notificación para un usuario específico
@@ -16,9 +40,9 @@ export class NotificationsService {
     title: string,
     message: string,
     metadata?: Record<string, any>,
+    tenantSlug?: string,
   ): Promise<any> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const result = await this.dataSource.query(
+    const result = await this.dataSource.query<Record<string, unknown>[]>(
       `INSERT INTO notifications (
         user_id, event_type, title, message, metadata, is_read, created_at
       ) VALUES ($1, $2, $3, $4, $5, false, NOW())
@@ -31,8 +55,21 @@ export class NotificationsService {
         JSON.stringify(metadata || {}),
       ],
     );
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    return result[0];
+    const createdNotification = result[0];
+
+    await this.emitRealtimeEventIfMapped(
+      eventType,
+      {
+        user_id: userId,
+        title,
+        message,
+        metadata: metadata || {},
+        notification: createdNotification,
+      },
+      tenantSlug,
+    );
+
+    return createdNotification;
   }
 
   /**
@@ -44,6 +81,7 @@ export class NotificationsService {
     title: string,
     message: string,
     metadata?: Record<string, any>,
+    tenantSlug?: string,
   ): Promise<any[]> {
     const notifications: any[] = [];
 
@@ -66,7 +104,71 @@ export class NotificationsService {
       notifications.push(result[0]);
     }
 
+    await this.emitRealtimeEventIfMapped(
+      eventType,
+      {
+        user_ids: adminIds,
+        title,
+        message,
+        metadata: metadata || {},
+        notifications: notifications as unknown as Record<string, unknown>[],
+      },
+      tenantSlug,
+    );
+
     return notifications;
+  }
+
+  private async emitRealtimeEventIfMapped(
+    eventType: NotificationEventType,
+    payload: Record<string, unknown>,
+    tenantSlug?: string,
+  ): Promise<void> {
+    const realtimeEvent = this.realtimeEventMap[eventType];
+    if (!realtimeEvent) {
+      return;
+    }
+
+    const resolvedTenantSlug = await this.resolveTenantSlug(tenantSlug);
+    if (!resolvedTenantSlug) {
+      return;
+    }
+
+    this.notificationsGateway.emitTenantEvent(
+      resolvedTenantSlug,
+      realtimeEvent,
+      payload,
+    );
+  }
+
+  private async resolveTenantSlug(tenantSlug?: string): Promise<string | null> {
+    if (tenantSlug) {
+      return tenantSlug;
+    }
+
+    const schemaName = tenantConnectionStore.getStore()?.schemaName;
+    if (!schemaName) {
+      return null;
+    }
+
+    try {
+      const tenantRows = await this.dataSource.query<{ slug: string }[]>(
+        `SELECT slug FROM public.tenant WHERE schema_name = $1 LIMIT 1`,
+        [schemaName],
+      );
+
+      if (!tenantRows || tenantRows.length === 0) {
+        return null;
+      }
+
+      return tenantRows[0].slug;
+    } catch (error) {
+      this.logger.error(
+        `Failed to resolve tenant slug from schema "${schemaName}"`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return null;
+    }
   }
 
   /**
@@ -200,8 +302,13 @@ export class NotificationsService {
     unread: number;
     by_type: Record<string, number>;
   }> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const result = await this.dataSource.query(
+    const result = await this.dataSource.query<
+      Array<{
+        total: string;
+        unread: string;
+        by_type: Record<string, unknown> | null;
+      }>
+    >(
       `SELECT
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE is_read = false) as unread,
@@ -214,23 +321,16 @@ export class NotificationsService {
       [userId],
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const row = result[0];
+    const row = result[0] ?? { total: '0', unread: '0', by_type: null };
     const by_type: Record<string, number> = {};
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (row.by_type) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      Object.entries(row.by_type as Record<string, unknown>).forEach(
-        ([k, v]) => {
-          by_type[k] = parseInt(String(v));
-        },
-      );
+      Object.entries(row.by_type).forEach(([k, v]) => {
+        by_type[k] = parseInt(String(v));
+      });
     }
 
     return {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
       total: parseInt(row.total),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
       unread: parseInt(row.unread),
       by_type,
     };

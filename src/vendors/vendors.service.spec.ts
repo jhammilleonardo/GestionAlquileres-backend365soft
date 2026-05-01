@@ -4,7 +4,9 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { VendorsService } from './vendors.service';
 import { VendorSpecialty } from './enums/vendor-specialty.enum';
 
-function mockVendor(overrides?: Partial<Record<string, unknown>>): Record<string, unknown> {
+function mockVendor(
+  overrides?: Partial<Record<string, unknown>>,
+): Record<string, unknown> {
   return {
     id: 1,
     name: 'Instalaciones Rápidas S.R.L.',
@@ -44,7 +46,10 @@ describe('VendorsService', () => {
 
   describe('findAll', () => {
     it('debe retornar lista de proveedores activos por defecto', async () => {
-      const vendors = [mockVendor(), mockVendor({ id: 2, name: 'Eléctrica del Norte' })];
+      const vendors = [
+        mockVendor(),
+        mockVendor({ id: 2, name: 'Eléctrica del Norte' }),
+      ];
       mockDataSource.query.mockResolvedValueOnce(vendors);
 
       const result = await service.findAll({});
@@ -56,7 +61,9 @@ describe('VendorsService', () => {
     it('debe filtrar por specialty cuando se indica', async () => {
       mockDataSource.query.mockResolvedValueOnce([mockVendor()]);
 
-      const result = await service.findAll({ specialty: VendorSpecialty.PLUMBING });
+      const result = await service.findAll({
+        specialty: VendorSpecialty.PLUMBING,
+      });
 
       expect(result).toHaveLength(1);
     });
@@ -74,7 +81,9 @@ describe('VendorsService', () => {
 
   describe('findOne', () => {
     it('debe retornar el proveedor con total_orders', async () => {
-      mockDataSource.query.mockResolvedValueOnce([{ ...mockVendor(), total_orders: '3' }]);
+      mockDataSource.query.mockResolvedValueOnce([
+        { ...mockVendor(), total_orders: '3' },
+      ]);
 
       const result = await service.findOne(1);
 
@@ -112,7 +121,7 @@ describe('VendorsService', () => {
   describe('update', () => {
     it('debe actualizar un proveedor', async () => {
       mockDataSource.query
-        .mockResolvedValueOnce([{ id: 1 }])     // assertExists
+        .mockResolvedValueOnce([{ id: 1 }]) // assertExists
         .mockResolvedValueOnce([mockVendor({ name: 'Nuevo Nombre' })]); // UPDATE
 
       const result = await service.update(1, { name: 'Nuevo Nombre' });
@@ -123,13 +132,15 @@ describe('VendorsService', () => {
     it('debe lanzar NotFoundException si no existe', async () => {
       mockDataSource.query.mockResolvedValueOnce([]);
 
-      await expect(service.update(999, { name: 'Otro' })).rejects.toThrow(NotFoundException);
+      await expect(service.update(999, { name: 'Otro' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('debe retornar el proveedor sin modificar si no hay campos', async () => {
       mockDataSource.query
-        .mockResolvedValueOnce([{ id: 1 }])     // assertExists
-        .mockResolvedValueOnce([mockVendor()]);  // findOne (fallback cuando dto vacío)
+        .mockResolvedValueOnce([{ id: 1 }]) // assertExists
+        .mockResolvedValueOnce([mockVendor()]); // findOne (fallback cuando dto vacío)
 
       const result = await service.update(1, {});
 
@@ -162,10 +173,21 @@ describe('VendorsService', () => {
   describe('getHistory', () => {
     it('debe retornar el historial de órdenes del proveedor', async () => {
       mockDataSource.query
-        .mockResolvedValueOnce([{ id: 1 }])   // assertExists
-        .mockResolvedValueOnce([             // history query
-          { id: 10, ticket_number: 'MNT-2026-ABCDEF', status: 'COMPLETED', vendor_rating: 4 },
-          { id: 11, ticket_number: 'MNT-2026-GHIJKL', status: 'CLOSED', vendor_rating: null },
+        .mockResolvedValueOnce([{ id: 1 }]) // assertExists
+        .mockResolvedValueOnce([
+          // history query
+          {
+            id: 10,
+            ticket_number: 'MNT-2026-ABCDEF',
+            status: 'COMPLETED',
+            vendor_rating: 4,
+          },
+          {
+            id: 11,
+            ticket_number: 'MNT-2026-GHIJKL',
+            status: 'CLOSED',
+            vendor_rating: null,
+          },
         ]);
 
       const result = await service.getHistory(1);

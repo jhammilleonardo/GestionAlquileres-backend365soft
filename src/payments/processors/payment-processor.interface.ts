@@ -60,7 +60,10 @@ export interface IPaymentProcessor {
   /**
    * Solicita el reembolso parcial o total de una transacción aprobada.
    */
-  refundPayment(transactionId: string, amount: number): Promise<ProcessorResult>;
+  refundPayment(
+    transactionId: string,
+    amount: number,
+  ): Promise<ProcessorResult>;
 
   /**
    * Procesa el webhook / callback que envía el proveedor externo.

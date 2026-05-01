@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UnitsService } from './units.service';
-import { AdminUnitsController, PublicUnitsController } from './units.controller';
+import {
+  AdminUnitsController,
+  PublicUnitsController,
+} from './units.controller';
 import { Unit } from './entities/unit.entity';
 
 @Module({

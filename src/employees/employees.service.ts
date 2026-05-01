@@ -253,7 +253,9 @@ export class EmployeesService {
       action: AuditAction.PERMISSIONS_UPDATED,
       entityType: 'employee',
       entityId: id,
-      newValues: { permissions: permissions as unknown as Record<string, unknown>[] },
+      newValues: {
+        permissions: permissions as unknown as Record<string, unknown>[],
+      },
     });
 
     return this.findOne(schemaName, id);
@@ -298,8 +300,14 @@ export class EmployeesService {
     user: { userId: number; role: string },
   ): Promise<{ role: string; allowedModules: string[] }> {
     const ALL_MODULES = [
-      'properties', 'users', 'contracts', 'payments', 'maintenance',
-      'reports', 'config', 'employees',
+      'properties',
+      'users',
+      'contracts',
+      'payments',
+      'maintenance',
+      'reports',
+      'config',
+      'employees',
     ];
     const TECNICO_MODULES = ['maintenance'];
 

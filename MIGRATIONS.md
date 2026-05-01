@@ -72,6 +72,65 @@ ORDER BY table_name;
 | lifecycle-notifications | lifecycle_notification_log | ✅ Sprint 5 — Startup Migration |
 | billing-cron | Sin tablas nuevas — usa `payments` y `lifecycle_notification_log` | ✅ Sprint 5 |
 | contract-templates | contract_templates | ✅ Sprint 5 — Startup Migration |
+| property-types | property_types, property_subtypes | ✅ Sprint 6 — Startup Migration + Seed |
+
+---
+
+## Recent Changes (Sprint 6 — Catálogo de Tipos de Propiedad)
+
+### Problema resuelto
+Las tablas `property_types` y `property_subtypes` se crean y siembran durante el **provisionamiento** de cada tenant nuevo, pero `runStartupMigrations` no incluía ese paso. Los tenants creados antes de que se añadiera el seed quedaban con la tabla vacía, provocando que el dropdown de "Tipo de Propiedad" en el formulario de crear/editar propiedad apareciera sin opciones.
+
+### Archivo modificado
+- `src/tenants/tenants.service.ts` — nuevo paso `migratePropertyCatalog` al final de `runStartupMigrations`
+
+### Nuevo paso de migración (`migratePropertyCatalog`)
+
+Es un método autónomo e idempotente: crea las tablas si no existen **y** siembra los datos con `ON CONFLICT DO NOTHING`. Se puede ejecutar N veces sin efectos secundarios.
+
+```sql
+-- Crea property_types si no existe
+CREATE TABLE IF NOT EXISTS {schema}.property_types (
+  id         SERIAL       PRIMARY KEY,
+  name       VARCHAR      NOT NULL,
+  code       VARCHAR      NOT NULL UNIQUE,
+  is_active  BOOLEAN      NOT NULL DEFAULT true,
+  created_at TIMESTAMP    NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP    NOT NULL DEFAULT NOW()
+);
+
+-- Crea property_subtypes si no existe
+CREATE TABLE IF NOT EXISTS {schema}.property_subtypes (
+  id               SERIAL   PRIMARY KEY,
+  property_type_id INTEGER  NOT NULL REFERENCES {schema}.property_types(id),
+  name             VARCHAR  NOT NULL,
+  code             VARCHAR  NOT NULL UNIQUE,
+  is_active        BOOLEAN  NOT NULL DEFAULT true,
+  created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Siembra tipos (idempotente)
+INSERT INTO {schema}.property_types (name, code, is_active, ...)
+VALUES ('Residencial', 'RESIDENTIAL', true, ...), ('Comercial', 'COMMERCIAL', true, ...)
+ON CONFLICT (code) DO NOTHING;
+
+-- Siembra subtipos residenciales (CONDO_TOWNHOME, MULTI_FAMILY, SINGLE_FAMILY)
+-- Siembra subtipos comerciales (INDUSTRIAL, OFFICE, RENTAL, SHOPPING_CENTER, STORAGE, PARKING_SPACE)
+INSERT INTO {schema}.property_subtypes (...) VALUES (...) ON CONFLICT (code) DO NOTHING;
+```
+
+### Diferencia con `seedPropertyTypesAndSubtypes`
+
+| | `seedPropertyTypesAndSubtypes` | `migratePropertyCatalog` (nuevo) |
+|---|---|---|
+| Crea tablas si no existen | No | Sí — `CREATE TABLE IF NOT EXISTS` |
+| Lanza excepción si faltan tipos | Sí | No — retorna silenciosamente |
+| Úso | Provisionamiento de tenant nuevo | Startup migration (tenants existentes) |
+| Idempotente | Parcialmente | Completamente |
+
+### Por qué el seed del provisionamiento no era suficiente
+`seedPropertyTypesAndSubtypes` se llama en el paso 19 del flujo de creación de tenant. Si el tenant fue creado antes de que ese paso existiera, o si `createPropertiesTables` fue ejecutado sin el seed posterior, la tabla existía pero vacía. La solución correcta es que `runStartupMigrations` garantice el estado esperado al arrancar el backend.
 
 ---
 

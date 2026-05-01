@@ -66,9 +66,7 @@ export class ExpensesService {
         await this.generateRecurringExpenses(saved);
       }
 
-      this.logger.log(
-        `Expense created: ${saved.id}`,
-      );
+      this.logger.log(`Expense created: ${saved.id}`);
       return saved;
     } catch (error) {
       this.logger.error(`Error creating expense: ${error.message}`);
@@ -137,10 +135,7 @@ export class ExpensesService {
 
     query.orderBy('e.date', 'DESC').addOrderBy('e.id', 'DESC');
 
-    const [data, total] = await query
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+    const [data, total] = await query.skip(skip).take(limit).getManyAndCount();
 
     return { data, total };
   }
@@ -154,9 +149,7 @@ export class ExpensesService {
     });
 
     if (!expense) {
-      throw new NotFoundException(
-        `Gasto con ID ${expenseId} no encontrado`,
-      );
+      throw new NotFoundException(`Gasto con ID ${expenseId} no encontrado`);
     }
 
     return expense;
@@ -198,9 +191,7 @@ export class ExpensesService {
 
     const saved = await this.expenseRepository.save(updated);
 
-    this.logger.log(
-      `Expense updated: ${expenseId}`,
-    );
+    this.logger.log(`Expense updated: ${expenseId}`);
 
     return saved;
   }
@@ -220,9 +211,7 @@ export class ExpensesService {
 
     await this.expenseRepository.delete(expenseId);
 
-    this.logger.log(
-      `Expense deleted: ${expenseId}`,
-    );
+    this.logger.log(`Expense deleted: ${expenseId}`);
   }
 
   /**
@@ -302,11 +291,7 @@ export class ExpensesService {
     const summaries: Record<number, ExpenseSummary> = {};
 
     for (const propertyId of propertyIds) {
-      summaries[propertyId] = await this.getSummary(
-        propertyId,
-        from,
-        to,
-      );
+      summaries[propertyId] = await this.getSummary(propertyId, from, to);
     }
 
     return summaries;
@@ -322,9 +307,7 @@ export class ExpensesService {
    * Generar instancias futuras de un gasto recurrente
    * Genera gastos para los próximos 24 meses
    */
-  private async generateRecurringExpenses(
-    parent: Expense,
-  ): Promise<void> {
+  private async generateRecurringExpenses(parent: Expense): Promise<void> {
     if (!parent.is_recurring || !parent.recurrence_interval) {
       return;
     }

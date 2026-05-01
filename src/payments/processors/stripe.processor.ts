@@ -26,9 +26,7 @@ export class StripeProcessor implements IPaymentProcessor {
   //   this.stripe = new Stripe(config.get('STRIPE_SECRET_KEY'), { apiVersion: '2023-10-16' });
   // }
 
-  async createPayment(
-    _input: ProcessorPaymentInput,
-  ): Promise<ProcessorResult> {
+  async createPayment(_input: ProcessorPaymentInput): Promise<ProcessorResult> {
     // TODO: crear un PaymentIntent en Stripe
     // const paymentIntent = await this.stripe.paymentIntents.create({
     //   amount: Math.round(_input.amount * 100), // Stripe trabaja en centavos
@@ -41,9 +39,7 @@ export class StripeProcessor implements IPaymentProcessor {
     );
   }
 
-  async confirmPayment(
-    _transactionId: string,
-  ): Promise<ProcessorResult> {
+  async confirmPayment(_transactionId: string): Promise<ProcessorResult> {
     // TODO: capturar el PaymentIntent
     // await this.stripe.paymentIntents.capture(_transactionId);
     throw new NotImplementedException('Stripe: confirmPayment no implementado');

@@ -19,7 +19,10 @@ export class BlockDatesDto {
   @IsDateString({}, { each: true })
   dates: string[];
 
-  @ApiPropertyOptional({ example: 'Mantenimiento programado', description: 'Motivo del bloqueo' })
+  @ApiPropertyOptional({
+    example: 'Mantenimiento programado',
+    description: 'Motivo del bloqueo',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(200)

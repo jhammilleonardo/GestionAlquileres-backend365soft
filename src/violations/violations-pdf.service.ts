@@ -7,7 +7,12 @@ interface PdfDoc extends NodeJS.ReadableStream {
   font(font: string): PdfDoc;
   fillColor(color: string): PdfDoc;
   text(text: string, options?: Record<string, unknown>): PdfDoc;
-  text(text: string, x: number, y: number, options?: Record<string, unknown>): PdfDoc;
+  text(
+    text: string,
+    x: number,
+    y: number,
+    options?: Record<string, unknown>,
+  ): PdfDoc;
   moveDown(lines?: number): PdfDoc;
   moveTo(x: number, y: number): PdfDoc;
   lineTo(x: number, y: number): PdfDoc;
@@ -18,7 +23,9 @@ interface PdfDoc extends NodeJS.ReadableStream {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const PDFDocument = require('pdfkit') as new (options?: Record<string, unknown>) => PdfDoc;
+const PDFDocument = require('pdfkit') as new (
+  options?: Record<string, unknown>,
+) => PdfDoc;
 
 export interface ViolationPdfData {
   id: number;
@@ -46,7 +53,11 @@ const TYPE_LABELS: Record<string, string> = {
 @Injectable()
 export class ViolationsPdfService {
   private readonly logger = new Logger(ViolationsPdfService.name);
-  private readonly outputDir = path.join(process.cwd(), 'uploads', 'violations');
+  private readonly outputDir = path.join(
+    process.cwd(),
+    'uploads',
+    'violations',
+  );
 
   constructor() {
     if (!fs.existsSync(this.outputDir)) {
@@ -93,7 +104,9 @@ export class ViolationsPdfService {
       .font('Helvetica')
       .fontSize(10)
       .text(`Fecha: ${dateStr}`, { align: 'right' })
-      .text(`Referencia: VIO-${String(data.id).padStart(6, '0')}`, { align: 'right' })
+      .text(`Referencia: VIO-${String(data.id).padStart(6, '0')}`, {
+        align: 'right',
+      })
       .moveDown(1);
 
     const lineY = doc.y;
@@ -147,9 +160,9 @@ export class ViolationsPdfService {
       .fontSize(10)
       .text(
         'Esta notificación formal le informa que se ha registrado una infracción al reglamento ' +
-        'de convivencia o al contrato de arrendamiento. Le solicitamos que corrija esta situación ' +
-        'en un plazo máximo de 72 horas desde la recepción de este documento. ' +
-        'El incumplimiento reiterado podrá derivar en acciones legales y/o la terminación del contrato.',
+          'de convivencia o al contrato de arrendamiento. Le solicitamos que corrija esta situación ' +
+          'en un plazo máximo de 72 horas desde la recepción de este documento. ' +
+          'El incumplimiento reiterado podrá derivar en acciones legales y/o la terminación del contrato.',
         { align: 'justify' },
       )
       .moveDown(1.5);

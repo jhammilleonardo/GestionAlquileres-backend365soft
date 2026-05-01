@@ -56,7 +56,9 @@ export class RentalOwnersController {
       'Retorna todos los propietarios con número de propiedades asignadas y saldo pendiente del mes en curso.',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiOkResponse({ description: 'Lista de propietarios con resumen financiero' })
+  @ApiOkResponse({
+    description: 'Lista de propietarios con resumen financiero',
+  })
   async findAll(@Param('slug') _slug: string) {
     return this.rentalOwnersService.findAll();
   }
@@ -68,7 +70,9 @@ export class RentalOwnersController {
   @ApiOperation({ summary: 'Obtener propietario por ID' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Datos completos del propietario incluyendo banco' })
+  @ApiOkResponse({
+    description: 'Datos completos del propietario incluyendo banco',
+  })
   @ApiNotFoundResponse({ description: 'Propietario no encontrado' })
   async findOne(
     @Param('slug') _slug: string,
@@ -110,7 +114,9 @@ export class RentalOwnersController {
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Propietario actualizado' })
   @ApiNotFoundResponse({ description: 'Propietario no encontrado' })
-  @ApiConflictResponse({ description: 'El email ya está en uso por otro propietario' })
+  @ApiConflictResponse({
+    description: 'El email ya está en uso por otro propietario',
+  })
   async update(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -178,7 +184,9 @@ export class RentalOwnersController {
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Historial de pagos agrupado por período y propiedad' })
+  @ApiOkResponse({
+    description: 'Historial de pagos agrupado por período y propiedad',
+  })
   @ApiNotFoundResponse({ description: 'Propietario no encontrado' })
   async getStatements(
     @Param('slug') _slug: string,

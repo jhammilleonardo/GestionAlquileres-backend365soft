@@ -27,7 +27,13 @@ import { QRBoliviaProcessor } from './processors/qr-bolivia.processor';
  *   - PaymentProcessorFactory → selecciona el procesador según tenant_config.payment_methods
  */
 @Module({
-  imports: [TenantsModule, NotificationsModule, OwnerStatementsModule, SplitPaymentModule, AuditLogsModule],
+  imports: [
+    TenantsModule,
+    NotificationsModule,
+    OwnerStatementsModule,
+    SplitPaymentModule,
+    AuditLogsModule,
+  ],
   controllers: [AdminPaymentsController, TenantPaymentsController],
   providers: [
     PaymentsService,

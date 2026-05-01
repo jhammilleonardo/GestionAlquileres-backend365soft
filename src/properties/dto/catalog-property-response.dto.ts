@@ -58,7 +58,7 @@ export class CatalogPropertyDetailResponseDto {
   is_furnished: boolean;
   latitude?: number;
   longitude?: number;
-  
+
   // Relaciones
   property_type: {
     id: number;
@@ -70,7 +70,7 @@ export class CatalogPropertyDetailResponseDto {
     name: string;
     code: string;
   };
-  
+
   addresses: Array<{
     id: number;
     address_type: string;

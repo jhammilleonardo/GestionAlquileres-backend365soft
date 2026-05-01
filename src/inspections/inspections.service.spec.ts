@@ -25,7 +25,10 @@ describe('InspectionsService', () => {
       providers: [
         InspectionsService,
         { provide: getDataSourceToken(), useValue: mockDataSource },
-        { provide: LifecycleNotificationsService, useValue: mockLifecycleNotificationsService },
+        {
+          provide: LifecycleNotificationsService,
+          useValue: mockLifecycleNotificationsService,
+        },
       ],
     }).compile();
 
@@ -68,14 +71,18 @@ describe('InspectionsService', () => {
 
     it('debe insertar los ítems cuando se proporcionan en el DTO', async () => {
       const created = { id: 2, type: 'move_in', status: 'scheduled' };
-      const fullInspection = { ...created, property_title: 'Casa B', items: [] };
+      const fullInspection = {
+        ...created,
+        property_title: 'Casa B',
+        items: [],
+      };
 
       mockDataSource.query
-        .mockResolvedValueOnce([created])             // INSERT inspections
-        .mockResolvedValueOnce(undefined)              // INSERT item 1
-        .mockResolvedValueOnce(undefined)              // INSERT item 2
-        .mockResolvedValueOnce([fullInspection])       // findOne SELECT
-        .mockResolvedValueOnce([]);                    // findOne items
+        .mockResolvedValueOnce([created]) // INSERT inspections
+        .mockResolvedValueOnce(undefined) // INSERT item 1
+        .mockResolvedValueOnce(undefined) // INSERT item 2
+        .mockResolvedValueOnce([fullInspection]) // findOne SELECT
+        .mockResolvedValueOnce([]); // findOne items
 
       await service.create(
         SCHEMA,
@@ -104,19 +111,24 @@ describe('InspectionsService', () => {
       const updated = { id: 1, status: 'in_progress', items: [] };
 
       mockDataSource.query
-        .mockResolvedValueOnce([scheduled])   // SELECT inspections status
+        .mockResolvedValueOnce([scheduled]) // SELECT inspections status
         .mockResolvedValueOnce([{ id: 10 }]) // SELECT item exists
-        .mockResolvedValueOnce(undefined)     // UPDATE item
-        .mockResolvedValueOnce(undefined)     // UPDATE status → in_progress
-        .mockResolvedValueOnce([updated])     // findOne SELECT
-        .mockResolvedValueOnce([]);           // findOne items
+        .mockResolvedValueOnce(undefined) // UPDATE item
+        .mockResolvedValueOnce(undefined) // UPDATE status → in_progress
+        .mockResolvedValueOnce([updated]) // findOne SELECT
+        .mockResolvedValueOnce([]); // findOne items
 
       const result = await service.updateItems(
         SCHEMA,
         1,
         {
           items: [
-            { id: 10, area: 'kitchen' as any, item_name: 'Cocina', condition: 'good' as any },
+            {
+              id: 10,
+              area: 'kitchen' as any,
+              item_name: 'Cocina',
+              condition: 'good' as any,
+            },
           ],
         },
         42,
@@ -134,15 +146,21 @@ describe('InspectionsService', () => {
 
       mockDataSource.query
         .mockResolvedValueOnce([inProgress]) // SELECT status
-        .mockResolvedValueOnce(undefined)    // INSERT item (no id)
-        .mockResolvedValueOnce([afterUpdate])// findOne SELECT
-        .mockResolvedValueOnce([]);          // findOne items
+        .mockResolvedValueOnce(undefined) // INSERT item (no id)
+        .mockResolvedValueOnce([afterUpdate]) // findOne SELECT
+        .mockResolvedValueOnce([]); // findOne items
 
       await service.updateItems(
         SCHEMA,
         1,
         {
-          items: [{ area: 'bedroom' as any, item_name: 'Piso', condition: 'fair' as any }],
+          items: [
+            {
+              area: 'bedroom' as any,
+              item_name: 'Piso',
+              condition: 'fair' as any,
+            },
+          ],
         },
         42,
       );
@@ -157,16 +175,22 @@ describe('InspectionsService', () => {
 
       mockDataSource.query
         .mockResolvedValueOnce([inProgress]) // SELECT status
-        .mockResolvedValueOnce(undefined)    // INSERT item
-        .mockResolvedValueOnce(undefined)    // UPDATE status → completed
-        .mockResolvedValueOnce([completed])  // findOne SELECT
-        .mockResolvedValueOnce([]);          // findOne items
+        .mockResolvedValueOnce(undefined) // INSERT item
+        .mockResolvedValueOnce(undefined) // UPDATE status → completed
+        .mockResolvedValueOnce([completed]) // findOne SELECT
+        .mockResolvedValueOnce([]); // findOne items
 
       const result = await service.updateItems(
         SCHEMA,
         1,
         {
-          items: [{ area: 'living_room' as any, item_name: 'Sala', condition: 'good' as any }],
+          items: [
+            {
+              area: 'living_room' as any,
+              item_name: 'Sala',
+              condition: 'good' as any,
+            },
+          ],
           complete: true,
         },
         42,
@@ -187,7 +211,9 @@ describe('InspectionsService', () => {
     });
 
     it('debe lanzar BadRequestException si la inspección ya está completed', async () => {
-      mockDataSource.query.mockResolvedValueOnce([{ id: 1, status: 'completed' }]);
+      mockDataSource.query.mockResolvedValueOnce([
+        { id: 1, status: 'completed' },
+      ]);
 
       await expect(
         service.updateItems(SCHEMA, 1, { items: [] }, 1),
@@ -233,7 +259,7 @@ describe('InspectionsService', () => {
 
       mockDataSource.query
         .mockResolvedValueOnce([inspection]) // findOne SELECT
-        .mockResolvedValueOnce(items);       // findOne items
+        .mockResolvedValueOnce(items); // findOne items
 
       const result = await service.generatePdf(SCHEMA, 5);
 
@@ -264,21 +290,42 @@ describe('InspectionsService', () => {
   describe('compare', () => {
     it('debe retornar comparativo con ítems degradados detectados', async () => {
       const moveInFull = {
-        id: 1, type: 'move_in', status: 'completed', scheduled_date: '2026-01-01',
+        id: 1,
+        type: 'move_in',
+        status: 'completed',
+        scheduled_date: '2026-01-01',
         property_title: 'Casa X',
         items: [
-          { id: 1, area: 'living_room', item_name: 'Paredes', condition: 'good', notes: null, photos: [] },
+          {
+            id: 1,
+            area: 'living_room',
+            item_name: 'Paredes',
+            condition: 'good',
+            notes: null,
+            photos: [],
+          },
         ],
       };
       const moveOutFull = {
-        id: 2, type: 'move_out', status: 'completed', scheduled_date: '2026-04-01',
+        id: 2,
+        type: 'move_out',
+        status: 'completed',
+        scheduled_date: '2026-04-01',
         property_title: 'Casa X',
         items: [
-          { id: 3, area: 'living_room', item_name: 'Paredes', condition: 'damaged', notes: 'Hueco', photos: [] },
+          {
+            id: 3,
+            area: 'living_room',
+            item_name: 'Paredes',
+            condition: 'damaged',
+            notes: 'Hueco',
+            photos: [],
+          },
         ],
       };
 
-      jest.spyOn(service, 'findOne')
+      jest
+        .spyOn(service, 'findOne')
         .mockResolvedValueOnce(moveInFull as any)
         .mockResolvedValueOnce(moveOutFull as any);
 
@@ -294,17 +341,26 @@ describe('InspectionsService', () => {
 
     it('debe lanzar BadRequestException si el tipo de la inspección es incorrecto', async () => {
       const wrongTypeFull = {
-        id: 1, type: 'periodic', status: 'completed', items: [],
+        id: 1,
+        type: 'periodic',
+        status: 'completed',
+        items: [],
       };
       const moveOutFull = {
-        id: 2, type: 'move_out', status: 'completed', items: [],
+        id: 2,
+        type: 'move_out',
+        status: 'completed',
+        items: [],
       };
 
-      jest.spyOn(service, 'findOne')
+      jest
+        .spyOn(service, 'findOne')
         .mockResolvedValueOnce(wrongTypeFull as any)
         .mockResolvedValueOnce(moveOutFull as any);
 
-      await expect(service.compare(SCHEMA, 1, 2)).rejects.toThrow(BadRequestException);
+      await expect(service.compare(SCHEMA, 1, 2)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

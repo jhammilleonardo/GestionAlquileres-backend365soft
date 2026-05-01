@@ -440,7 +440,7 @@ export class InspectionsService {
         other: 'Otro',
       };
 
-      const byArea = (inspection.items as InspectionItemRow[]).reduce<
+      const byArea = inspection.items.reduce<
         Record<string, InspectionItemRow[]>
       >((acc, item) => {
         if (!acc[item.area]) acc[item.area] = [];
@@ -510,8 +510,8 @@ export class InspectionsService {
       );
     }
 
-    const moveInItems = moveIn.items as InspectionItemRow[];
-    const moveOutItems = moveOut.items as InspectionItemRow[];
+    const moveInItems = moveIn.items;
+    const moveOutItems = moveOut.items;
 
     // Empareja por area + item_name (case-insensitive)
     const comparison = moveInItems.map((inItem) => {

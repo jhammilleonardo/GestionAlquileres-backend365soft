@@ -36,7 +36,9 @@ export class EmployeesController {
 
   @Get('my-permissions')
   @Roles('ADMIN', 'SUPERADMIN', 'EMPLEADO', 'TECNICO')
-  @ApiOperation({ summary: 'Permisos del usuario logueado — usado por el sidebar' })
+  @ApiOperation({
+    summary: 'Permisos del usuario logueado — usado por el sidebar',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   async getMyPermissions(@Request() req: any, @CurrentTenant() tenant: any) {
     return this.employeesService.getMyPermissions(tenant.schema_name, req.user);

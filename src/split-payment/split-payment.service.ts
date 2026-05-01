@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
@@ -52,8 +48,12 @@ export class SplitPaymentService {
     commissionPercentage: number,
     maintenanceDeductions: number,
   ): SplitCalculation {
-    const commissionAmount = this.round2(grossRent * commissionPercentage / 100);
-    const netAmount = this.round2(grossRent - commissionAmount - maintenanceDeductions);
+    const commissionAmount = this.round2(
+      (grossRent * commissionPercentage) / 100,
+    );
+    const netAmount = this.round2(
+      grossRent - commissionAmount - maintenanceDeductions,
+    );
     return { grossRent, commissionAmount, maintenanceDeductions, netAmount };
   }
 
@@ -89,22 +89,34 @@ export class SplitPaymentService {
    * Si la propiedad no tiene propietarios, termina sin error.
    */
   async executeSplit(params: ExecuteSplitParams): Promise<void> {
-    const { paymentId, totalAmount, propertyId, paymentDate, currency, schemaName, unitId } = params;
+    const {
+      paymentId,
+      totalAmount,
+      propertyId,
+      paymentDate,
+      currency,
+      schemaName,
+      unitId,
+    } = params;
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      await queryRunner.query(`SET search_path TO ${quoteIdent(schemaName)}, public`);
+      await queryRunner.query(
+        `SET search_path TO ${quoteIdent(schemaName)}, public`,
+      );
 
       // 1. Leer commission_percentage del tenant
-      const configRows: { commission_percentage: number }[] = await queryRunner.query(
-        `SELECT commission_percentage FROM ${quoteIdent(schemaName)}.tenant_config LIMIT 1`,
-      );
-      const commissionPercentage = configRows.length > 0
-        ? Number(configRows[0].commission_percentage ?? 0)
-        : 0;
+      const configRows: { commission_percentage: number }[] =
+        await queryRunner.query(
+          `SELECT commission_percentage FROM ${quoteIdent(schemaName)}.tenant_config LIMIT 1`,
+        );
+      const commissionPercentage =
+        configRows.length > 0
+          ? Number(configRows[0].commission_percentage ?? 0)
+          : 0;
 
       // 2. Leer costos de mantenimiento autorizados para la propiedad en el período
       const { month, year } = this.extractPeriod(paymentDate);
@@ -117,15 +129,18 @@ export class SplitPaymentService {
       );
 
       // 3. Leer propietarios de la propiedad
-      const owners: { rental_owner_id: number; owner_name: string; ownership_percentage: number }[] =
-        await queryRunner.query(
-          `SELECT po.rental_owner_id, ro.name AS owner_name, po.ownership_percentage
+      const owners: {
+        rental_owner_id: number;
+        owner_name: string;
+        ownership_percentage: number;
+      }[] = await queryRunner.query(
+        `SELECT po.rental_owner_id, ro.name AS owner_name, po.ownership_percentage
            FROM ${quoteIdent(schemaName)}.property_owners po
            JOIN ${quoteIdent(schemaName)}.rental_owners ro ON ro.id = po.rental_owner_id
            WHERE po.property_id = $1
              AND po.ownership_percentage > 0`,
-          [propertyId],
-        );
+        [propertyId],
+      );
 
       if (!owners || owners.length === 0) {
         await queryRunner.commitTransaction();
@@ -134,9 +149,17 @@ export class SplitPaymentService {
 
       // 4. Calcular y persistir split por propietario
       for (const owner of owners) {
-        const grossRent = this.round2(totalAmount * owner.ownership_percentage / 100);
-        const ownerMaintenance = this.round2(maintenanceDeductions * owner.ownership_percentage / 100);
-        const split = this.calculateSplit(grossRent, commissionPercentage, ownerMaintenance);
+        const grossRent = this.round2(
+          (totalAmount * owner.ownership_percentage) / 100,
+        );
+        const ownerMaintenance = this.round2(
+          (maintenanceDeductions * owner.ownership_percentage) / 100,
+        );
+        const split = this.calculateSplit(
+          grossRent,
+          commissionPercentage,
+          ownerMaintenance,
+        );
 
         // 4a. Registrar en payment_splits
         await queryRunner.query(
@@ -172,7 +195,10 @@ export class SplitPaymentService {
     } catch (error: unknown) {
       await queryRunner.rollbackTransaction();
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Split payment fallido para pago #${paymentId}: ${message}`, error instanceof Error ? error.stack : undefined);
+      this.logger.error(
+        `Split payment fallido para pago #${paymentId}: ${message}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -219,7 +245,16 @@ export class SplitPaymentService {
       schemaName: string;
     },
   ): Promise<void> {
-    const { rentalOwnerId, propertyId, unitId, month, year, split, currency, schemaName } = params;
+    const {
+      rentalOwnerId,
+      propertyId,
+      unitId,
+      month,
+      year,
+      split,
+      currency,
+      schemaName,
+    } = params;
 
     // Verificar si ya existe un statement para este propietario/propiedad/período
     const existing: { id: number }[] = await queryRunner.query(

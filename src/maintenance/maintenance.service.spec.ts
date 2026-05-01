@@ -62,35 +62,51 @@ describe('MaintenanceService — Stage Pipeline', () => {
     });
 
     it('debe permitir ASSIGNED → SCHEDULED', () => {
-      expect(service.isValidStageTransition('ASSIGNED', 'SCHEDULED')).toBe(true);
+      expect(service.isValidStageTransition('ASSIGNED', 'SCHEDULED')).toBe(
+        true,
+      );
     });
 
     it('debe permitir SCHEDULED → IN_PROGRESS', () => {
-      expect(service.isValidStageTransition('SCHEDULED', 'IN_PROGRESS')).toBe(true);
+      expect(service.isValidStageTransition('SCHEDULED', 'IN_PROGRESS')).toBe(
+        true,
+      );
     });
 
     it('debe permitir IN_PROGRESS → COMPLETED', () => {
-      expect(service.isValidStageTransition('IN_PROGRESS', 'COMPLETED')).toBe(true);
+      expect(service.isValidStageTransition('IN_PROGRESS', 'COMPLETED')).toBe(
+        true,
+      );
     });
 
     it('debe permitir COMPLETED → REPORTED_TO_OWNER', () => {
-      expect(service.isValidStageTransition('COMPLETED', 'REPORTED_TO_OWNER')).toBe(true);
+      expect(
+        service.isValidStageTransition('COMPLETED', 'REPORTED_TO_OWNER'),
+      ).toBe(true);
     });
 
     it('debe rechazar REPORTED → IN_PROGRESS (saltar etapas)', () => {
-      expect(service.isValidStageTransition('REPORTED', 'IN_PROGRESS')).toBe(false);
+      expect(service.isValidStageTransition('REPORTED', 'IN_PROGRESS')).toBe(
+        false,
+      );
     });
 
     it('debe rechazar REPORTED → COMPLETED (saltar etapas)', () => {
-      expect(service.isValidStageTransition('REPORTED', 'COMPLETED')).toBe(false);
+      expect(service.isValidStageTransition('REPORTED', 'COMPLETED')).toBe(
+        false,
+      );
     });
 
     it('debe rechazar IN_PROGRESS → ASSIGNED (retroceder)', () => {
-      expect(service.isValidStageTransition('IN_PROGRESS', 'ASSIGNED')).toBe(false);
+      expect(service.isValidStageTransition('IN_PROGRESS', 'ASSIGNED')).toBe(
+        false,
+      );
     });
 
     it('debe rechazar COMPLETED → SCHEDULED (retroceder)', () => {
-      expect(service.isValidStageTransition('COMPLETED', 'SCHEDULED')).toBe(false);
+      expect(service.isValidStageTransition('COMPLETED', 'SCHEDULED')).toBe(
+        false,
+      );
     });
 
     it('debe rechazar etapa desconocida', () => {
@@ -98,7 +114,9 @@ describe('MaintenanceService — Stage Pipeline', () => {
     });
 
     it('debe rechazar REPORTED_TO_OWNER → cualquier etapa (estado final)', () => {
-      expect(service.isValidStageTransition('REPORTED_TO_OWNER', 'COMPLETED')).toBe(false);
+      expect(
+        service.isValidStageTransition('REPORTED_TO_OWNER', 'COMPLETED'),
+      ).toBe(false);
     });
   });
 
@@ -128,7 +146,9 @@ describe('MaintenanceService — Stage Pipeline', () => {
     });
 
     it('debe rechazar REPORTED_TO_OWNER (solo admin)', () => {
-      expect(service.isTechnicianAllowedTarget('REPORTED_TO_OWNER')).toBe(false);
+      expect(service.isTechnicianAllowedTarget('REPORTED_TO_OWNER')).toBe(
+        false,
+      );
     });
   });
 
@@ -137,7 +157,12 @@ describe('MaintenanceService — Stage Pipeline', () => {
   describe('changeStage', () => {
     it('debe lanzar BadRequestException para transición inválida', async () => {
       const query = jest.fn().mockResolvedValue([
-        { id: 1, current_stage: 'REPORTED', ticket_number: 'MNT-2025-AAA', owner_authorized: false },
+        {
+          id: 1,
+          current_stage: 'REPORTED',
+          ticket_number: 'MNT-2025-AAA',
+          owner_authorized: false,
+        },
       ]);
       const service = await makeModule(query);
 
@@ -150,7 +175,17 @@ describe('MaintenanceService — Stage Pipeline', () => {
       const query = jest
         .fn()
         // findOne → SELECT maintenance_requests
-        .mockResolvedValueOnce([{ id: 1, current_stage: 'SCHEDULED', ticket_number: 'T', owner_authorized: false, property: {}, contract: {}, tenant: {} }])
+        .mockResolvedValueOnce([
+          {
+            id: 1,
+            current_stage: 'SCHEDULED',
+            ticket_number: 'T',
+            owner_authorized: false,
+            property: {},
+            contract: {},
+            tenant: {},
+          },
+        ])
         // messages
         .mockResolvedValueOnce([])
         // attachments
@@ -160,9 +195,9 @@ describe('MaintenanceService — Stage Pipeline', () => {
 
       const service = await makeModule(query);
 
-      await expect(
-        service.changeStage(1, 'IN_PROGRESS', 99),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.changeStage(1, 'IN_PROGRESS', 99)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe avanzar etapa correctamente cuando la transición es válida', async () => {
@@ -178,7 +213,17 @@ describe('MaintenanceService — Stage Pipeline', () => {
       const query = jest
         .fn()
         // findOne (primera llamada — request actual)
-        .mockResolvedValueOnce([{ id: 1, current_stage: 'REPORTED', ticket_number: 'T', owner_authorized: false, property: {}, contract: {}, tenant: {} }])
+        .mockResolvedValueOnce([
+          {
+            id: 1,
+            current_stage: 'REPORTED',
+            ticket_number: 'T',
+            owner_authorized: false,
+            property: {},
+            contract: {},
+            tenant: {},
+          },
+        ])
         .mockResolvedValueOnce([]) // messages
         .mockResolvedValueOnce([]) // attachments
         // UPDATE maintenance_requests
@@ -200,7 +245,17 @@ describe('MaintenanceService — Stage Pipeline', () => {
       const query = jest
         .fn()
         // findOne inicial
-        .mockResolvedValueOnce([{ id: 1, current_stage: 'IN_PROGRESS', ticket_number: 'T', owner_authorized: false, property: {}, contract: {}, tenant: {} }])
+        .mockResolvedValueOnce([
+          {
+            id: 1,
+            current_stage: 'IN_PROGRESS',
+            ticket_number: 'T',
+            owner_authorized: false,
+            property: {},
+            contract: {},
+            tenant: {},
+          },
+        ])
         .mockResolvedValueOnce([]) // messages
         .mockResolvedValueOnce([]) // attachments
         // UPDATE maintenance_requests
@@ -212,7 +267,17 @@ describe('MaintenanceService — Stage Pipeline', () => {
         // admins
         .mockResolvedValueOnce([{ id: 10 }])
         // findOne final
-        .mockResolvedValueOnce([{ id: 1, current_stage: 'COMPLETED', ticket_number: 'T', owner_authorized: false, property: {}, contract: {}, tenant: {} }])
+        .mockResolvedValueOnce([
+          {
+            id: 1,
+            current_stage: 'COMPLETED',
+            ticket_number: 'T',
+            owner_authorized: false,
+            property: {},
+            contract: {},
+            tenant: {},
+          },
+        ])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
@@ -238,13 +303,17 @@ describe('MaintenanceService — Stage Pipeline', () => {
           { provide: DataSource, useValue: { query } },
           {
             provide: NotificationsService,
-            useValue: { createForUser: jest.fn().mockResolvedValue({}), notifyAdmins: jest.fn() },
+            useValue: {
+              createForUser: jest.fn().mockResolvedValue({}),
+              notifyAdmins: jest.fn(),
+            },
           },
         ],
       }).compile();
 
       const service = module.get<MaintenanceService>(MaintenanceService);
-      const notifService = module.get<NotificationsService>(NotificationsService);
+      const notifService =
+        module.get<NotificationsService>(NotificationsService);
 
       await service.changeStage(1, 'COMPLETED', 99);
       expect(notifService.createForUser).toHaveBeenCalledWith(
@@ -284,7 +353,16 @@ describe('MaintenanceService — Stage Pipeline', () => {
       const query = jest
         .fn()
         // findOne
-        .mockResolvedValueOnce([{ id: 5, current_stage: 'SCHEDULED', ticket_number: 'T', property: {}, contract: {}, tenant: {} }])
+        .mockResolvedValueOnce([
+          {
+            id: 5,
+            current_stage: 'SCHEDULED',
+            ticket_number: 'T',
+            property: {},
+            contract: {},
+            tenant: {},
+          },
+        ])
         .mockResolvedValueOnce([]) // messages
         .mockResolvedValueOnce([]) // attachments
         // UPDATE owner_authorized
@@ -296,7 +374,7 @@ describe('MaintenanceService — Stage Pipeline', () => {
 
       const updateCall = query.mock.calls.find(
         (c: unknown[]) =>
-          typeof c[0] === 'string' && (c[0] as string).includes('owner_authorized'),
+          typeof c[0] === 'string' && c[0].includes('owner_authorized'),
       );
       expect(updateCall).toBeDefined();
     });

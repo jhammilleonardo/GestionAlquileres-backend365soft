@@ -54,35 +54,108 @@ export class TenantsService implements OnModuleInit {
       let stepsFailed = 0;
 
       const steps: Array<[string, () => Promise<void>]> = [
-        ['migratePropertyColumns', () => this.migratePropertyColumns(schema_name)],
+        [
+          'migratePropertyColumns',
+          () => this.migratePropertyColumns(schema_name),
+        ],
         ['migrateImagesToJson', () => this.migrateImagesToJson(schema_name)],
         ['createPaymentsTables', () => this.createPaymentsTables(schema_name)],
-        ['migrateContractsApplicationId', () => this.migrateContractsApplicationId(schema_name)],
-        ['migrateEmployeeTables', () => this.migrateEmployeeTables(schema_name)],
-        ['createTenantConfigTable', () => this.createTenantConfigTable(schema_name)],
-        ['createPropertyLeadsTable', () => this.createPropertyLeadsTable(schema_name)],
+        [
+          'migrateContractsApplicationId',
+          () => this.migrateContractsApplicationId(schema_name),
+        ],
+        [
+          'migrateEmployeeTables',
+          () => this.migrateEmployeeTables(schema_name),
+        ],
+        [
+          'createTenantConfigTable',
+          () => this.createTenantConfigTable(schema_name),
+        ],
+        [
+          'createPropertyLeadsTable',
+          () => this.createPropertyLeadsTable(schema_name),
+        ],
         ['createUnitsTables', () => this.createUnitsTables(schema_name)],
-        ['migrateContractsUnitId', () => this.migrateContractsUnitId(schema_name)],
-        ['migrateRentalOwnersBankFields', () => this.migrateRentalOwnersBankFields(schema_name)],
-        ['migrateApplicationsScreeningFields', () => this.migrateApplicationsScreeningFields(schema_name)],
-        ['createScreeningChecklistTable', () => this.createScreeningChecklistTable(schema_name)],
-        ['migrateMaintenanceStageFields', () => this.migrateMaintenanceStageFields(schema_name)],
-        ['createMaintenanceStageHistoryTable', () => this.createMaintenanceStageHistoryTable(schema_name)],
-        ['migrateOwnerStatementsFields', () => this.migrateOwnerStatementsFields(schema_name)],
-        ['createInspectionsTables', () => this.createInspectionsTables(schema_name)],
+        [
+          'migrateContractsUnitId',
+          () => this.migrateContractsUnitId(schema_name),
+        ],
+        [
+          'migrateRentalOwnersBankFields',
+          () => this.migrateRentalOwnersBankFields(schema_name),
+        ],
+        [
+          'migrateApplicationsScreeningFields',
+          () => this.migrateApplicationsScreeningFields(schema_name),
+        ],
+        [
+          'createScreeningChecklistTable',
+          () => this.createScreeningChecklistTable(schema_name),
+        ],
+        [
+          'migrateMaintenanceStageFields',
+          () => this.migrateMaintenanceStageFields(schema_name),
+        ],
+        [
+          'createMaintenanceStageHistoryTable',
+          () => this.createMaintenanceStageHistoryTable(schema_name),
+        ],
+        [
+          'migrateOwnerStatementsFields',
+          () => this.migrateOwnerStatementsFields(schema_name),
+        ],
+        [
+          'createInspectionsTables',
+          () => this.createInspectionsTables(schema_name),
+        ],
         ['migrateExpensesTable', () => this.migrateExpensesTable(schema_name)],
-        ['migrateUserRolePropietario', () => this.migrateUserRolePropietario(schema_name)],
-        ['createViolationsTable', () => this.createViolationsTable(schema_name)],
+        [
+          'migrateUserRolePropietario',
+          () => this.migrateUserRolePropietario(schema_name),
+        ],
+        [
+          'createViolationsTable',
+          () => this.createViolationsTable(schema_name),
+        ],
         ['createVendorsTable', () => this.createVendorsTable(schema_name)],
-        ['migrateMaintenanceVendorFields', () => this.migrateMaintenanceVendorFields(schema_name)],
-        ['migrateUnitsShortTermFields', () => this.migrateUnitsShortTermFields(schema_name)],
-        ['createPropertyAvailabilityTable', () => this.createPropertyAvailabilityTable(schema_name)],
-        ['createReservationsTable', () => this.createReservationsTable(schema_name)],
-        ['createLifecycleNotificationLog', () => this.createLifecycleNotificationLog(schema_name)],
-        ['createContractTemplatesTable', () => this.createContractTemplatesTable(schema_name)],
+        [
+          'migrateMaintenanceVendorFields',
+          () => this.migrateMaintenanceVendorFields(schema_name),
+        ],
+        [
+          'migrateUnitsShortTermFields',
+          () => this.migrateUnitsShortTermFields(schema_name),
+        ],
+        [
+          'createPropertyAvailabilityTable',
+          () => this.createPropertyAvailabilityTable(schema_name),
+        ],
+        [
+          'createReservationsTable',
+          () => this.createReservationsTable(schema_name),
+        ],
+        [
+          'createLifecycleNotificationLog',
+          () => this.createLifecycleNotificationLog(schema_name),
+        ],
+        [
+          'createContractTemplatesTable',
+          () => this.createContractTemplatesTable(schema_name),
+        ],
         ['createAuditLogsTable', () => this.createAuditLogsTable(schema_name)],
-        ['createTenantWebsiteTable', () => this.createTenantWebsiteTable(schema_name)],
-        ['createWebsiteContactsTable', () => this.createWebsiteContactsTable(schema_name)],
+        [
+          'createTenantWebsiteTable',
+          () => this.createTenantWebsiteTable(schema_name),
+        ],
+        [
+          'createWebsiteContactsTable',
+          () => this.createWebsiteContactsTable(schema_name),
+        ],
+        [
+          'migratePropertyCatalog',
+          () => this.migratePropertyCatalog(schema_name),
+        ],
       ];
 
       for (const [stepName, step] of steps) {
@@ -90,15 +163,20 @@ export class TenantsService implements OnModuleInit {
           await step();
         } catch (error: unknown) {
           stepsFailed++;
-          const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`[${schema_name}] Step ${stepName} failed (non-fatal): ${message}`);
+          const message =
+            error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `[${schema_name}] Step ${stepName} failed (non-fatal): ${message}`,
+          );
         }
       }
 
       if (stepsFailed === 0) {
         this.logger.log(`Schema ${schema_name} migrated successfully.`);
       } else {
-        this.logger.warn(`Schema ${schema_name} migrated with ${stepsFailed} step(s) skipped.`);
+        this.logger.warn(
+          `Schema ${schema_name} migrated with ${stepsFailed} step(s) skipped.`,
+        );
       }
     }
 
@@ -149,7 +227,9 @@ export class TenantsService implements OnModuleInit {
       return; // Ya es json o la columna no existe
     }
 
-    this.logger.log(`Migrating images column (text[] → json) in ${quoteIdent(schemaName)}`);
+    this.logger.log(
+      `Migrating images column (text[] → json) in ${quoteIdent(schemaName)}`,
+    );
     await this.dataSource.query(
       `ALTER TABLE ${quoteIdent(schemaName)}.properties ADD COLUMN IF NOT EXISTS images_json json DEFAULT '[]'`,
     );
@@ -240,7 +320,11 @@ export class TenantsService implements OnModuleInit {
       date_format: string;
       rental_type: string;
       payment_methods: string[];
-      notification_channels: { email: boolean; whatsapp: boolean; internal: boolean };
+      notification_channels: {
+        email: boolean;
+        whatsapp: boolean;
+        internal: boolean;
+      };
       commission_percentage: number;
       grace_days_late_fee: number;
       late_fee_percentage: number;
@@ -382,13 +466,15 @@ export class TenantsService implements OnModuleInit {
    * Agrega los campos bancarios a rental_owners para schemas existentes.
    * Idempotente: usa ADD COLUMN IF NOT EXISTS.
    */
-  private async migrateRentalOwnersBankFields(schemaName: string): Promise<void> {
+  private async migrateRentalOwnersBankFields(
+    schemaName: string,
+  ): Promise<void> {
     const columns: [string, string][] = [
-      ['bank_name',           'VARCHAR(100) NULL'],
-      ['account_number',      'VARCHAR(50)  NULL'],
-      ['account_type',        'VARCHAR(20)  NULL'],
+      ['bank_name', 'VARCHAR(100) NULL'],
+      ['account_number', 'VARCHAR(50)  NULL'],
+      ['account_type', 'VARCHAR(20)  NULL'],
       ['account_holder_name', 'VARCHAR(150) NULL'],
-      ['cbu_iban',            'VARCHAR(50)  NULL'],
+      ['cbu_iban', 'VARCHAR(50)  NULL'],
     ];
 
     for (const [col, def] of columns) {
@@ -404,7 +490,9 @@ export class TenantsService implements OnModuleInit {
    *   - status         ('pending' | 'transferred', default 'pending')
    *   - transferred_at (timestamp nullable)
    */
-  private async migrateOwnerStatementsFields(schemaName: string): Promise<void> {
+  private async migrateOwnerStatementsFields(
+    schemaName: string,
+  ): Promise<void> {
     await this.dataSource.query(`
       CREATE TABLE IF NOT EXISTS ${schemaName}.owner_statements (
         id                    SERIAL PRIMARY KEY,
@@ -451,14 +539,18 @@ export class TenantsService implements OnModuleInit {
   }
 
   /** Agrega screening_fee_paid a rental_applications para schemas existentes. */
-  private async migrateApplicationsScreeningFields(schemaName: string): Promise<void> {
+  private async migrateApplicationsScreeningFields(
+    schemaName: string,
+  ): Promise<void> {
     await this.dataSource.query(
       `ALTER TABLE ${quoteIdent(schemaName)}.rental_applications ADD COLUMN IF NOT EXISTS screening_fee_paid BOOLEAN NOT NULL DEFAULT FALSE`,
     );
   }
 
   /** Crea la tabla screening_checklist si no existe. */
-  private async createScreeningChecklistTable(schemaName: string): Promise<void> {
+  private async createScreeningChecklistTable(
+    schemaName: string,
+  ): Promise<void> {
     await this.dataSource.query(`
       DO $$ BEGIN
         CREATE TYPE ${quoteIdent(schemaName)}.screening_final_status_enum AS ENUM (
@@ -684,7 +776,10 @@ export class TenantsService implements OnModuleInit {
     return { message: 'Tenant deleted successfully' };
   }
 
-  private async createTenantSchema(tenant: Tenant, country: TenantCountry = TenantCountry.BO) {
+  private async createTenantSchema(
+    tenant: Tenant,
+    country: TenantCountry = TenantCountry.BO,
+  ) {
     try {
       // 1. Crear el schema en PostgreSQL
       await this.dataSource.query(
@@ -1049,6 +1144,80 @@ export class TenantsService implements OnModuleInit {
     `);
   }
 
+  private async migratePropertyCatalog(schemaName: string) {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.property_types (
+        id SERIAL PRIMARY KEY,
+        name character varying NOT NULL,
+        code character varying NOT NULL UNIQUE,
+        is_active boolean NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.property_subtypes (
+        id SERIAL PRIMARY KEY,
+        property_type_id integer NOT NULL,
+        name character varying NOT NULL,
+        code character varying NOT NULL UNIQUE,
+        is_active boolean NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP NOT NULL DEFAULT now(),
+        CONSTRAINT fk_property_subtypes_type FOREIGN KEY (property_type_id)
+          REFERENCES ${quoteIdent(schemaName)}.property_types(id)
+      );
+    `);
+
+    // Ensure unique index exists on code (idempotent — handles tenants created without it)
+    await this.dataSource.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_property_types_code
+        ON ${quoteIdent(schemaName)}.property_types (code);
+    `);
+
+    await this.dataSource.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_property_subtypes_code
+        ON ${quoteIdent(schemaName)}.property_subtypes (code);
+    `);
+
+    await this.dataSource.query(`
+      INSERT INTO ${quoteIdent(schemaName)}.property_types (name, code, is_active, created_at, updated_at)
+      VALUES
+        ('Residencial', 'RESIDENTIAL', true, NOW(), NOW()),
+        ('Comercial',   'COMMERCIAL',  true, NOW(), NOW())
+      ON CONFLICT (code) DO NOTHING;
+    `);
+
+    const types: { id: number; code: string }[] = await this.dataSource.query(`
+      SELECT id, code FROM ${quoteIdent(schemaName)}.property_types
+      WHERE code IN ('RESIDENTIAL', 'COMMERCIAL')
+    `);
+
+    const residential = types.find((t) => t.code === 'RESIDENTIAL');
+    const commercial = types.find((t) => t.code === 'COMMERCIAL');
+
+    if (!residential || !commercial) return;
+
+    await this.dataSource.query(
+      `
+      INSERT INTO ${quoteIdent(schemaName)}.property_subtypes (property_type_id, name, code, is_active, created_at, updated_at)
+      VALUES
+        ($1, 'Condominio/Townhouse', 'CONDO_TOWNHOME', true, NOW(), NOW()),
+        ($1, 'Multifamiliar',        'MULTI_FAMILY',   true, NOW(), NOW()),
+        ($1, 'Unifamiliar',          'SINGLE_FAMILY',  true, NOW(), NOW()),
+        ($2, 'Industrial',           'INDUSTRIAL',     true, NOW(), NOW()),
+        ($2, 'Oficina',              'OFFICE',         true, NOW(), NOW()),
+        ($2, 'Alquiler',             'RENTAL',         true, NOW(), NOW()),
+        ($2, 'Centro Comercial',     'SHOPPING_CENTER',true, NOW(), NOW()),
+        ($2, 'Bodega/Depósito',      'STORAGE',        true, NOW(), NOW()),
+        ($2, 'Estacionamiento',      'PARKING_SPACE',  true, NOW(), NOW())
+      ON CONFLICT (code) DO NOTHING;
+    `,
+      [residential.id, commercial.id],
+    );
+  }
+
   private async seedPropertyTypesAndSubtypes(schemaName: string) {
     // Insertar Property Types
     await this.dataSource.query(`
@@ -1333,6 +1502,7 @@ export class TenantsService implements OnModuleInit {
         documents jsonb,
         additional_notes text,
         admin_feedback text,
+        screening_fee_paid BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT fk_rental_applications_property FOREIGN KEY (property_id)
@@ -1500,7 +1670,9 @@ export class TenantsService implements OnModuleInit {
   }
 
   /** Agrega current_stage, owner_authorized y completed_at a maintenance_requests. */
-  private async migrateMaintenanceStageFields(schemaName: string): Promise<void> {
+  private async migrateMaintenanceStageFields(
+    schemaName: string,
+  ): Promise<void> {
     await this.dataSource.query(
       `ALTER TABLE ${quoteIdent(schemaName)}.maintenance_requests
          ADD COLUMN IF NOT EXISTS current_stage VARCHAR(30) NOT NULL DEFAULT 'REPORTED'`,
@@ -1516,7 +1688,9 @@ export class TenantsService implements OnModuleInit {
   }
 
   /** Crea la tabla maintenance_stage_history si no existe. */
-  private async createMaintenanceStageHistoryTable(schemaName: string): Promise<void> {
+  private async createMaintenanceStageHistoryTable(
+    schemaName: string,
+  ): Promise<void> {
     await this.dataSource.query(`
       CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.maintenance_stage_history (
         id                   SERIAL PRIMARY KEY,
@@ -1642,7 +1816,7 @@ export class TenantsService implements OnModuleInit {
 
   private async migrateExpensesTable(schemaName: string): Promise<void> {
     await this.createExpensesTables(schemaName);
-    
+
     // Si ya existía la tabla con tenant_id, eliminarlo (limpieza post-refactor)
     try {
       await this.dataSource.query(
@@ -1651,7 +1825,7 @@ export class TenantsService implements OnModuleInit {
     } catch (e) {
       // Ignorar si falla
     }
-    
+
     // Asegurar que tenant_config tenga la columna custom_expense_categories
     await this.dataSource.query(
       `ALTER TABLE ${quoteIdent(schemaName)}.tenant_config ADD COLUMN IF NOT EXISTS custom_expense_categories JSONB NOT NULL DEFAULT '[]'`,
@@ -1719,7 +1893,9 @@ export class TenantsService implements OnModuleInit {
     `);
   }
 
-  private async migrateMaintenanceVendorFields(schemaName: string): Promise<void> {
+  private async migrateMaintenanceVendorFields(
+    schemaName: string,
+  ): Promise<void> {
     const table = `${quoteIdent(schemaName)}.maintenance_requests`;
     const alterations = [
       `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS vendor_id             INT`,
@@ -1752,7 +1928,9 @@ export class TenantsService implements OnModuleInit {
     }
   }
 
-  private async createPropertyAvailabilityTable(schemaName: string): Promise<void> {
+  private async createPropertyAvailabilityTable(
+    schemaName: string,
+  ): Promise<void> {
     await this.dataSource.query(`
       CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.property_availability (
         id             SERIAL      PRIMARY KEY,
@@ -1807,7 +1985,9 @@ export class TenantsService implements OnModuleInit {
     `);
   }
 
-  private async createLifecycleNotificationLog(schemaName: string): Promise<void> {
+  private async createLifecycleNotificationLog(
+    schemaName: string,
+  ): Promise<void> {
     await this.dataSource.query(`
       CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.lifecycle_notification_log (
         id            SERIAL PRIMARY KEY,
@@ -1824,7 +2004,9 @@ export class TenantsService implements OnModuleInit {
     `);
   }
 
-  private async createContractTemplatesTable(schemaName: string): Promise<void> {
+  private async createContractTemplatesTable(
+    schemaName: string,
+  ): Promise<void> {
     await this.dataSource.query(`
       CREATE TABLE IF NOT EXISTS ${quoteIdent(schemaName)}.contract_templates (
         id           SERIAL PRIMARY KEY,

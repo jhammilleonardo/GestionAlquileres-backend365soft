@@ -46,7 +46,9 @@ export class OwnerStatementsService {
   /**
    * Crear un nuevo estado de cuenta (statement)
    */
-  async create(dto: CreateOwnerStatementDto): Promise<OwnerStatementResponseDto> {
+  async create(
+    dto: CreateOwnerStatementDto,
+  ): Promise<OwnerStatementResponseDto> {
     const query = `
       INSERT INTO owner_statements (
         rental_owner_id, property_id, period_month, period_year,
@@ -70,7 +72,10 @@ export class OwnerStatementsService {
     ];
 
     try {
-      const result = await this.dataSource.query<OwnerStatementRow[]>(query, values);
+      const result = await this.dataSource.query<OwnerStatementRow[]>(
+        query,
+        values,
+      );
       return this.toDto(result[0]);
     } catch (error) {
       if (error.code === '23505') {
@@ -93,7 +98,9 @@ export class OwnerStatementsService {
     );
 
     if (!result || result.length === 0) {
-      throw new NotFoundException(`Estado de cuenta con ID ${id} no encontrado`);
+      throw new NotFoundException(
+        `Estado de cuenta con ID ${id} no encontrado`,
+      );
     }
 
     return this.toDto(result[0]);
@@ -102,7 +109,9 @@ export class OwnerStatementsService {
   /**
    * Obtener todos los estados de cuenta de un propietario
    */
-  async findByOwner(rentalOwnerId: number): Promise<OwnerStatementResponseDto[]> {
+  async findByOwner(
+    rentalOwnerId: number,
+  ): Promise<OwnerStatementResponseDto[]> {
     const result = await this.dataSource.query<OwnerStatementRow[]>(
       `SELECT * FROM owner_statements
        WHERE rental_owner_id = $1
@@ -189,7 +198,9 @@ export class OwnerStatementsService {
   async delete(id: number): Promise<{ message: string }> {
     const statement = await this.findOne(id);
 
-    await this.dataSource.query(`DELETE FROM owner_statements WHERE id = $1`, [id]);
+    await this.dataSource.query(`DELETE FROM owner_statements WHERE id = $1`, [
+      id,
+    ]);
 
     this.logger.log(`Estado de cuenta ${id} eliminado`);
 
@@ -268,19 +279,17 @@ export class OwnerStatementsService {
    * Crear automaticamente un statement cuando se confirma un pago
    * Se llama desde el servicio de pagos cuando se aprueba un pago
    */
-  async createStatementFromPayment(
-    paymentData: {
-      month: number;
-      year: number;
-      rentalOwnerId: number;
-      propertyId: number;
-      grossRent: number;
-      maintenanceDeduction: number;
-      commissionPercentage: number;
-      currency: string;
-      paymentCount: number;
-    }
-  ): Promise<OwnerStatementResponseDto> {
+  async createStatementFromPayment(paymentData: {
+    month: number;
+    year: number;
+    rentalOwnerId: number;
+    propertyId: number;
+    grossRent: number;
+    maintenanceDeduction: number;
+    commissionPercentage: number;
+    currency: string;
+    paymentCount: number;
+  }): Promise<OwnerStatementResponseDto> {
     // 1. Obtener el rango de fechas del período (mes completo)
     const startDate = new Date(paymentData.year, paymentData.month - 1, 1);
     const endDate = new Date(paymentData.year, paymentData.month, 0); // Último día del mes
@@ -291,15 +300,17 @@ export class OwnerStatementsService {
       `SELECT SUM(amount) as total FROM expenses 
        WHERE property_id = $1 
        AND date BETWEEN $2 AND $3`,
-      [paymentData.propertyId, startDate, endDate]
+      [paymentData.propertyId, startDate, endDate],
     );
 
     const automaticExpenses = parseFloat(expensesResult[0]?.total || '0');
 
     // 3. Calcular comisión y monto neto
     const maintenanceDeduction = automaticExpenses;
-    const managementCommission = (paymentData.grossRent * paymentData.commissionPercentage) / 100;
-    const netAmount = paymentData.grossRent - maintenanceDeduction - managementCommission;
+    const managementCommission =
+      (paymentData.grossRent * paymentData.commissionPercentage) / 100;
+    const netAmount =
+      paymentData.grossRent - maintenanceDeduction - managementCommission;
 
     const dto: CreateOwnerStatementDto = {
       rental_owner_id: paymentData.rentalOwnerId,

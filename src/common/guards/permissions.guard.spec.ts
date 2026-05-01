@@ -14,7 +14,9 @@ function buildContext(user: object | null, handler = {}, classRef = {}) {
   } as any;
 }
 
-function buildReflector(permission: { module: string; action: string } | undefined) {
+function buildReflector(
+  permission: { module: string; action: string } | undefined,
+) {
   return {
     getAllAndOverride: (_key: string) => permission,
   } as unknown as Reflector;
@@ -30,8 +32,13 @@ describe('PermissionsGuard', () => {
   // ─── Sin @RequirePermission ───────────────────────────────────────────────
 
   it('permite acceso cuando no hay @RequirePermission declarado', async () => {
-    const guard = new PermissionsGuard(buildReflector(undefined), buildDataSource([]));
-    const result = await guard.canActivate(buildContext({ role: 'INQUILINO', userId: 1 }));
+    const guard = new PermissionsGuard(
+      buildReflector(undefined),
+      buildDataSource([]),
+    );
+    const result = await guard.canActivate(
+      buildContext({ role: 'INQUILINO', userId: 1 }),
+    );
     expect(result).toBe(true);
   });
 
@@ -42,7 +49,9 @@ describe('PermissionsGuard', () => {
       buildReflector({ module: 'payments', action: 'delete' }),
       buildDataSource([]),
     );
-    const result = await guard.canActivate(buildContext({ role: 'ADMIN', userId: 1 }));
+    const result = await guard.canActivate(
+      buildContext({ role: 'ADMIN', userId: 1 }),
+    );
     expect(result).toBe(true);
   });
 
@@ -51,7 +60,9 @@ describe('PermissionsGuard', () => {
       buildReflector({ module: 'config', action: 'edit' }),
       buildDataSource([]),
     );
-    const result = await guard.canActivate(buildContext({ role: 'SUPERADMIN', userId: 1 }));
+    const result = await guard.canActivate(
+      buildContext({ role: 'SUPERADMIN', userId: 1 }),
+    );
     expect(result).toBe(true);
   });
 
@@ -62,7 +73,9 @@ describe('PermissionsGuard', () => {
       buildReflector({ module: 'maintenance', action: 'view' }),
       buildDataSource([]),
     );
-    const result = await guard.canActivate(buildContext({ role: 'TECNICO', userId: 2 }));
+    const result = await guard.canActivate(
+      buildContext({ role: 'TECNICO', userId: 2 }),
+    );
     expect(result).toBe(true);
   });
 
@@ -71,7 +84,9 @@ describe('PermissionsGuard', () => {
       buildReflector({ module: 'maintenance', action: 'create' }),
       buildDataSource([]),
     );
-    const result = await guard.canActivate(buildContext({ role: 'TECNICO', userId: 2 }));
+    const result = await guard.canActivate(
+      buildContext({ role: 'TECNICO', userId: 2 }),
+    );
     expect(result).toBe(true);
   });
 
@@ -80,7 +95,9 @@ describe('PermissionsGuard', () => {
       buildReflector({ module: 'maintenance', action: 'edit' }),
       buildDataSource([]),
     );
-    const result = await guard.canActivate(buildContext({ role: 'TECNICO', userId: 2 }));
+    const result = await guard.canActivate(
+      buildContext({ role: 'TECNICO', userId: 2 }),
+    );
     expect(result).toBe(true);
   });
 
@@ -112,12 +129,14 @@ describe('PermissionsGuard', () => {
       buildReflector({ module: 'properties', action: 'view' }),
       ds,
     );
-    const result = await guard.canActivate(buildContext({ role: 'EMPLEADO', userId: 3 }));
-    expect(result).toBe(true);
-    expect(ds.query).toHaveBeenCalledWith(
-      expect.stringContaining('can_view'),
-      [3, 'properties'],
+    const result = await guard.canActivate(
+      buildContext({ role: 'EMPLEADO', userId: 3 }),
     );
+    expect(result).toBe(true);
+    expect(ds.query).toHaveBeenCalledWith(expect.stringContaining('can_view'), [
+      3,
+      'properties',
+    ]);
   });
 
   it('bloquea a EMPLEADO con can_view=false', async () => {
@@ -159,8 +178,8 @@ describe('PermissionsGuard', () => {
       buildReflector({ module: 'maintenance', action: 'view' }),
       buildDataSource([]),
     );
-    await expect(
-      guard.canActivate(buildContext(null)),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(guard.canActivate(buildContext(null))).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 });

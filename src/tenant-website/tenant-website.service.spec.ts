@@ -78,7 +78,9 @@ describe('TenantWebsiteService', () => {
         .mockResolvedValueOnce([original]) // getOrCreate SELECT
         .mockResolvedValueOnce([updated]); // UPDATE RETURNING
 
-      const result = await service.update(SCHEMA, { contact_email: 'info@acme.com' });
+      const result = await service.update(SCHEMA, {
+        contact_email: 'info@acme.com',
+      });
       expect(result.contact_email).toBe('info@acme.com');
     });
 
@@ -117,7 +119,9 @@ describe('TenantWebsiteService', () => {
     it('lanza NotFoundException si el tenant no existe', async () => {
       mockDataSource.query.mockResolvedValueOnce([]);
 
-      await expect(service.getPublicWebsite('noexiste')).rejects.toThrow(NotFoundException);
+      await expect(service.getPublicWebsite('noexiste')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('lanza NotFoundException si el sitio no está publicado', async () => {
@@ -125,12 +129,16 @@ describe('TenantWebsiteService', () => {
         .mockResolvedValueOnce([{ schema_name: SCHEMA }]) // tenant lookup
         .mockResolvedValueOnce([makeWebsite({ is_published: false })]); // website
 
-      await expect(service.getPublicWebsite('acme')).rejects.toThrow(NotFoundException);
+      await expect(service.getPublicWebsite('acme')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('retorna website + propiedades disponibles cuando está publicado', async () => {
       const website = makeWebsite({ is_published: true });
-      const properties = [{ id: 1, title: 'Casa grande', status: 'DISPONIBLE' }];
+      const properties = [
+        { id: 1, title: 'Casa grande', status: 'DISPONIBLE' },
+      ];
 
       mockDataSource.query
         .mockResolvedValueOnce([{ schema_name: SCHEMA }])
@@ -156,9 +164,9 @@ describe('TenantWebsiteService', () => {
     it('lanza NotFoundException si el tenant no existe', async () => {
       mockDataSource.query.mockResolvedValueOnce([]);
 
-      await expect(service.submitContact('noexiste', dto, '127.0.0.1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.submitContact('noexiste', dto, '127.0.0.1'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('lanza BadRequestException si el sitio no está publicado', async () => {
@@ -166,9 +174,9 @@ describe('TenantWebsiteService', () => {
         .mockResolvedValueOnce([{ schema_name: SCHEMA }])
         .mockResolvedValueOnce([makeWebsite({ is_published: false })]);
 
-      await expect(service.submitContact('acme', dto, '127.0.0.1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.submitContact('acme', dto, '127.0.0.1'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('inserta el contacto y retorna confirmación', async () => {

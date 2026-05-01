@@ -58,20 +58,27 @@ export class ReservationsService {
       return `${year}-${String(monthNum).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     });
 
-    const params: unknown[] = [propertyId, `${month}-01`, `${month}-${String(daysInMonth).padStart(2, '0')}`];
+    const params: unknown[] = [
+      propertyId,
+      `${month}-01`,
+      `${month}-${String(daysInMonth).padStart(2, '0')}`,
+    ];
     let unitFilter = '';
     if (unitId !== undefined) {
       unitFilter = ' AND unit_id = $4';
       params.push(unitId);
     }
 
-    const rows: Array<{ date: string; status: string }> = await this.dataSource.query(
-      `SELECT date::text, status FROM property_availability
+    const rows: Array<{ date: string; status: string }> =
+      await this.dataSource.query(
+        `SELECT date::text, status FROM property_availability
        WHERE property_id = $1 AND date BETWEEN $2 AND $3${unitFilter}`,
-      params,
-    );
+        params,
+      );
 
-    const statusMap = new Map(rows.map((r) => [r.date, r.status as AvailabilityStatus]));
+    const statusMap = new Map(
+      rows.map((r) => [r.date, r.status as AvailabilityStatus]),
+    );
 
     return allDates.map((date) => ({
       date,
@@ -103,11 +110,20 @@ export class ReservationsService {
          VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (unit_id, date) DO UPDATE
            SET status = $4, blocked_by = $5, notes = $6`,
-        [propertyId, unitId, date, AvailabilityStatus.BLOCKED, adminUserId, dto.reason ?? null],
+        [
+          propertyId,
+          unitId,
+          date,
+          AvailabilityStatus.BLOCKED,
+          adminUserId,
+          dto.reason ?? null,
+        ],
       );
     }
 
-    this.logger.log(`Admin ${adminUserId} blocked ${dto.dates.length} dates for unit ${unitId}`);
+    this.logger.log(
+      `Admin ${adminUserId} blocked ${dto.dates.length} dates for unit ${unitId}`,
+    );
     return { blocked: dto.dates.length };
   }
 
@@ -144,10 +160,18 @@ export class ReservationsService {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
-        dto.property_id, dto.unit_id, tenantId,
-        dto.checkin_date, dto.checkout_date,
-        nights, pricePerNight, cleaningFee, totalAmount, currency,
-        ReservationStatus.CONFIRMED, dto.notes ?? null,
+        dto.property_id,
+        dto.unit_id,
+        tenantId,
+        dto.checkin_date,
+        dto.checkout_date,
+        nights,
+        pricePerNight,
+        cleaningFee,
+        totalAmount,
+        currency,
+        ReservationStatus.CONFIRMED,
+        dto.notes ?? null,
       ],
     );
 
@@ -156,17 +180,28 @@ export class ReservationsService {
         `INSERT INTO property_availability (property_id, unit_id, date, status, reservation_id)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (unit_id, date) DO UPDATE SET status = $4, reservation_id = $5`,
-        [dto.property_id, dto.unit_id, date, AvailabilityStatus.BOOKED, reservation.id],
+        [
+          dto.property_id,
+          dto.unit_id,
+          date,
+          AvailabilityStatus.BOOKED,
+          reservation.id,
+        ],
       );
     }
 
-    this.logger.log(`Reservation ${reservation.id} created for unit ${dto.unit_id} by tenant ${tenantId}`);
+    this.logger.log(
+      `Reservation ${reservation.id} created for unit ${dto.unit_id} by tenant ${tenantId}`,
+    );
     return reservation;
   }
 
   // ─── Helpers privados ─────────────────────────────────────────────────────
 
-  private async findUnitOrFail(propertyId: number, unitId: number): Promise<Record<string, string>> {
+  private async findUnitOrFail(
+    propertyId: number,
+    unitId: number,
+  ): Promise<Record<string, string>> {
     const rows: Record<string, string>[] = await this.dataSource.query(
       `SELECT u.*, tc.rental_type AS tenant_rental_type
          FROM units u
@@ -176,7 +211,9 @@ export class ReservationsService {
     );
 
     if (rows.length === 0) {
-      throw new NotFoundException(`Unidad ${unitId} no encontrada en la propiedad ${propertyId}`);
+      throw new NotFoundException(
+        `Unidad ${unitId} no encontrada en la propiedad ${propertyId}`,
+      );
     }
 
     return rows[0];
@@ -203,7 +240,10 @@ export class ReservationsService {
     }
   }
 
-  private async findBookedDates(unitId: number, dates: string[]): Promise<string[]> {
+  private async findBookedDates(
+    unitId: number,
+    dates: string[],
+  ): Promise<string[]> {
     const rows: Array<{ date: string }> = await this.dataSource.query(
       `SELECT date::text FROM property_availability
        WHERE unit_id = $1 AND status = $2 AND date = ANY($3::date[])`,
@@ -212,12 +252,16 @@ export class ReservationsService {
     return rows.map((r) => r.date);
   }
 
-  private async assertDatesAvailable(unitId: number, dates: string[]): Promise<void> {
-    const rows: Array<{ date: string; status: string }> = await this.dataSource.query(
-      `SELECT date::text, status FROM property_availability
+  private async assertDatesAvailable(
+    unitId: number,
+    dates: string[],
+  ): Promise<void> {
+    const rows: Array<{ date: string; status: string }> =
+      await this.dataSource.query(
+        `SELECT date::text, status FROM property_availability
        WHERE unit_id = $1 AND status != $2 AND date = ANY($3::date[])`,
-      [unitId, AvailabilityStatus.AVAILABLE, dates],
-    );
+        [unitId, AvailabilityStatus.AVAILABLE, dates],
+      );
 
     if (rows.length > 0) {
       const blocked = rows.map((r) => r.date);
@@ -232,14 +276,21 @@ export class ReservationsService {
     today.setHours(0, 0, 0, 0);
 
     if (checkin < today) {
-      throw new BadRequestException('La fecha de ingreso no puede ser en el pasado');
+      throw new BadRequestException(
+        'La fecha de ingreso no puede ser en el pasado',
+      );
     }
     if (checkout <= checkin) {
-      throw new BadRequestException('La fecha de salida debe ser posterior a la de ingreso');
+      throw new BadRequestException(
+        'La fecha de salida debe ser posterior a la de ingreso',
+      );
     }
   }
 
-  private assertNightsInRange(nights: number, unit: Record<string, string>): void {
+  private assertNightsInRange(
+    nights: number,
+    unit: Record<string, string>,
+  ): void {
     const minNights = unit.min_nights ? parseInt(unit.min_nights) : 1;
     const maxNights = unit.max_nights ? parseInt(unit.max_nights) : 365;
 
@@ -257,7 +308,9 @@ export class ReservationsService {
 
   private assertValidMonth(month: string): void {
     if (!/^\d{4}-\d{2}$/.test(month)) {
-      throw new BadRequestException('El parámetro month debe tener formato YYYY-MM');
+      throw new BadRequestException(
+        'El parámetro month debe tener formato YYYY-MM',
+      );
     }
     const [year, monthNum] = month.split('-').map(Number);
     if (monthNum < 1 || monthNum > 12) {

@@ -6,7 +6,11 @@ import { ViolationsPdfService } from './violations-pdf.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ViolationTypeEnum } from './enums/violation-type.enum';
 import { ViolationStatusEnum } from './enums/violation-status.enum';
-import { CreateViolationDto, UpdateViolationStatusDto, ViolationFiltersDto } from './dto';
+import {
+  CreateViolationDto,
+  UpdateViolationStatusDto,
+  ViolationFiltersDto,
+} from './dto';
 
 const VIOLATION_ID = 1;
 const USER_ID = 10;
@@ -40,7 +44,11 @@ describe('ViolationsService', () => {
   beforeEach(async () => {
     dataSource = { query: jest.fn() };
     notificationsService = { createForUser: jest.fn().mockResolvedValue({}) };
-    pdfService = { generateNotificationLetter: jest.fn().mockResolvedValue('/tmp/violation_1.pdf') };
+    pdfService = {
+      generateNotificationLetter: jest
+        .fn()
+        .mockResolvedValue('/tmp/violation_1.pdf'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -67,7 +75,7 @@ describe('ViolationsService', () => {
 
       dataSource.query
         .mockResolvedValueOnce([{ id: VIOLATION_ID }]) // INSERT
-        .mockResolvedValueOnce([mockViolationRow]);     // findOne SELECT
+        .mockResolvedValueOnce([mockViolationRow]); // findOne SELECT
 
       const result = await service.create(dto, USER_ID);
 
@@ -84,11 +92,18 @@ describe('ViolationsService', () => {
 
   describe('findAll', () => {
     it('debe retornar lista paginada de violaciones', async () => {
-      const filters: ViolationFiltersDto = { property_id: 1, page: 1, limit: 20 };
+      const filters: ViolationFiltersDto = {
+        property_id: 1,
+        page: 1,
+        limit: 20,
+      };
 
       dataSource.query
         .mockResolvedValueOnce([{ count: '2' }])
-        .mockResolvedValueOnce([mockViolationRow, { ...mockViolationRow, id: 2 }]);
+        .mockResolvedValueOnce([
+          mockViolationRow,
+          { ...mockViolationRow, id: 2 },
+        ]);
 
       const result = await service.findAll(filters);
 
@@ -106,7 +121,7 @@ describe('ViolationsService', () => {
       await service.findAll(filters);
 
       expect(dataSource.query).toHaveBeenCalledWith(
-        expect.stringContaining("v.status = $"),
+        expect.stringContaining('v.status = $'),
         expect.arrayContaining([ViolationStatusEnum.OPEN]),
       );
     });
@@ -121,7 +136,7 @@ describe('ViolationsService', () => {
       await service.findAll(filters);
 
       expect(dataSource.query).toHaveBeenCalledWith(
-        expect.stringContaining("v.type = $"),
+        expect.stringContaining('v.type = $'),
         expect.arrayContaining([ViolationTypeEnum.DAMAGE]),
       );
     });
@@ -136,7 +151,7 @@ describe('ViolationsService', () => {
       await service.findAll(filters);
 
       expect(dataSource.query).toHaveBeenCalledWith(
-        expect.stringContaining("v.tenant_id = $"),
+        expect.stringContaining('v.tenant_id = $'),
         expect.arrayContaining([TENANT_ID]),
       );
     });
@@ -165,13 +180,18 @@ describe('ViolationsService', () => {
 
   describe('updateStatus', () => {
     it('debe actualizar el estado correctamente', async () => {
-      const dto: UpdateViolationStatusDto = { status: ViolationStatusEnum.NOTIFIED };
-      const updated = { ...mockViolationRow, status: ViolationStatusEnum.NOTIFIED };
+      const dto: UpdateViolationStatusDto = {
+        status: ViolationStatusEnum.NOTIFIED,
+      };
+      const updated = {
+        ...mockViolationRow,
+        status: ViolationStatusEnum.NOTIFIED,
+      };
 
       dataSource.query
         .mockResolvedValueOnce([mockViolationRow]) // findOne (validación)
-        .mockResolvedValueOnce([])                 // UPDATE
-        .mockResolvedValueOnce([updated]);          // findOne (resultado)
+        .mockResolvedValueOnce([]) // UPDATE
+        .mockResolvedValueOnce([updated]); // findOne (resultado)
 
       const result = await service.updateStatus(VIOLATION_ID, dto, USER_ID);
 
@@ -187,7 +207,11 @@ describe('ViolationsService', () => {
         status: ViolationStatusEnum.RESOLVED,
         resolved_notes: 'El inquilino corrigió la situación',
       };
-      const updated = { ...mockViolationRow, status: ViolationStatusEnum.RESOLVED, resolved_at: new Date() };
+      const updated = {
+        ...mockViolationRow,
+        status: ViolationStatusEnum.RESOLVED,
+        resolved_at: new Date(),
+      };
 
       dataSource.query
         .mockResolvedValueOnce([mockViolationRow])
@@ -204,11 +228,18 @@ describe('ViolationsService', () => {
     });
 
     it('debe lanzar BadRequestException si se intenta reabrir una violación resuelta', async () => {
-      const resolvedViolation = { ...mockViolationRow, status: ViolationStatusEnum.RESOLVED };
+      const resolvedViolation = {
+        ...mockViolationRow,
+        status: ViolationStatusEnum.RESOLVED,
+      };
       dataSource.query.mockResolvedValueOnce([resolvedViolation]);
 
       await expect(
-        service.updateStatus(VIOLATION_ID, { status: ViolationStatusEnum.OPEN }, USER_ID),
+        service.updateStatus(
+          VIOLATION_ID,
+          { status: ViolationStatusEnum.OPEN },
+          USER_ID,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -219,7 +250,7 @@ describe('ViolationsService', () => {
     it('debe enviar notificación y cambiar estado a notified', async () => {
       dataSource.query
         .mockResolvedValueOnce([mockViolationRow]) // findOne
-        .mockResolvedValueOnce([]);                // UPDATE status → notified
+        .mockResolvedValueOnce([]); // UPDATE status → notified
 
       await service.notifyTenant(VIOLATION_ID);
 
@@ -239,17 +270,22 @@ describe('ViolationsService', () => {
     it('debe lanzar NotFoundException si la violación no existe', async () => {
       dataSource.query.mockResolvedValueOnce([]);
 
-      await expect(service.notifyTenant(999)).rejects.toThrow(NotFoundException);
+      await expect(service.notifyTenant(999)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('no debe cambiar estado si ya estaba notified', async () => {
-      const notifiedViolation = { ...mockViolationRow, status: ViolationStatusEnum.NOTIFIED };
+      const notifiedViolation = {
+        ...mockViolationRow,
+        status: ViolationStatusEnum.NOTIFIED,
+      };
       dataSource.query.mockResolvedValueOnce([notifiedViolation]);
 
       await service.notifyTenant(VIOLATION_ID);
 
-      const updateCalls = (dataSource.query as jest.Mock).mock.calls.filter(
-        ([sql]) => (sql as string).includes("status = 'notified'"),
+      const updateCalls = dataSource.query.mock.calls.filter(([sql]) =>
+        (sql as string).includes("status = 'notified'"),
       );
       expect(updateCalls).toHaveLength(0);
     });

@@ -40,7 +40,10 @@ export class PaymentProcessorFactory {
    * @param paymentMethod  Método de pago del DTO (ej: 'stripe', 'qr_accl', 'transferencia')
    * @param tenantSlug     Slug del tenant para leer su configuración
    */
-  async resolve(paymentMethod: string, tenantSlug: string): Promise<IPaymentProcessor> {
+  async resolve(
+    paymentMethod: string,
+    tenantSlug: string,
+  ): Promise<IPaymentProcessor> {
     const configuredMethods = await this.getTenantPaymentMethods(tenantSlug);
 
     const methodLower = paymentMethod.toLowerCase();

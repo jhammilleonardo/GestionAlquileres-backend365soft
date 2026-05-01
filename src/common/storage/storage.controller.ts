@@ -43,12 +43,7 @@ export class StorageController {
     this.assertSafeSegment(propertyId);
     this.assertSafeFilename(filename);
 
-    return this.sendFile(res, [
-      'properties',
-      slug,
-      propertyId,
-      filename,
-    ]);
+    return this.sendFile(res, ['properties', slug, propertyId, filename]);
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -67,12 +62,7 @@ export class StorageController {
     this.assertSafeSegment(requestId);
     this.assertSafeFilename(filename);
 
-    return this.sendFile(res, [
-      'maintenance',
-      slug,
-      requestId,
-      filename,
-    ]);
+    return this.sendFile(res, ['maintenance', slug, requestId, filename]);
   }
 
   @Get('maintenance/:slug/:requestId/stage/:filename')
@@ -130,12 +120,7 @@ export class StorageController {
     this.assertSafeSegment(applicationId);
     this.assertSafeFilename(filename);
 
-    return this.sendFile(res, [
-      'applications',
-      slug,
-      applicationId,
-      filename,
-    ]);
+    return this.sendFile(res, ['applications', slug, applicationId, filename]);
   }
 
   // ──────────────────────────────────────────────────────────────

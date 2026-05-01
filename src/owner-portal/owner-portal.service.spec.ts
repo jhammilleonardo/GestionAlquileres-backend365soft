@@ -23,7 +23,9 @@ describe('OwnerPortalService', () => {
         },
         {
           provide: OwnerStatementPdfService,
-          useValue: { generatePdf: jest.fn().mockResolvedValue('/tmp/test.pdf') },
+          useValue: {
+            generatePdf: jest.fn().mockResolvedValue('/tmp/test.pdf'),
+          },
         },
       ],
     }).compile();
@@ -36,11 +38,11 @@ describe('OwnerPortalService', () => {
   describe('getDashboard', () => {
     it('debe retornar dashboard con ceros si el propietario no tiene propiedades', async () => {
       dataSource.query
-        .mockResolvedValueOnce([{ count: '0' }])               // properties
-        .mockResolvedValueOnce([{ count: '0' }])               // tenants
+        .mockResolvedValueOnce([{ count: '0' }]) // properties
+        .mockResolvedValueOnce([{ count: '0' }]) // tenants
         .mockResolvedValueOnce([{ pending_balance: '0', currency: 'BOB' }]) // balance
-        .mockResolvedValueOnce([{ count: '0' }])               // maintenance
-        .mockResolvedValueOnce([{ count: '0' }]);              // statements
+        .mockResolvedValueOnce([{ count: '0' }]) // maintenance
+        .mockResolvedValueOnce([{ count: '0' }]); // statements
 
       const result = await service.getDashboard(OWNER_ID);
 
@@ -56,7 +58,9 @@ describe('OwnerPortalService', () => {
       dataSource.query
         .mockResolvedValueOnce([{ count: '3' }])
         .mockResolvedValueOnce([{ count: '2' }])
-        .mockResolvedValueOnce([{ pending_balance: '1500.00', currency: 'BOB' }])
+        .mockResolvedValueOnce([
+          { pending_balance: '1500.00', currency: 'BOB' },
+        ])
         .mockResolvedValueOnce([{ count: '1' }])
         .mockResolvedValueOnce([{ count: '2' }]);
 
@@ -75,8 +79,20 @@ describe('OwnerPortalService', () => {
   describe('getProperties', () => {
     it('debe retornar solo propiedades del propietario autenticado', async () => {
       const mockProperties = [
-        { id: 1, title: 'Casa A', status: 'OCUPADO', monthly_rent: '3000', ownership_percentage: 100 },
-        { id: 2, title: 'Depto B', status: 'DISPONIBLE', monthly_rent: '2000', ownership_percentage: 50 },
+        {
+          id: 1,
+          title: 'Casa A',
+          status: 'OCUPADO',
+          monthly_rent: '3000',
+          ownership_percentage: 100,
+        },
+        {
+          id: 2,
+          title: 'Depto B',
+          status: 'DISPONIBLE',
+          monthly_rent: '2000',
+          ownership_percentage: 50,
+        },
       ];
       dataSource.query.mockResolvedValue(mockProperties);
 
@@ -132,8 +148,20 @@ describe('OwnerPortalService', () => {
   describe('getMaintenance', () => {
     it('debe retornar solicitudes activas de sus propiedades', async () => {
       const mockRows = [
-        { id: 1, status: 'NEW', property_id: 1, property_title: 'Casa A', ticket_number: 'MR-001' },
-        { id: 2, status: 'IN_PROGRESS', property_id: 2, property_title: 'Depto B', ticket_number: 'MR-002' },
+        {
+          id: 1,
+          status: 'NEW',
+          property_id: 1,
+          property_title: 'Casa A',
+          ticket_number: 'MR-001',
+        },
+        {
+          id: 2,
+          status: 'IN_PROGRESS',
+          property_id: 2,
+          property_title: 'Depto B',
+          ticket_number: 'MR-002',
+        },
       ];
       dataSource.query.mockResolvedValue(mockRows);
 
@@ -159,16 +187,19 @@ describe('OwnerPortalService', () => {
     it('debe lanzar ForbiddenException si la solicitud no pertenece al propietario', async () => {
       dataSource.query.mockResolvedValue([]); // sin resultados — no es del propietario
 
-      await expect(service.authorizeMaintenance(5, OTHER_OWNER_ID))
-        .rejects.toThrow(ForbiddenException);
+      await expect(
+        service.authorizeMaintenance(5, OTHER_OWNER_ID),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('debe autorizar correctamente si la solicitud pertenece al propietario y está en Bolivia', async () => {
       dataSource.query
-        .mockResolvedValueOnce([{ id: 5 }])  // ownership + Bolivia check OK
-        .mockResolvedValueOnce([]);           // UPDATE
+        .mockResolvedValueOnce([{ id: 5 }]) // ownership + Bolivia check OK
+        .mockResolvedValueOnce([]); // UPDATE
 
-      await expect(service.authorizeMaintenance(5, OWNER_ID)).resolves.not.toThrow();
+      await expect(
+        service.authorizeMaintenance(5, OWNER_ID),
+      ).resolves.not.toThrow();
       expect(dataSource.query).toHaveBeenCalledTimes(2);
       expect(dataSource.query).toHaveBeenCalledWith(
         expect.stringContaining("pa.country ILIKE 'Bolivia'"),
@@ -183,29 +214,33 @@ describe('OwnerPortalService', () => {
     it('debe lanzar ForbiddenException si la liquidación no pertenece al propietario', async () => {
       dataSource.query.mockResolvedValue([]); // assertStatementBelongsToOwner → vacío
 
-      await expect(service.getStatementPdf(99, OTHER_OWNER_ID, 'es'))
-        .rejects.toThrow(ForbiddenException);
+      await expect(
+        service.getStatementPdf(99, OTHER_OWNER_ID, 'es'),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('debe retornar la ruta del PDF si el propietario es el dueño de la liquidación', async () => {
       dataSource.query
         .mockResolvedValueOnce([{ id: 10 }]) // ownership OK
-        .mockResolvedValueOnce([{            // datos para PDF
-          id: 10,
-          owner_name: 'John Doe',
-          property_title: 'Casa A',
-          property_address: 'Calle 1',
-          property_city: 'La Paz',
-          property_country: 'Bolivia',
-          tenant_name: 'Jane Smith',
-          period_year: 2025,
-          period_month: 3,
-          gross_rent: '3000',
-          maintenance_deduction: '200',
-          management_commission: '270',
-          net_amount: '2530',
-          currency: 'BOB',
-        }]);
+        .mockResolvedValueOnce([
+          {
+            // datos para PDF
+            id: 10,
+            owner_name: 'John Doe',
+            property_title: 'Casa A',
+            property_address: 'Calle 1',
+            property_city: 'La Paz',
+            property_country: 'Bolivia',
+            tenant_name: 'Jane Smith',
+            period_year: 2025,
+            period_month: 3,
+            gross_rent: '3000',
+            maintenance_deduction: '200',
+            management_commission: '270',
+            net_amount: '2530',
+            currency: 'BOB',
+          },
+        ]);
 
       const result = await service.getStatementPdf(10, OWNER_ID, 'es');
       expect(result).toBe('/tmp/test.pdf');

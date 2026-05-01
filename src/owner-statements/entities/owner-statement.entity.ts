@@ -18,7 +18,9 @@ const numericTransformer = {
 @Index(['rental_owner_id'])
 @Index(['property_id'])
 @Index(['period_year', 'period_month'])
-@Index(['rental_owner_id', 'property_id', 'period_year', 'period_month'], { unique: true })
+@Index(['rental_owner_id', 'property_id', 'period_year', 'period_month'], {
+  unique: true,
+})
 export class OwnerStatement {
   @PrimaryGeneratedColumn()
   id: number;
@@ -38,16 +40,33 @@ export class OwnerStatement {
   @Column()
   period_year: number;
 
-  @Column('numeric', { precision: 12, scale: 2, transformer: numericTransformer })
+  @Column('numeric', {
+    precision: 12,
+    scale: 2,
+    transformer: numericTransformer,
+  })
   gross_rent: number;
 
-  @Column('numeric', { precision: 12, scale: 2, default: 0, transformer: numericTransformer })
+  @Column('numeric', {
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: numericTransformer,
+  })
   maintenance_deduction: number;
 
-  @Column('numeric', { precision: 12, scale: 2, transformer: numericTransformer })
+  @Column('numeric', {
+    precision: 12,
+    scale: 2,
+    transformer: numericTransformer,
+  })
   management_commission: number;
 
-  @Column('numeric', { precision: 12, scale: 2, transformer: numericTransformer })
+  @Column('numeric', {
+    precision: 12,
+    scale: 2,
+    transformer: numericTransformer,
+  })
   net_amount: number;
 
   @Column({ length: 3, default: 'BOB' })

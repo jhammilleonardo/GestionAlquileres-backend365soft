@@ -216,7 +216,9 @@ export class TenantWebsiteService {
     );
 
     if (rows.length > 0) {
-      throw new BadRequestException(`El subdominio '${subdomain}' ya está en uso`);
+      throw new BadRequestException(
+        `El subdominio '${subdomain}' ya está en uso`,
+      );
     }
   }
 }

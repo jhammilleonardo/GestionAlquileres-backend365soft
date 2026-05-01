@@ -14,7 +14,15 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiOkResponse, ApiNotFoundResponse, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiOkResponse,
+  ApiNotFoundResponse,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { OwnerStatementsService } from './owner-statements.service';
 import {
   CreateOwnerStatementDto,
@@ -36,7 +44,9 @@ import { Roles } from '../common/decorators/roles.decorator';
 export class AdminOwnerStatementsController {
   private readonly logger = new Logger(AdminOwnerStatementsController.name);
 
-  constructor(private readonly ownerStatementsService: OwnerStatementsService) {}
+  constructor(
+    private readonly ownerStatementsService: OwnerStatementsService,
+  ) {}
 
   /**
    * GET /:slug/admin/owner-statements/:id
@@ -48,7 +58,11 @@ export class AdminOwnerStatementsController {
     description: 'Retorna los detalles de un estado de cuenta específico',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID del estado de cuenta' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID del estado de cuenta',
+  })
   @ApiOkResponse({
     description: 'Detalles del estado de cuenta',
     type: OwnerStatementResponseDto,
@@ -65,21 +79,34 @@ export class AdminOwnerStatementsController {
   @Get(':id/pdf')
   @ApiOperation({
     summary: 'Descargar PDF de liquidación (Admin)',
-    description: 'El administrador descarga el PDF del estado de cuenta del propietario',
+    description:
+      'El administrador descarga el PDF del estado de cuenta del propietario',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID del estado de cuenta' })
-  @ApiQuery({ name: 'lang', enum: ['es', 'en'], required: false, description: 'Idioma del PDF' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID del estado de cuenta',
+  })
+  @ApiQuery({
+    name: 'lang',
+    enum: ['es', 'en'],
+    required: false,
+    description: 'Idioma del PDF',
+  })
   async downloadPdfAdmin(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Query('lang') lang?: 'es' | 'en',
     @Res() res?: Response,
   ) {
-    const language = (lang === 'en' ? 'en' : 'es') as 'es' | 'en';
+    const language = lang === 'en' ? 'en' : 'es';
 
     try {
-      const filePath = await this.ownerStatementsService.generatePdf(id, language);
+      const filePath = await this.ownerStatementsService.generatePdf(
+        id,
+        language,
+      );
 
       if (!res) {
         throw new BadRequestException('Response object unavailable');
@@ -108,7 +135,10 @@ export class AdminOwnerStatementsController {
       'Crear un estado de cuenta manualmente. Normalmente se genera automáticamente al confirmar pagos.',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  async create(@Param('slug') _slug: string, @Body() dto: CreateOwnerStatementDto) {
+  async create(
+    @Param('slug') _slug: string,
+    @Body() dto: CreateOwnerStatementDto,
+  ) {
     return this.ownerStatementsService.create(dto);
   }
 
@@ -122,7 +152,11 @@ export class AdminOwnerStatementsController {
     description: 'Actualiza los datos de un estado de cuenta específico',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID del estado de cuenta' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID del estado de cuenta',
+  })
   async update(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -143,7 +177,11 @@ export class AdminOwnerStatementsController {
       'Cambia status → transferred y registra transferred_at con la fecha actual.',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID del estado de cuenta' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID del estado de cuenta',
+  })
   @ApiOkResponse({
     description: 'Estado de cuenta marcado como transferido',
     type: OwnerStatementResponseDto,
@@ -166,9 +204,15 @@ export class AdminOwnerStatementsController {
     description: 'Elimina un estado de cuenta específico',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID del estado de cuenta' })
-  async delete(@Param('slug') _slug: string, @Param('id', ParseIntPipe) id: number) {
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID del estado de cuenta',
+  })
+  async delete(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return this.ownerStatementsService.delete(id);
   }
 }
-

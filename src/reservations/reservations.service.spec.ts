@@ -1,10 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { ReservationsService } from './reservations.service';
 import { AvailabilityStatus } from './enums/availability-status.enum';
 
-function mockUnit(overrides?: Partial<Record<string, string>>): Record<string, string> {
+function mockUnit(
+  overrides?: Partial<Record<string, string>>,
+): Record<string, string> {
   return {
     id: '7',
     property_id: '3',
@@ -44,8 +50,14 @@ describe('ReservationsService', () => {
       const result = await service.getMonthAvailability(3, '2026-05');
 
       expect(result).toHaveLength(31);
-      expect(result[0]).toEqual({ date: '2026-05-01', status: AvailabilityStatus.AVAILABLE });
-      expect(result[30]).toEqual({ date: '2026-05-31', status: AvailabilityStatus.AVAILABLE });
+      expect(result[0]).toEqual({
+        date: '2026-05-01',
+        status: AvailabilityStatus.AVAILABLE,
+      });
+      expect(result[30]).toEqual({
+        date: '2026-05-31',
+        status: AvailabilityStatus.AVAILABLE,
+      });
     });
 
     it('debe sobrescribir el estado de días con registros en BD', async () => {
@@ -66,8 +78,12 @@ describe('ReservationsService', () => {
     });
 
     it('debe lanzar BadRequestException si el formato del mes es incorrecto', async () => {
-      await expect(service.getMonthAvailability(3, '05-2026')).rejects.toThrow(BadRequestException);
-      await expect(service.getMonthAvailability(3, '2026-13')).rejects.toThrow(BadRequestException);
+      await expect(service.getMonthAvailability(3, '05-2026')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.getMonthAvailability(3, '2026-13')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe generar 28 días para febrero en año no bisiesto', async () => {
@@ -84,18 +100,25 @@ describe('ReservationsService', () => {
   describe('blockDates', () => {
     it('debe bloquear las fechas indicadas', async () => {
       mockDataSource.query
-        .mockResolvedValueOnce([mockUnit()])   // findUnitOrFail
-        .mockResolvedValueOnce([])             // findBookedDates (ninguna booked)
-        .mockResolvedValueOnce(null)           // INSERT fecha 1
-        .mockResolvedValueOnce(null);          // INSERT fecha 2
+        .mockResolvedValueOnce([mockUnit()]) // findUnitOrFail
+        .mockResolvedValueOnce([]) // findBookedDates (ninguna booked)
+        .mockResolvedValueOnce(null) // INSERT fecha 1
+        .mockResolvedValueOnce(null); // INSERT fecha 2
 
-      const result = await service.blockDates(3, 7, { dates: ['2026-05-20', '2026-05-21'] }, 1);
+      const result = await service.blockDates(
+        3,
+        7,
+        { dates: ['2026-05-20', '2026-05-21'] },
+        1,
+      );
 
       expect(result.blocked).toBe(2);
     });
 
     it('debe lanzar BadRequestException si la unidad no es SHORT_TERM', async () => {
-      mockDataSource.query.mockResolvedValueOnce([mockUnit({ rental_type: 'LONG_TERM' })]);
+      mockDataSource.query.mockResolvedValueOnce([
+        mockUnit({ rental_type: 'LONG_TERM' }),
+      ]);
 
       await expect(
         service.blockDates(3, 7, { dates: ['2026-05-20'] }, 1),
@@ -132,14 +155,19 @@ describe('ReservationsService', () => {
     };
 
     it('debe crear una reserva y retornarla', async () => {
-      const mockReservation = { id: 1, nights: 5, total_amount: '420.00', status: 'confirmed' };
+      const mockReservation = {
+        id: 1,
+        nights: 5,
+        total_amount: '420.00',
+        status: 'confirmed',
+      };
 
       mockDataSource.query
-        .mockResolvedValueOnce([mockUnit()])             // findUnitOrFail
+        .mockResolvedValueOnce([mockUnit()]) // findUnitOrFail
         .mockResolvedValueOnce([{ rental_type: 'BOTH' }]) // validateTenantConfig
-        .mockResolvedValueOnce([])                       // assertDatesAvailable
-        .mockResolvedValueOnce([mockReservation])        // INSERT reservations
-        .mockResolvedValue(null);                        // INSERT property_availability (5 noches)
+        .mockResolvedValueOnce([]) // assertDatesAvailable
+        .mockResolvedValueOnce([mockReservation]) // INSERT reservations
+        .mockResolvedValue(null); // INSERT property_availability (5 noches)
 
       const result = await service.createReservation(dto, 42);
 
@@ -149,14 +177,21 @@ describe('ReservationsService', () => {
 
     it('debe lanzar BadRequestException si checkout <= checkin', async () => {
       await expect(
-        service.createReservation({ ...dto, checkout_date: dto.checkin_date }, 42),
+        service.createReservation(
+          { ...dto, checkout_date: dto.checkin_date },
+          42,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('debe lanzar BadRequestException si la unidad no es SHORT_TERM', async () => {
-      mockDataSource.query.mockResolvedValueOnce([mockUnit({ rental_type: 'LONG_TERM' })]);
+      mockDataSource.query.mockResolvedValueOnce([
+        mockUnit({ rental_type: 'LONG_TERM' }),
+      ]);
 
-      await expect(service.createReservation(dto, 42)).rejects.toThrow(BadRequestException);
+      await expect(service.createReservation(dto, 42)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe lanzar BadRequestException si el tenant solo admite LONG_TERM', async () => {
@@ -164,7 +199,9 @@ describe('ReservationsService', () => {
         .mockResolvedValueOnce([mockUnit()])
         .mockResolvedValueOnce([{ rental_type: 'LONG_TERM' }]);
 
-      await expect(service.createReservation(dto, 42)).rejects.toThrow(BadRequestException);
+      await expect(service.createReservation(dto, 42)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe lanzar BadRequestException si no se cumplen las noches mínimas', async () => {
@@ -172,7 +209,9 @@ describe('ReservationsService', () => {
         .mockResolvedValueOnce([mockUnit({ min_nights: '7' })])
         .mockResolvedValueOnce([{ rental_type: 'BOTH' }]);
 
-      await expect(service.createReservation(dto, 42)).rejects.toThrow(BadRequestException);
+      await expect(service.createReservation(dto, 42)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe lanzar ConflictException si hay fechas no disponibles', async () => {
@@ -181,7 +220,9 @@ describe('ReservationsService', () => {
         .mockResolvedValueOnce([{ rental_type: 'BOTH' }])
         .mockResolvedValueOnce([{ date: '2099-06-10', status: 'blocked' }]);
 
-      await expect(service.createReservation(dto, 42)).rejects.toThrow(ConflictException);
+      await expect(service.createReservation(dto, 42)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 });

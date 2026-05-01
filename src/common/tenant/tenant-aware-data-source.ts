@@ -37,7 +37,7 @@ export class TenantAwareDataSource {
     if (runner) {
       return runner.query(sql, params) as Promise<T>;
     }
-    return this.rawDataSource.query(sql, params) as Promise<T>;
+    return this.rawDataSource.query(sql, params);
   }
 
   /**

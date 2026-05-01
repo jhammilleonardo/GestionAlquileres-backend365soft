@@ -32,7 +32,8 @@ export class CreateExpenseDto {
   unit_id?: number;
 
   @ApiProperty({
-    description: 'Categoría del gasto (MAINTENANCE, INSURANCE, TAX, UTILITIES, MANAGEMENT_FEE, CLEANING, OTHER o personalizada)',
+    description:
+      'Categoría del gasto (MAINTENANCE, INSURANCE, TAX, UTILITIES, MANAGEMENT_FEE, CLEANING, OTHER o personalizada)',
     example: 'MAINTENANCE',
   })
   @IsString()
@@ -40,7 +41,7 @@ export class CreateExpenseDto {
 
   @ApiProperty({
     description: 'Monto del gasto',
-    example: 150.50,
+    example: 150.5,
     minimum: 0.01,
   })
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -108,7 +109,8 @@ export class CreateExpenseDto {
   is_recurring?: boolean = false;
 
   @ApiPropertyOptional({
-    description: 'Intervalo de recurrencia (DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY)',
+    description:
+      'Intervalo de recurrencia (DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY)',
     example: 'MONTHLY',
     enum: ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'],
   })

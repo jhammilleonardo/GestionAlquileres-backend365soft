@@ -45,7 +45,11 @@ export class ApplicationsController {
     @CurrentUser() user: { userId: number; role: string },
     @Body() createApplicationDto: CreateApplicationDto,
   ): Promise<any> {
-    return this.applicationsService.create(createApplicationDto, user.userId, slug);
+    return this.applicationsService.create(
+      createApplicationDto,
+      user.userId,
+      slug,
+    );
   }
 
   @Get('my-applications')
@@ -53,23 +57,30 @@ export class ApplicationsController {
   @Roles('INQUILINO')
   @ApiOperation({ summary: 'Ver mis solicitudes enviadas (Inquilino)' })
   async findMyApplications(
+    @Param('slug') slug: string,
     @CurrentUser() user: { userId: number },
   ): Promise<any> {
-    return this.applicationsService.findByApplicant(user.userId);
+    return this.applicationsService.findByApplicant(user.userId, slug);
   }
 
   @Get()
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPERADMIN')
   @ApiOperation({ summary: 'Listar todas las solicitudes (Admin)' })
-  async findAll(@Query('status') status?: ApplicationStatus): Promise<any> {
-    return this.applicationsService.findAll(status);
+  async findAll(
+    @Param('slug') slug: string,
+    @Query('status') status?: ApplicationStatus,
+  ): Promise<any> {
+    return this.applicationsService.findAll(slug, status);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener detalle de una solicitud' })
-  async findOne(@Param('id', ParseIntPipe) id: number): Promise<any> {
-    return this.applicationsService.findOne(id);
+  async findOne(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.applicationsService.findOne(id, slug);
   }
 
   @Patch(':id/approve')
@@ -82,6 +93,7 @@ export class ApplicationsController {
       'Aprobar una solicitud crea automáticamente un contrato con los datos proporcionados. El monthly_rent es obligatorio.',
   })
   async approveAndCreateContract(
+    @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() approveDto: ApproveApplicationDto,
     @CurrentUser() user: { userId: number },
@@ -90,6 +102,7 @@ export class ApplicationsController {
       id,
       approveDto,
       user.userId,
+      slug,
     );
   }
 
@@ -98,17 +111,20 @@ export class ApplicationsController {
   @Roles('ADMIN', 'SUPERADMIN')
   @ApiOperation({ summary: 'Actualizar estado de una solicitud (Admin)' })
   async updateStatus(
+    @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: UpdateApplicationStatusDto,
   ): Promise<any> {
-    return this.applicationsService.updateStatus(id, updateDto);
+    return this.applicationsService.updateStatus(id, updateDto, slug);
   }
 
   @Post(':id/documents')
   @HttpCode(200)
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPERADMIN')
-  @UseInterceptors(FilesInterceptor('files', 10, applicationDocumentMulterConfig))
+  @UseInterceptors(
+    FilesInterceptor('files', 10, applicationDocumentMulterConfig),
+  )
   @ApiOperation({
     summary: 'Subir documentos a una solicitud (Admin)',
     description:
@@ -124,7 +140,11 @@ export class ApplicationsController {
     if (!files || files.length === 0) {
       throw new BadRequestException('Se requiere al menos un archivo');
     }
-    const types = Array.isArray(rawTypes) ? rawTypes : rawTypes ? [rawTypes] : [];
+    const types = Array.isArray(rawTypes)
+      ? rawTypes
+      : rawTypes
+        ? [rawTypes]
+        : [];
     return this.applicationsService.uploadDocuments(id, files, types, slug);
   }
 
@@ -139,11 +159,17 @@ export class ApplicationsController {
       'Cuando es REJECTED o REQUIRES_COSIGNER, notifica al inquilino.',
   })
   async completeScreening(
+    @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() screeningDto: UpdateScreeningDto,
     @CurrentUser() user: { userId: number },
   ): Promise<any> {
-    return this.applicationsService.completeScreening(id, screeningDto, user.userId);
+    return this.applicationsService.completeScreening(
+      id,
+      screeningDto,
+      user.userId,
+      slug,
+    );
   }
 
   @Patch(':id/screening-fee')
@@ -156,8 +182,9 @@ export class ApplicationsController {
       'Marca screening_fee_paid = true. Para EE.UU.: el admin confirma que cobró los $50 antes de proceder.',
   })
   async markScreeningFeePaid(
+    @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
   ): Promise<any> {
-    return this.applicationsService.markScreeningFeePaid(id);
+    return this.applicationsService.markScreeningFeePaid(id, slug);
   }
 }

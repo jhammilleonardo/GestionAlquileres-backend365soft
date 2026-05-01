@@ -8,7 +8,10 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
-import { ViolationsPdfService, ViolationPdfData } from './violations-pdf.service';
+import {
+  ViolationsPdfService,
+  ViolationPdfData,
+} from './violations-pdf.service';
 import { ViolationStatusEnum } from './enums/violation-status.enum';
 import {
   CreateViolationDto,

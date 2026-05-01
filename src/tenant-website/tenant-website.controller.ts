@@ -23,7 +23,10 @@ export class TenantWebsiteController {
 
   @Patch()
   @ApiOperation({ summary: 'Actualizar configuración del sitio público' })
-  updateWebsite(@Req() req: TenantRequest, @Body() dto: UpdateTenantWebsiteDto) {
+  updateWebsite(
+    @Req() req: TenantRequest,
+    @Body() dto: UpdateTenantWebsiteDto,
+  ) {
     return this.tenantWebsiteService.update(req.tenant!.schema_name, dto);
   }
 

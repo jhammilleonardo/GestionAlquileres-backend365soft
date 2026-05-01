@@ -28,7 +28,7 @@ const mockUnit = (overrides: Partial<Unit> = {}): Unit =>
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
-  } as Unit);
+  }) as Unit;
 
 describe('UnitsService', () => {
   let service: UnitsService;
@@ -78,7 +78,9 @@ describe('UnitsService', () => {
     it('debe lanzar NotFoundException si la propiedad no existe', async () => {
       mockDataSource.query.mockResolvedValueOnce([]); // propiedad no existe
 
-      await expect(service.findByProperty(999)).rejects.toThrow(NotFoundException);
+      await expect(service.findByProperty(999)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -91,7 +93,9 @@ describe('UnitsService', () => {
       const result = await service.findAvailableByProperty(10);
 
       expect(mockUnitRepository.find).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { property_id: 10, status: UnitStatus.AVAILABLE } }),
+        expect.objectContaining({
+          where: { property_id: 10, status: UnitStatus.AVAILABLE },
+        }),
       );
       expect(result).toEqual([availableUnit]);
     });

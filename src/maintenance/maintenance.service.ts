@@ -864,9 +864,7 @@ export class MaintenanceService {
     }
 
     const completedAt = toStage === 'COMPLETED' ? 'NOW()' : null;
-    const completedAtClause = completedAt
-      ? `, completed_at = NOW()`
-      : '';
+    const completedAtClause = completedAt ? `, completed_at = NOW()` : '';
 
     await this.dataSource.query(
       `UPDATE maintenance_requests
@@ -1077,7 +1075,9 @@ export class MaintenanceService {
         [vendorId],
       );
       if (vendor.length === 0) {
-        throw new NotFoundException(`Proveedor con ID ${vendorId} no encontrado`);
+        throw new NotFoundException(
+          `Proveedor con ID ${vendorId} no encontrado`,
+        );
       }
       if (!vendor[0].is_active) {
         throw new BadRequestException('El proveedor está desactivado');
@@ -1089,7 +1089,9 @@ export class MaintenanceService {
       assigned_to: assignedTo ?? request.assigned_to,
     });
 
-    this.logger.log(`Request ${requestId} assigned to ${vendorId ? `vendor ${vendorId}` : `tech ${assignedTo}`}`);
+    this.logger.log(
+      `Request ${requestId} assigned to ${vendorId ? `vendor ${vendorId}` : `tech ${assignedTo}`}`,
+    );
     return this.findOne(requestId);
   }
 
@@ -1102,11 +1104,15 @@ export class MaintenanceService {
     const request = await this.findOne(requestId);
 
     if (!request.vendor_id) {
-      throw new BadRequestException('Esta orden no tiene un proveedor externo asignado');
+      throw new BadRequestException(
+        'Esta orden no tiene un proveedor externo asignado',
+      );
     }
 
     if (request.vendor_rated_at) {
-      throw new BadRequestException('Este proveedor ya fue calificado para esta orden');
+      throw new BadRequestException(
+        'Este proveedor ya fue calificado para esta orden',
+      );
     }
 
     if (!['COMPLETED', 'CLOSED'].includes(request.status)) {
@@ -1134,7 +1140,9 @@ export class MaintenanceService {
       [request.vendor_id],
     );
 
-    this.logger.log(`Vendor ${request.vendor_id} rated ${rating}/5 for request ${requestId}`);
+    this.logger.log(
+      `Vendor ${request.vendor_id} rated ${rating}/5 for request ${requestId}`,
+    );
     return this.findOne(requestId);
   }
 }

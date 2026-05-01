@@ -13,7 +13,8 @@ export class UpdateTenantWebsiteDto {
   @IsOptional()
   @MaxLength(100)
   @Matches(/^[a-z0-9-]+$/, {
-    message: 'subdomain must contain only lowercase letters, numbers, and hyphens',
+    message:
+      'subdomain must contain only lowercase letters, numbers, and hyphens',
   })
   subdomain?: string;
 
@@ -27,12 +28,16 @@ export class UpdateTenantWebsiteDto {
 
   @IsString()
   @IsOptional()
-  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'primary_color must be a valid hex color (#RRGGBB)' })
+  @Matches(/^#[0-9A-Fa-f]{6}$/, {
+    message: 'primary_color must be a valid hex color (#RRGGBB)',
+  })
   primary_color?: string;
 
   @IsString()
   @IsOptional()
-  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'secondary_color must be a valid hex color (#RRGGBB)' })
+  @Matches(/^#[0-9A-Fa-f]{6}$/, {
+    message: 'secondary_color must be a valid hex color (#RRGGBB)',
+  })
   secondary_color?: string;
 
   @IsEmail()

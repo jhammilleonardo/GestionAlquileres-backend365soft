@@ -75,10 +75,7 @@ export class VendorsController {
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Proveedor actualizado' })
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateVendorDto,
-  ) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateVendorDto) {
     return this.vendorsService.update(id, dto);
   }
 
@@ -95,7 +92,9 @@ export class VendorsController {
 
   @Get(':id/history')
   @RequirePermission('vendors', 'view')
-  @ApiOperation({ summary: 'Historial de órdenes de mantenimiento asignadas al proveedor' })
+  @ApiOperation({
+    summary: 'Historial de órdenes de mantenimiento asignadas al proveedor',
+  })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Historial de órdenes' })

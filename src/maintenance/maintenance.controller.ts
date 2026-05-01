@@ -207,7 +207,9 @@ export class AdminMaintenanceController {
 
   @Patch(':id/stage')
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Cambiar etapa (admin — cualquier transición válida)' })
+  @ApiOperation({
+    summary: 'Cambiar etapa (admin — cualquier transición válida)',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async changeStage(
@@ -226,7 +228,9 @@ export class AdminMaintenanceController {
 
   @Patch(':id/authorize')
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Admin autoriza el gasto en nombre del propietario' })
+  @ApiOperation({
+    summary: 'Admin autoriza el gasto en nombre del propietario',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async authorizeWork(
@@ -240,13 +244,12 @@ export class AdminMaintenanceController {
 
   @Patch(':id/assign-vendor')
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Asignar proveedor externo o técnico interno a la orden' })
+  @ApiOperation({
+    summary: 'Asignar proveedor externo o técnico interno a la orden',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  async assignVendor(
-    @Param('id') id: string,
-    @Body() dto: AssignVendorDto,
-  ) {
+  async assignVendor(@Param('id') id: string, @Body() dto: AssignVendorDto) {
     return this.maintenanceService.assignVendor(
       +id,
       dto.vendor_id ?? null,
@@ -256,7 +259,9 @@ export class AdminMaintenanceController {
 
   @Post(':id/rate-vendor')
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Calificar al proveedor externo al cerrar la orden (1-5)' })
+  @ApiOperation({
+    summary: 'Calificar al proveedor externo al cerrar la orden (1-5)',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async rateVendor(
@@ -264,7 +269,12 @@ export class AdminMaintenanceController {
     @Body() dto: RateVendorDto,
     @Request() req,
   ) {
-    return this.maintenanceService.rateVendor(+id, dto.rating, dto.comment, req.user.userId);
+    return this.maintenanceService.rateVendor(
+      +id,
+      dto.rating,
+      dto.comment,
+      req.user.userId,
+    );
   }
 }
 
@@ -354,7 +364,9 @@ export class TenantMaintenanceController {
   ) {
     const request = await this.maintenanceService.findOne(+id);
     if (request.tenant_id !== req.user.userId) {
-      throw new ForbiddenException('No tienes permiso para enviar mensajes en esta solicitud');
+      throw new ForbiddenException(
+        'No tienes permiso para enviar mensajes en esta solicitud',
+      );
     }
     return this.maintenanceService.addMessage(
       +id,
@@ -426,7 +438,9 @@ export class TecnicoMaintenanceController {
   }
 
   @Patch(':id/stage')
-  @ApiOperation({ summary: 'Avanzar etapa (técnico — solo IN_PROGRESS o COMPLETED)' })
+  @ApiOperation({
+    summary: 'Avanzar etapa (técnico — solo IN_PROGRESS o COMPLETED)',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async changeStage(

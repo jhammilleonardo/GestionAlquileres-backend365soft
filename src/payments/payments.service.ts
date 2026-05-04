@@ -29,6 +29,7 @@ import { SplitPaymentService } from '../split-payment/split-payment.service';
 import { quoteIdent } from '../common/utils/sql-identifier';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { AuditAction } from '../audit-logs/enums/audit-action.enum';
+import { WebhookResult } from './processors/payment-processor.interface';
 
 @Injectable()
 export class PaymentsService {
@@ -1132,5 +1133,39 @@ export class PaymentsService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  /**
+   * Actualiza el estado de un pago a partir del resultado de un webhook externo.
+   * Busca el pago por reference_number (donde se guarda el transaction_id del procesador).
+   */
+  async handleWebhookResult(
+    tenantSlug: string,
+    result: WebhookResult,
+  ): Promise<void> {
+    if (!result.transaction_id) return;
+
+    const tenant = await this.tenantsService.findBySlug(tenantSlug);
+    const schemaName = tenant.schema_name;
+
+    const updated: { id: number; tenant_id: number }[] =
+      await this.dataSource.query(
+        `UPDATE ${quoteIdent(schemaName)}.payments
+         SET status = $1, updated_at = NOW()
+         WHERE reference_number = $2
+         RETURNING id, tenant_id`,
+        [result.status, result.transaction_id],
+      );
+
+    if (updated.length === 0) {
+      this.logger.warn(
+        `handleWebhookResult: ningún pago encontrado con reference_number=${result.transaction_id} (tenant: ${tenantSlug})`,
+      );
+      return;
+    }
+
+    this.logger.log(
+      `Pago #${updated[0].id} actualizado a ${result.status} via webhook (tenant: ${tenantSlug})`,
+    );
   }
 }

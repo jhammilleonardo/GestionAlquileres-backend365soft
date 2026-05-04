@@ -1,4 +1,7 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+// Stripe v22 usa export = (CommonJS), se importa con import = require
+import StripeLib = require('stripe');
 import {
   IPaymentProcessor,
   ProcessorPaymentInput,
@@ -6,64 +9,147 @@ import {
   WebhookResult,
 } from './payment-processor.interface';
 
-/**
- * Procesador Stripe — estructura lista para conectar cuando llegue la cuenta empresarial.
- *
- * Para activar:
- *   1. npm install stripe
- *   2. Agregar STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET al .env
- *   3. Reemplazar cada NotImplementedException con la llamada real al SDK de Stripe
- *
- * Documentación: https://stripe.com/docs/api
- */
+/** Tarifa Stripe: 2.9% + $0.30 para tarjetas nacionales USA */
+const STRIPE_FEE_PERCENT = 0.029;
+const STRIPE_FEE_FIXED = 0.3;
+
 @Injectable()
 export class StripeProcessor implements IPaymentProcessor {
   readonly processorName = 'stripe';
 
-  // TODO: inyectar ConfigService y instanciar Stripe SDK aquí
-  // private readonly stripe: Stripe;
-  // constructor(private readonly config: ConfigService) {
-  //   this.stripe = new Stripe(config.get('STRIPE_SECRET_KEY'), { apiVersion: '2023-10-16' });
-  // }
+  private _stripe: StripeLib.Stripe | null = null;
+  private readonly secretKey: string;
+  private readonly webhookSecret: string;
+  private readonly logger = new Logger(StripeProcessor.name);
 
-  async createPayment(_input: ProcessorPaymentInput): Promise<ProcessorResult> {
-    // TODO: crear un PaymentIntent en Stripe
-    // const paymentIntent = await this.stripe.paymentIntents.create({
-    //   amount: Math.round(_input.amount * 100), // Stripe trabaja en centavos
-    //   currency: _input.currency.toLowerCase(),
-    //   metadata: { tenantId: _input.tenantId, contractId: _input.contractId },
-    // });
-    // return { success: true, transaction_id: paymentIntent.id, processor_fee: 0, status: 'PROCESSING' };
-    throw new NotImplementedException(
-      'Stripe no está configurado. Agrega STRIPE_SECRET_KEY al .env e implementa este método.',
-    );
+  constructor(private readonly config: ConfigService) {
+    this.secretKey = this.config.get<string>('STRIPE_SECRET_KEY', '');
+    this.webhookSecret = this.config.get<string>('STRIPE_WEBHOOK_SECRET', '');
   }
 
-  async confirmPayment(_transactionId: string): Promise<ProcessorResult> {
-    // TODO: capturar el PaymentIntent
-    // await this.stripe.paymentIntents.capture(_transactionId);
-    throw new NotImplementedException('Stripe: confirmPayment no implementado');
+  /** Instancia Stripe de forma diferida — evita error al arrancar sin STRIPE_SECRET_KEY */
+  private get stripe(): StripeLib.Stripe {
+    if (!this._stripe) {
+      if (!this.secretKey) {
+        throw new Error(
+          'Stripe no está configurado. Agrega STRIPE_SECRET_KEY al .env para habilitarlo.',
+        );
+      }
+      this._stripe = new StripeLib(this.secretKey);
+    }
+    return this._stripe;
+  }
+
+  async createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
+    const amountCents = Math.round(input.amount * 100);
+    const processorFee = parseFloat(
+      (input.amount * STRIPE_FEE_PERCENT + STRIPE_FEE_FIXED).toFixed(2),
+    );
+
+    const paymentIntent = await this.stripe.paymentIntents.create({
+      amount: amountCents,
+      currency: input.currency.toLowerCase(),
+      metadata: {
+        tenantId: String(input.tenantId),
+        contractId: String(input.contractId),
+        propertyId: String(input.propertyId),
+        reference: input.reference_number ?? '',
+      },
+    });
+
+    this.logger.log(
+      `Stripe PaymentIntent creado: ${paymentIntent.id} | tenant: ${input.tenantId}`,
+    );
+
+    return {
+      success: true,
+      transaction_id: paymentIntent.id,
+      processor_fee: processorFee,
+      status: 'PROCESSING',
+    };
+  }
+
+  async confirmPayment(transactionId: string): Promise<ProcessorResult> {
+    const paymentIntent =
+      await this.stripe.paymentIntents.capture(transactionId);
+    const succeeded = paymentIntent.status === 'succeeded';
+
+    return {
+      success: succeeded,
+      transaction_id: paymentIntent.id,
+      processor_fee: 0,
+      status: succeeded ? 'APPROVED' : 'FAILED',
+    };
   }
 
   async refundPayment(
-    _transactionId: string,
-    _amount: number,
+    transactionId: string,
+    amount: number,
   ): Promise<ProcessorResult> {
-    // TODO: crear refund en Stripe
-    // await this.stripe.refunds.create({ payment_intent: _transactionId, amount: Math.round(_amount * 100) });
-    throw new NotImplementedException('Stripe: refundPayment no implementado');
+    const refund = await this.stripe.refunds.create({
+      payment_intent: transactionId,
+      amount: Math.round(amount * 100),
+    });
+
+    const succeeded = refund.status === 'succeeded';
+
+    return {
+      success: succeeded,
+      transaction_id: refund.id,
+      processor_fee: 0,
+      status: succeeded ? 'APPROVED' : 'FAILED',
+    };
   }
 
+  /**
+   * Verifica la firma HMAC y procesa el evento Stripe.
+   * @param payload  Buffer con el cuerpo raw del request (antes de parsear JSON)
+   * @param signature Cabecera Stripe-Signature
+   */
   async handleWebhook(
-    _payload: unknown,
-    _signature?: string,
+    payload: unknown,
+    signature?: string,
   ): Promise<WebhookResult> {
-    // TODO: verificar firma del webhook y procesar el evento
-    // const event = this.stripe.webhooks.constructEvent(rawBody, _signature, webhookSecret);
-    // switch (event.type) {
-    //   case 'payment_intent.succeeded': ...
-    //   case 'payment_intent.payment_failed': ...
-    // }
-    throw new NotImplementedException('Stripe: handleWebhook no implementado');
+    let event: ReturnType<typeof this.stripe.webhooks.constructEvent>;
+
+    try {
+      event = this.stripe.webhooks.constructEvent(
+        payload as string | Buffer,
+        signature ?? '',
+        this.webhookSecret,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'firma inválida';
+      this.logger.error(
+        `Stripe webhook: verificación de firma fallida — ${msg}`,
+      );
+      throw new BadRequestException('Stripe webhook: firma inválida');
+    }
+
+    this.logger.log(`Stripe webhook recibido: ${event.type}`);
+
+    switch (event.type) {
+      case 'payment_intent.succeeded': {
+        const pi = event.data.object as { id: string };
+        return { transaction_id: pi.id, status: 'APPROVED', raw_event: event };
+      }
+      case 'payment_intent.payment_failed': {
+        const pi = event.data.object as { id: string };
+        return { transaction_id: pi.id, status: 'FAILED', raw_event: event };
+      }
+      case 'charge.refunded': {
+        const charge = event.data.object as {
+          id: string;
+          payment_intent: string | null;
+        };
+        const txnId = charge.payment_intent ?? charge.id;
+        return { transaction_id: txnId, status: 'APPROVED', raw_event: event };
+      }
+      default:
+        this.logger.debug(
+          `Stripe webhook: evento no manejado — ${event.type}`,
+        );
+        return { status: 'APPROVED', raw_event: event };
+    }
   }
 }

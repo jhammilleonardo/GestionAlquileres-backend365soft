@@ -8,7 +8,10 @@ import { TenantConnectionInterceptor } from './common/interceptors/tenant-connec
 import { DataSource } from 'typeorm';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: true expone req.rawBody (Buffer) necesario para verificar firma de Stripe
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   // ── Cabeceras de seguridad HTTP ─────────────────────────────────────────
   app.use(

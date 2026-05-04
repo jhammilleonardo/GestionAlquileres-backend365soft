@@ -1,4 +1,6 @@
 import { Injectable, NotImplementedException } from '@nestjs/common';
+import { QrPaymentService } from '../qr/qr-payment.service';
+import { GenerateQrDto } from '../qr/dto';
 import {
   IPaymentProcessor,
   ProcessorPaymentInput,
@@ -7,70 +9,99 @@ import {
 } from './payment-processor.interface';
 
 /**
- * Procesador QR Bolivia (MC4/SIP) — estructura lista para conectar con QrPaymentService.
+ * Procesador QR Bolivia (MC4/SIP).
  *
- * La lógica real de generación de QR ya existe en:
- *   src/payments/qr/qr-payment.service.ts
+ * Delega toda la lógica a QrPaymentService, que ya implementa el protocolo MC4.
  *
- * Para activar:
- *   1. Inyectar QrPaymentService aquí
- *   2. Agregar MC4_AUTH_URL, MC4_QR_URL, MC4_STATUS_URL, MC4_API_KEY_AUTH,
- *      MC4_API_KEY_SERVICIO, MC4_USERNAME, MC4_PASSWORD al .env
- *   3. Reemplazar cada NotImplementedException delegando a QrPaymentService
+ * Convención de transactionId: "{alias}@{tenantSlug}"
+ *   - Permite recuperar el slug en confirmPayment sin cambiar la interfaz.
+ *   - El alias tiene el formato: QR365T{tenantId}T{timestamp}{8hex}
  *
- * Documentación interna: ver qr-payment.service.ts y PAGOS.md
+ * Pasar en metadata.tenantSlug el slug del tenant al llamar createPayment.
+ *
+ * Limitación: refundPayment no está soportado por MC4/SIP — gestionar manualmente con el banco.
  */
 @Injectable()
 export class QRBoliviaProcessor implements IPaymentProcessor {
   readonly processorName = 'qr_bolivia';
 
-  // TODO: inyectar QrPaymentService aquí
-  // constructor(private readonly qrService: QrPaymentService) {}
+  constructor(private readonly qrService: QrPaymentService) {}
 
-  async createPayment(_input: ProcessorPaymentInput): Promise<ProcessorResult> {
-    // TODO: delegar a QrPaymentService.generarQrDinamico()
-    // El QR se genera con el alias del sistema (QR365T...) y se guarda en qr_payments.
-    // El resultado incluye la imagen base64 del QR para mostrar al usuario.
-    // return {
-    //   success: true,
-    //   transaction_id: alias,
-    //   processor_fee: 0,
-    //   status: 'PENDING', // El pago queda PENDIENTE hasta que el banco confirme
-    // };
-    throw new NotImplementedException(
-      'QR Bolivia no está configurado. Agrega las variables MC4_* al .env e implementa este método.',
-    );
+  async createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
+    const slug = String(input.metadata?.tenantSlug ?? '');
+
+    const dto: GenerateQrDto = {
+      tenant_id: input.tenantId,
+      amount: input.amount,
+      currency: input.currency ?? 'BOB',
+      contract_id: input.contractId,
+      notes: input.notes,
+      payment_type: String(input.metadata?.payment_type ?? 'RENT'),
+    };
+
+    const result = await this.qrService.generarQrDinamico(slug, dto);
+
+    // Encodar slug en el transactionId para recuperarlo en confirmPayment
+    const transactionId = `${result.id}@${slug}`;
+
+    return {
+      success: true,
+      transaction_id: transactionId,
+      processor_fee: 0,
+      status: 'PENDING',
+    };
   }
 
-  async confirmPayment(_transactionId: string): Promise<ProcessorResult> {
-    // TODO: delegar a QrPaymentService.verificarEstadoQr()
-    // El alias del QR actúa como transactionId.
-    throw new NotImplementedException(
-      'QR Bolivia: confirmPayment no implementado',
+  async confirmPayment(transactionId: string): Promise<ProcessorResult> {
+    const [qrIdStr, slug] = transactionId.split('@');
+    const qrId = parseInt(qrIdStr, 10);
+
+    const result = await this.qrService.verificarEstadoQr(
+      slug,
+      { qr_id: qrId },
     );
+
+    const isPagado = result.status === 'PAGADO';
+
+    return {
+      success: isPagado,
+      transaction_id: transactionId,
+      processor_fee: 0,
+      status: isPagado ? 'APPROVED' : 'PENDING',
+    };
   }
 
   async refundPayment(
     _transactionId: string,
     _amount: number,
   ): Promise<ProcessorResult> {
-    // QR Bolivia (MC4/SIP) no soporta reembolsos automáticos vía API.
-    // Los reembolsos se gestionan manualmente con el banco.
     throw new NotImplementedException(
-      'QR Bolivia no soporta reembolsos automáticos. Gestionar manualmente con el banco.',
+      'QR Bolivia (MC4/SIP) no soporta reembolsos automáticos. Gestionar manualmente con el banco.',
     );
   }
 
+  /**
+   * El callback de MC4 ya está manejado por PublicQrPaymentController en:
+   *   POST /:slug/publico/qr/callback
+   *
+   * Este método existe para cumplir el contrato de IPaymentProcessor y no debe
+   * llamarse directamente desde el WebhookController — usar el endpoint QR dedicado.
+   */
   async handleWebhook(
     payload: unknown,
     _signature?: string,
   ): Promise<WebhookResult> {
-    // TODO: delegar a QrPaymentService.handleCallback()
-    // El banco MC4/SIP envía un callback cuando el pago es confirmado.
-    // La verificación de firma ya está implementada en handleCallback().
-    // return await this.qrService.handleCallback(slug, payload as QrCallbackDto);
-    throw new NotImplementedException(
-      'QR Bolivia: handleWebhook no implementado',
-    );
+    const body = payload as Record<string, unknown>;
+    const alias = body.alias as string;
+
+    if (!alias) {
+      return { status: 'FAILED', raw_event: payload };
+    }
+
+    return {
+      transaction_id: alias,
+      status: 'APPROVED',
+      raw_event: payload,
+    };
   }
 }

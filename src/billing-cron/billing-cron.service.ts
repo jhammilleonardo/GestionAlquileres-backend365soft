@@ -17,6 +17,11 @@ interface TenantRecord {
   slug: string;
 }
 
+interface TenantRecordWithHealth extends TenantRecord {
+  schema_exists?: boolean;
+  has_tenant_config?: boolean;
+}
+
 interface TenantConfig {
   timezone: string;
   grace_days_late_fee: number;
@@ -356,9 +361,44 @@ export class BillingCronService {
   // ── Helpers compartidos ──────────────────────────────────────────────────────
 
   private async getAllActiveTenants(): Promise<TenantRecord[]> {
-    return this.dataSource.query<TenantRecord[]>(
-      `SELECT schema_name, slug FROM public.tenant WHERE is_active = true`,
+    const tenants = await this.dataSource.query<TenantRecordWithHealth[]>(
+      `SELECT
+         t.schema_name,
+         t.slug,
+         EXISTS (
+           SELECT 1
+           FROM information_schema.schemata s
+           WHERE s.schema_name = t.schema_name
+         ) AS schema_exists,
+         EXISTS (
+           SELECT 1
+           FROM information_schema.tables tb
+           WHERE tb.table_schema = t.schema_name
+             AND tb.table_name = 'tenant_config'
+         ) AS has_tenant_config
+       FROM public.tenant t
+       WHERE t.is_active = true`,
     );
+
+    const validTenants: TenantRecord[] = [];
+    for (const tenant of tenants) {
+      const schemaExists = tenant.schema_exists ?? true;
+      const hasTenantConfig = tenant.has_tenant_config ?? true;
+
+      if (!schemaExists || !hasTenantConfig) {
+        this.logger.warn(
+          `[${tenant.schema_name}] tenant omitido en billing-cron: schema/configuración incompleta`,
+        );
+        continue;
+      }
+
+      validTenants.push({
+        schema_name: tenant.schema_name,
+        slug: tenant.slug,
+      });
+    }
+
+    return validTenants;
   }
 
   private async getConfigForSchema(schemaName: string): Promise<TenantConfig> {

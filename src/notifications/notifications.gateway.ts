@@ -28,7 +28,9 @@ interface SocketJwtPayload {
 @WebSocketGateway({
   namespace: '/notifications',
   cors: {
-    origin: true,
+    origin: (process.env.FRONTEND_URLS ?? 'http://localhost:4200,http://localhost:4201')
+      .split(',')
+      .map((u) => u.trim()),
     credentials: true,
   },
 })
@@ -74,10 +76,7 @@ export class NotificationsGateway
     }
 
     const requestedTenantSlug = this.extractRequestedTenantSlug(client);
-    if (
-      requestedTenantSlug &&
-      requestedTenantSlug.trim() !== payload.tenantSlug
-    ) {
+    if (requestedTenantSlug && requestedTenantSlug.trim() !== payload.tenantSlug) {
       this.rejectConnection(client, 'Tenant mismatch');
       return;
     }
@@ -100,12 +99,16 @@ export class NotificationsGateway
     socketData.role = payload.role;
     socketData.tenantSlug = tenantSlug;
 
-    void client.join(this.getTenantRoom(tenantSlug));
-    void client.join(this.getUserRoom(tenantSlug, userId));
+    void client.join(this.tenantRoom(tenantSlug));
+    void client.join(this.userRoom(tenantSlug, userId));
+
+    this.logger.log(
+      `Socket conectado: ${client.id} | tenant=${tenantSlug} userId=${userId}`,
+    );
   }
 
   handleDisconnect(client: Socket): void {
-    this.logger.debug(`Socket disconnected: ${client.id}`);
+    this.logger.debug(`Socket desconectado: ${client.id}`);
   }
 
   emitTenantEvent(
@@ -113,7 +116,7 @@ export class NotificationsGateway
     event: RealtimeNotificationEvent,
     payload: Record<string, unknown>,
   ): void {
-    this.server.to(this.getTenantRoom(tenantSlug)).emit(event, payload);
+    this.server.to(this.tenantRoom(tenantSlug)).emit(event, payload);
   }
 
   emitUserEvent(
@@ -122,19 +125,19 @@ export class NotificationsGateway
     event: RealtimeNotificationEvent,
     payload: Record<string, unknown>,
   ): void {
-    this.server.to(this.getUserRoom(tenantSlug, userId)).emit(event, payload);
+    this.server.to(this.userRoom(tenantSlug, userId)).emit(event, payload);
   }
 
-  getTenantRoom(tenantSlug: string): string {
+  private tenantRoom(tenantSlug: string): string {
     return `tenant:${tenantSlug}`;
   }
 
-  getUserRoom(tenantSlug: string, userId: number): string {
+  private userRoom(tenantSlug: string, userId: number): string {
     return `tenant:${tenantSlug}:user:${userId}`;
   }
 
   private rejectConnection(client: Socket, reason: string): void {
-    this.logger.warn(`Socket connection rejected (${client.id}): ${reason}`);
+    this.logger.warn(`Conexión rechazada (${client.id}): ${reason}`);
     client.disconnect(true);
   }
 
@@ -145,24 +148,19 @@ export class NotificationsGateway
     const headerToken = this.extractTokenFromAuthorizationHeader(
       client.handshake.headers.authorization,
     );
-    const queryToken = this.normalizeString(
-      (client.handshake.query as Record<string, unknown> | undefined)?.token,
-    );
 
-    return this.normalizeBearerToken(authToken ?? headerToken ?? queryToken);
+    return this.normalizeBearerToken(authToken ?? headerToken);
   }
 
   private extractRequestedTenantSlug(client: Socket): string | null {
     const authTenantSlug = this.normalizeString(
-      (client.handshake.auth as Record<string, unknown> | undefined)
-        ?.tenantSlug,
+      (client.handshake.auth as Record<string, unknown> | undefined)?.tenantSlug,
     );
     if (authTenantSlug) {
       return authTenantSlug;
     }
 
-    const queryValue = (client.handshake.query as Record<string, unknown>)
-      ?.tenantSlug;
+    const queryValue = (client.handshake.query as Record<string, unknown>)?.tenantSlug;
     if (Array.isArray(queryValue)) {
       return this.normalizeString(queryValue[0]);
     }
@@ -170,9 +168,7 @@ export class NotificationsGateway
     return this.normalizeString(queryValue);
   }
 
-  private extractTokenFromAuthorizationHeader(
-    authorizationHeader?: string,
-  ): string | null {
+  private extractTokenFromAuthorizationHeader(authorizationHeader?: string): string | null {
     if (!authorizationHeader) {
       return null;
     }
@@ -182,11 +178,9 @@ export class NotificationsGateway
       return null;
     }
 
-    if (trimmed.startsWith('Bearer ')) {
-      return this.normalizeString(trimmed.slice(7));
-    }
-
-    return this.normalizeString(trimmed);
+    return this.normalizeString(
+      trimmed.startsWith('Bearer ') ? trimmed.slice(7) : trimmed,
+    );
   }
 
   private normalizeBearerToken(token: string | null): string | null {
@@ -194,11 +188,9 @@ export class NotificationsGateway
       return null;
     }
 
-    if (token.startsWith('Bearer ')) {
-      return this.normalizeString(token.slice(7));
-    }
-
-    return this.normalizeString(token);
+    return this.normalizeString(
+      token.startsWith('Bearer ') ? token.slice(7) : token,
+    );
   }
 
   private normalizeString(value: unknown): string | null {
@@ -216,10 +208,7 @@ export class NotificationsGateway
     }
 
     const parsed = payload as Record<string, unknown>;
-    const sub = parsed.sub;
-    const email = parsed.email;
-    const role = parsed.role;
-    const tenantSlug = parsed.tenantSlug;
+    const { sub, email, role, tenantSlug } = parsed;
 
     const hasValidSub = typeof sub === 'number' || typeof sub === 'string';
     if (
@@ -231,11 +220,6 @@ export class NotificationsGateway
       return null;
     }
 
-    return {
-      sub,
-      email,
-      role,
-      tenantSlug,
-    };
+    return { sub, email, role, tenantSlug };
   }
 }

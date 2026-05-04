@@ -12,10 +12,14 @@ import { CreateTenantDto, TenantCountry } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { quoteIdent, schemaNameFromSlug } from '../common/utils/sql-identifier';
 import { isValidTenantSlug } from '../common/utils/tenant-slug';
+import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 
 @Injectable()
 export class TenantsService implements OnModuleInit {
   private readonly logger = new Logger(TenantsService.name);
+  private readonly notificationEventTypes = Object.values(
+    NotificationEventType,
+  );
 
   constructor(
     @InjectRepository(Tenant)
@@ -138,6 +142,10 @@ export class TenantsService implements OnModuleInit {
         [
           'createLifecycleNotificationLog',
           () => this.createLifecycleNotificationLog(schema_name),
+        ],
+        [
+          'migrateNotificationEventTypeEnum',
+          () => this.migrateNotificationEventTypeEnum(schema_name),
         ],
         [
           'createContractTemplatesTable',
@@ -617,6 +625,40 @@ export class TenantsService implements OnModuleInit {
     `);
   }
 
+  /**
+   * Sincroniza notification_event_type_enum con NotificationEventType.
+   * Previene drift entre código y enum SQL para nuevos y antiguos tenants.
+   */
+  private async migrateNotificationEventTypeEnum(
+    schemaName: string,
+  ): Promise<void> {
+    const [typeExists] = await this.dataSource.query<{ exists: boolean }[]>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM pg_type t
+         JOIN pg_namespace n ON n.oid = t.typnamespace
+         WHERE t.typname = 'notification_event_type_enum'
+           AND n.nspname = $1
+       )`,
+      [schemaName],
+    );
+
+    if (!typeExists?.exists) {
+      await this.createNotificationsTables(schemaName);
+      return;
+    }
+
+    for (const eventType of this.notificationEventTypes) {
+      const safeEventType = eventType.replace(/'/g, "''");
+      await this.dataSource.query(`
+        ALTER TYPE ${quoteIdent(schemaName)}.notification_event_type_enum
+          ADD VALUE IF NOT EXISTS '${safeEventType}';
+      `);
+    }
+
+    await this.createNotificationsTables(schemaName);
+  }
+
   private async createTenantConfigTable(
     schemaName: string,
     country: TenantCountry = TenantCountry.BO,
@@ -829,44 +871,51 @@ export class TenantsService implements OnModuleInit {
       // 8. Crear tablas de Maintenance
       await this.createMaintenanceTables(tenant.schema_name);
 
-      // 9. Crear tablas de Notifications
+      // 9. Crear tablas de proveedores y columnas extendidas de mantenimiento
+      await this.createVendorsTable(tenant.schema_name);
+      await this.migrateMaintenanceVendorFields(tenant.schema_name);
+
+      // 10. Crear tablas de Notifications
       await this.createNotificationsTables(tenant.schema_name);
 
-      // 10. Crear tablas de Payments
+      // 11. Crear tablas de Payments
       await this.createPaymentsTables(tenant.schema_name);
 
-      // 11. Crear tabla de permisos de empleados
+      // 12. Crear tabla de permisos de empleados
       await this.createEmployeePermissionsTable(tenant.schema_name);
 
-      // 12. Crear tabla de configuración del tenant
+      // 13. Crear tabla de configuración del tenant
       await this.createTenantConfigTable(tenant.schema_name, country);
 
-      // 13. Crear tabla de leads del catálogo público
+      // 14. Crear tabla de leads del catálogo público
       await this.createPropertyLeadsTable(tenant.schema_name);
 
-      // 14. Crear tabla de unidades
+      // 15. Crear tabla de unidades
       await this.createUnitsTables(tenant.schema_name);
 
-      // 15. Campos bancarios en rental_owners ya incluidos en createPropertiesTables
+      // 16. Crear tabla de liquidaciones de propietarios (usada por split payment)
+      await this.migrateOwnerStatementsFields(tenant.schema_name);
+
+      // 17. Campos bancarios en rental_owners ya incluidos en createPropertiesTables
       // (la tabla se crea con esos campos desde el inicio)
 
-      // 15. Crear tablas de Inspecciones
+      // 18. Crear tablas de Inspecciones
       await this.createInspectionsTables(tenant.schema_name);
 
-      // 16. Crear tablas de Gastos (Expenses)
+      // 19. Crear tablas de Gastos (Expenses)
       await this.createExpensesTables(tenant.schema_name);
 
-      // 17. Crear tabla de audit logs
+      // 20. Crear tabla de audit logs
       await this.createAuditLogsTable(tenant.schema_name);
 
-      // 18. Crear tablas del sitio web público del tenant
+      // 21. Crear tablas del sitio web público del tenant
       await this.createTenantWebsiteTable(tenant.schema_name);
       await this.createWebsiteContactsTable(tenant.schema_name);
 
-      // 19. Insertar datos iniciales (seed data)
+      // 22. Insertar datos iniciales (seed data)
       await this.seedPropertyTypesAndSubtypes(tenant.schema_name);
 
-      // 17. Otorgar permisos al usuario de la aplicación
+      // 23. Otorgar permisos al usuario de la aplicación
       await this.grantSchemaPermissions(tenant.schema_name);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1416,21 +1465,15 @@ export class TenantsService implements OnModuleInit {
   }
 
   private async createNotificationsTables(schemaName: string) {
+    const enumValuesSql = this.notificationEventTypes
+      .map((eventType) => `'${eventType.replace(/'/g, "''")}'`)
+      .join(',\n          ');
+
     // ENUM de notification_event_type
     await this.dataSource.query(`
       DO $$ BEGIN
         CREATE TYPE ${quoteIdent(schemaName)}.notification_event_type_enum AS ENUM (
-          'maintenance.request.created',
-          'maintenance.status.changed',
-          'maintenance.message.received',
-          'maintenance.assigned',
-          'maintenance.completed',
-          'property.status.changed',
-          'property.available',
-          'user.registered',
-          'user.password.changed',
-          'application.created',
-          'application.status.changed'
+          ${enumValuesSql}
         );
       EXCEPTION
         WHEN duplicate_object THEN null;
@@ -1822,7 +1865,7 @@ export class TenantsService implements OnModuleInit {
       await this.dataSource.query(
         `ALTER TABLE ${quoteIdent(schemaName)}.expenses DROP COLUMN IF EXISTS tenant_id`,
       );
-    } catch (e) {
+    } catch {
       // Ignorar si falla
     }
 

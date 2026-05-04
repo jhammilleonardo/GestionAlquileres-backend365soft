@@ -324,14 +324,13 @@ export class TenantMaintenanceController {
     @Body() createMaintenanceDto: CreateMaintenanceDto,
     @Request() req,
   ) {
-    // El backend busca automáticamente el contrato activo del tenant
-    // No es necesario enviar contract_id ni tenant_id
+    // Si contract_id viene en el DTO, se usa; caso contrario se busca contrato activo.
     const assignedTo = 1; // Por defecto al admin con ID 1
 
     return this.maintenanceService.create(
       createMaintenanceDto,
       req.user.userId,
-      undefined, // contract_id se busca automáticamente
+      createMaintenanceDto.contract_id,
       assignedTo,
     );
   }

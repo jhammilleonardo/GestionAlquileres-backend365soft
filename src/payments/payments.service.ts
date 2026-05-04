@@ -907,6 +907,7 @@ export class PaymentsService {
        RETURNING *`,
       [PaymentStatus.APPROVED, dto.admin_notes || null, adminId, id],
     );
+    const normalizedUpdated = Array.isArray(updated[0]) ? updated[0] : updated;
 
     // Notificar al inquilino
     try {
@@ -921,22 +922,17 @@ export class PaymentsService {
       // No propagar errores de notificación
     }
 
-    // Calcular y persistir split de forma atómica
-    // Si falla, no afecta la aprobación del pago — se registra el error
-    try {
-      await this.splitPaymentService.executeSplit({
-        paymentId: id,
-        totalAmount: Number(payment.amount),
-        propertyId: payment.property_id as number,
-        paymentDate: new Date(payment.payment_date as string),
-        currency: payment.currency as string,
-        schemaName: schema,
-      });
-    } catch (splitError: unknown) {
-      const msg =
-        splitError instanceof Error ? splitError.message : String(splitError);
-      this.logger.error(`Split payment falló para pago #${id}: ${msg}`);
-    }
+    // Calcular y persistir split de forma atómica.
+    // Si falla, la aprobación no debe quedar "exitosa" porque generaría
+    // inconsistencias contables entre pagos y liquidaciones.
+    await this.splitPaymentService.executeSplit({
+      paymentId: id,
+      totalAmount: Number(payment.amount),
+      propertyId: payment.property_id as number,
+      paymentDate: new Date(payment.payment_date as string),
+      currency: payment.currency as string,
+      schemaName: schema,
+    });
 
     await this.auditLogsService.log({
       userId: adminId,
@@ -950,7 +946,7 @@ export class PaymentsService {
       },
     });
 
-    return updated[0];
+    return normalizedUpdated[0];
   }
 
   /**
@@ -1001,6 +997,7 @@ export class PaymentsService {
         id,
       ],
     );
+    const normalizedUpdated = Array.isArray(updated[0]) ? updated[0] : updated;
 
     // Notificar al inquilino con el motivo
     try {
@@ -1032,7 +1029,7 @@ export class PaymentsService {
       },
     });
 
-    return updated[0];
+    return normalizedUpdated[0];
   }
 
   /**

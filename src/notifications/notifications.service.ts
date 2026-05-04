@@ -8,7 +8,7 @@ import {
 } from './notifications.gateway';
 import { tenantConnectionStore } from '../common/tenant/tenant-connection.store';
 
-interface NotificationRow {
+export interface NotificationRow {
   id: number;
   user_id: number;
   event_type: string;

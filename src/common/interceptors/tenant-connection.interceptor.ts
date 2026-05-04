@@ -36,11 +36,38 @@ import type { TenantRequest } from '../middleware/tenant-context.middleware';
 @Injectable()
 export class TenantConnectionInterceptor implements NestInterceptor {
   private readonly logger = new Logger(TenantConnectionInterceptor.name);
+  private static isDataSourcePatched = false;
+  private readonly originalQuery: DataSource['query'];
 
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
-  ) {}
+  ) {
+    this.originalQuery = this.dataSource.query.bind(this.dataSource);
+    this.patchDataSourceQuery();
+  }
+
+  /**
+   * Redirige DataSource.query al QueryRunner del request (si existe contexto).
+   * Esto elimina la dependencia de que todos los servicios usen un wrapper.
+   */
+  private patchDataSourceQuery(): void {
+    if (TenantConnectionInterceptor.isDataSourcePatched) return;
+
+    const rawQuery = this.originalQuery;
+    this.dataSource.query = ((
+      sql: string,
+      params?: unknown[],
+    ): Promise<unknown> => {
+      const scopedRunner = tenantConnectionStore.getStore()?.queryRunner;
+      if (scopedRunner) {
+        return scopedRunner.query(sql, params);
+      }
+      return rawQuery(sql, params);
+    }) as DataSource['query'];
+
+    TenantConnectionInterceptor.isDataSourcePatched = true;
+  }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest<TenantRequest>();

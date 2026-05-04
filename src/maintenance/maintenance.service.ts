@@ -1084,10 +1084,14 @@ export class MaintenanceService {
       }
     }
 
-    await this.maintenanceRepository.update(requestId, {
-      vendor_id: vendorId,
-      assigned_to: assignedTo ?? request.assigned_to,
-    });
+    await this.dataSource.query(
+      `UPDATE maintenance_requests
+       SET vendor_id = $1,
+           assigned_to = $2,
+           updated_at = NOW()
+       WHERE id = $3`,
+      [vendorId, assignedTo ?? request.assigned_to, requestId],
+    );
 
     this.logger.log(
       `Request ${requestId} assigned to ${vendorId ? `vendor ${vendorId}` : `tech ${assignedTo}`}`,

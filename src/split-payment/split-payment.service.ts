@@ -214,22 +214,33 @@ export class SplitPaymentService {
     year: number,
     schemaName: string,
   ): Promise<number> {
-    try {
-      const rows: { total: string }[] = await queryRunner.query(
-        `SELECT COALESCE(SUM(estimated_cost), 0) AS total
-         FROM ${quoteIdent(schemaName)}.maintenance_requests
-         WHERE property_id = $1
-           AND status = 'COMPLETED'
-           AND EXTRACT(MONTH FROM updated_at) = $2
-           AND EXTRACT(YEAR  FROM updated_at) = $3
-           AND estimated_cost IS NOT NULL`,
-        [propertyId, month, year],
-      );
-      return rows.length > 0 ? Number(rows[0].total) : 0;
-    } catch {
-      // La tabla puede no tener estimated_cost — no es bloqueante
+    const hasEstimatedCostColumn: { exists: boolean }[] = await queryRunner.query(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = $1
+           AND table_name = 'maintenance_requests'
+           AND column_name = 'estimated_cost'
+       ) AS exists`,
+      [schemaName],
+    );
+
+    if (!hasEstimatedCostColumn[0]?.exists) {
       return 0;
     }
+
+    const rows: { total: string }[] = await queryRunner.query(
+      `SELECT COALESCE(SUM(estimated_cost), 0) AS total
+       FROM ${quoteIdent(schemaName)}.maintenance_requests
+       WHERE property_id = $1
+         AND status = 'COMPLETED'
+         AND EXTRACT(MONTH FROM updated_at) = $2
+         AND EXTRACT(YEAR  FROM updated_at) = $3
+         AND estimated_cost IS NOT NULL`,
+      [propertyId, month, year],
+    );
+
+    return rows.length > 0 ? Number(rows[0].total) : 0;
   }
 
   private async upsertOwnerStatement(

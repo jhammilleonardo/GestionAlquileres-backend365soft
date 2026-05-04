@@ -447,7 +447,10 @@ export class ApplicationsService {
       [updateDto.status, updateDto.admin_feedback || null, id],
     );
 
-    const updatedApplication = result[0];
+    const normalizedRows = Array.isArray(result[0])
+      ? (result[0] as ApplicationResult[])
+      : result;
+    const updatedApplication = normalizedRows[0];
 
     // Notificar al solicitante sobre el cambio de estado
     try {

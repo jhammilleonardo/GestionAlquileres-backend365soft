@@ -19,6 +19,8 @@ import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 import { RenewContractDto } from './dto/renew-contract.dto';
 import { TenantsService } from '../tenants/tenants.service';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { basename } from 'path';
+import { storageService } from '../common/storage/storage.service';
 
 export interface ContractResult {
   id: number;
@@ -67,6 +69,12 @@ export interface ContractResult {
   tenant_name?: string | null;
   tenant_email?: string | null;
   tenant_phone?: string | null;
+}
+
+export interface ContractPdfResult {
+  path?: string;
+  url: string;
+  fullUrl: string;
 }
 
 @Injectable()
@@ -735,7 +743,11 @@ export class ContractsService {
     );
   }
 
-  async generatePdf(id: number, tenantSlug: string, baseUrl: string = '') {
+  async generatePdf(
+    id: number,
+    tenantSlug: string,
+    baseUrl: string = '',
+  ): Promise<ContractPdfResult> {
     await this.setTenantSchema(tenantSlug);
     const contract = await this.findOne(id, tenantSlug);
 
@@ -817,10 +829,25 @@ export class ContractsService {
       });
     }
 
-    // Actualizar URL del PDF con ruta relativa para acceso estático
-    const relativePath = pdfPath.split('uploads')[1].replace(/\\/g, '/');
-    const pdfUrl = `/uploads${relativePath}`;
-    const fullPdfUrl = `${baseUrl}${pdfUrl}`;
+    const fileName = basename(pdfPath);
+    const storagePath = storageService.buildStoragePath(
+      'contracts',
+      tenantSlug,
+      String(id),
+      fileName,
+    );
+    await storageService.uploadLocalFile(
+      pdfPath,
+      storagePath,
+      'application/pdf',
+      'private',
+      true,
+    );
+
+    const pdfUrl = storageService.toRoutePath(storagePath);
+    const fullPdfUrl = storageService.isS3Enabled()
+      ? await storageService.getSignedReadUrl(storagePath, 300)
+      : `${baseUrl}${pdfUrl}`;
 
     await this.dataSource.query(
       'UPDATE contracts SET pdf_url = $1 WHERE id = $2',
@@ -828,7 +855,7 @@ export class ContractsService {
     );
 
     return {
-      path: pdfPath,
+      path: storageService.isS3Enabled() ? undefined : pdfPath,
       url: pdfUrl,
       fullUrl: fullPdfUrl,
     };

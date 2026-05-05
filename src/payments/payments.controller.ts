@@ -30,6 +30,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { receiptMulterConfig } from '../common/utils/multer.config';
+import { storageService } from '../common/storage/storage.service';
 
 /**
  * Payments Controller
@@ -223,7 +224,11 @@ export class TenantPaymentsController {
     const tenantId = req.user.userId;
     // Construir ruta relativa para almacenar en la DB
     const receiptPath = receipt
-      ? `storage/receipts/${slug}/${receipt.filename}`
+      ? await storageService.persistUploadedFile(
+          receipt,
+          storageService.buildStoragePath('receipts', slug, receipt.filename),
+          'private',
+        )
       : undefined;
     return this.paymentsService.createPayment(
       tenantId,

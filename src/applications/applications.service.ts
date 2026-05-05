@@ -20,6 +20,7 @@ import { BlacklistService } from '../blacklist/blacklist.service';
 import { DocumentType } from '../blacklist/enums/blacklist.enum';
 import { TenantsService } from '../tenants/tenants.service';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { storageService } from '../common/storage/storage.service';
 
 interface BlacklistAlertInfo {
   is_blacklisted: boolean;
@@ -484,12 +485,25 @@ export class ApplicationsService {
     await this.setTenantSchema(tenantSlug);
     await this.findOne(id, tenantSlug);
 
-    const baseUrl = `/storage/applications/${tenantSlug}/${id}`;
-    const newDocs: UploadedDocumentRef[] = files.map((file, index) => ({
-      type: types[index] || 'otros',
-      url: `${baseUrl}/${file.filename}`,
-      name: file.originalname,
-    }));
+    const newDocs: UploadedDocumentRef[] = [];
+    for (const [index, file] of files.entries()) {
+      const storagePath = await storageService.persistUploadedFile(
+        file,
+        storageService.buildStoragePath(
+          'applications',
+          tenantSlug,
+          String(id),
+          file.filename,
+        ),
+        'private',
+      );
+
+      newDocs.push({
+        type: types[index] || 'otros',
+        url: storageService.toRoutePath(storagePath),
+        name: file.originalname,
+      });
+    }
 
     // Obtener documentos existentes y concatenar
     const [existing] = await this.dataSource.query<

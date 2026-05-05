@@ -2,7 +2,6 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
 import helmet from 'helmet';
 import { TenantConnectionInterceptor } from './common/interceptors/tenant-connection.interceptor';
 import { DataSource } from 'typeorm';
@@ -67,20 +66,9 @@ async function bootstrap() {
   const reflector = app.get(Reflector);
   app.useGlobalInterceptors(new TenantConnectionInterceptor(dataSource));
 
-  // ── Archivos estáticos — uploads (PDFs de estados de cuenta, etc.) ──────
-  app.useStaticAssets(join(process.cwd(), 'uploads'), {
-    prefix: '/uploads/',
-    setHeaders: (res) => {
-      if (res.req.url?.includes('.pdf')) {
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-      }
-    },
-  });
-
-  // NOTA: /storage/* es servido por StorageController (con autorización).
-  // No se monta useStaticAssets aquí para evitar exponer archivos privados
-  // (maintenance, receipts, applications) sin control de acceso.
+  // NOTA: /storage/* es servido por StorageController (con autorización o
+  // presigned URL en S3). No se monta useStaticAssets para evitar exponer
+  // archivos privados sin control de acceso.
 
   await app.listen(process.env.PORT ?? 3000);
 }

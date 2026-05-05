@@ -43,7 +43,7 @@ export class PdfService {
   ): Promise<string> {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const fileName = `contract_${contract.contract_number}.pdf`;
-    const filePath = path.join(process.cwd(), 'uploads', 'contracts', fileName);
+    const filePath = path.join(process.cwd(), 'storage', 'contracts', fileName);
 
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
@@ -236,7 +236,7 @@ export class PdfService {
   ): Promise<string> {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const fileName = `contract_${contractNumber}.pdf`;
-    const filePath = path.join(process.cwd(), 'uploads', 'contracts', fileName);
+    const filePath = path.join(process.cwd(), 'storage', 'contracts', fileName);
 
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {

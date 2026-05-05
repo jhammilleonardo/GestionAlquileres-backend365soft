@@ -56,6 +56,13 @@ export class TenantsModule implements OnModuleInit {
       } else {
         console.log('✅ Tabla "tenant" ya existe');
       }
+
+      // Seguridad operativa: por defecto un tenant nuevo queda inactivo
+      // hasta completar provisioning de schema/tablas.
+      await this.dataSource.query(`
+        ALTER TABLE public.tenant
+        ALTER COLUMN is_active SET DEFAULT false;
+      `);
     } catch (error) {
       console.error('❌ Error al inicializar la tabla tenant:', error);
       throw error;

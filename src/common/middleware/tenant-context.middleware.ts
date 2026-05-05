@@ -94,12 +94,12 @@ export class TenantContextMiddleware implements NestMiddleware {
     if (tenantSlug) {
       // IMPORTANTE: Consultar en schema public porque la tabla tenant está ahí
       const tenant = await this.dataSource.query(
-        'SELECT * FROM public.tenant WHERE slug = $1',
+        'SELECT * FROM public.tenant WHERE slug = $1 AND is_active = true',
         [tenantSlug],
       );
 
       if (!tenant || tenant.length === 0) {
-        throw new NotFoundException(`Tenant '${tenantSlug}' not found`);
+        throw new NotFoundException(`Active tenant '${tenantSlug}' not found`);
       }
 
       // Cambiar al esquema del tenant

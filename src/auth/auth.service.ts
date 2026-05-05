@@ -37,7 +37,7 @@ export class AuthService {
 
   async validateUser(email: string, password: string, tenantSlug: string) {
     // Obtener el tenant primero para setear el schema correcto
-    const tenant = await this.tenantsService.findBySlug(tenantSlug);
+    const tenant = await this.tenantsService.findActiveBySlug(tenantSlug);
 
     // Setear el schema para esta query
     await this.dataSource.query(
@@ -103,7 +103,7 @@ export class AuthService {
    * Resuelve el rental_owner_id desde rental_owners.primary_email para incluirlo en el JWT.
    */
   async loginOwner(email: string, password: string, tenantSlug: string) {
-    const tenant = await this.tenantsService.findBySlug(tenantSlug);
+    const tenant = await this.tenantsService.findActiveBySlug(tenantSlug);
     const { quoteIdent } = await import('../common/utils/sql-identifier.js');
     await this.dataSource.query(
       `SET search_path TO ${quoteIdent(tenant.schema_name)}`,
@@ -216,7 +216,7 @@ export class AuthService {
 
   async getMe(user: any) {
     // Obtener el tenant para setear el schema correcto
-    const tenant = await this.tenantsService.findBySlug(user.tenantSlug);
+    const tenant = await this.tenantsService.findActiveBySlug(user.tenantSlug);
 
     // Setear el schema para esta query
     await this.dataSource.query(
@@ -276,7 +276,7 @@ export class AuthService {
     phone?: string,
   ) {
     // Obtener el tenant primero para setear el schema correcto
-    const tenant = await this.tenantsService.findBySlug(tenantSlug);
+    const tenant = await this.tenantsService.findActiveBySlug(tenantSlug);
 
     // Setear el schema para esta query
     await this.dataSource.query(

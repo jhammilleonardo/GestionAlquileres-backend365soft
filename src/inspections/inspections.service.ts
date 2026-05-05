@@ -10,6 +10,7 @@ import type { CreateInspectionDto } from './dto/create-inspection.dto';
 import type { UpdateInspectionItemsDto } from './dto/update-inspection-items.dto';
 import type { FilterInspectionsDto } from './dto/filter-inspections.dto';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
+import { storageService } from '../common/storage/storage.service';
 
 interface PdfDoc extends NodeJS.ReadableStream {
   fontSize(size: number): PdfDoc;
@@ -318,9 +319,20 @@ export class InspectionsService {
       );
     }
 
-    const newPhotos = files.map(
-      (f) => `/storage/inspections/${tenantSlug}/${inspectionId}/${f.filename}`,
-    );
+    const newPhotos: string[] = [];
+    for (const file of files) {
+      const storagePath = await storageService.persistUploadedFile(
+        file,
+        storageService.buildStoragePath(
+          'inspections',
+          tenantSlug,
+          String(inspectionId),
+          file.filename,
+        ),
+        'private',
+      );
+      newPhotos.push(storageService.toRoutePath(storagePath));
+    }
     const allPhotos = [...(item.photos ?? []), ...newPhotos];
 
     await this.dataSource.query(

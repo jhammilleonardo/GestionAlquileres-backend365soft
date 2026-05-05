@@ -1,4 +1,5 @@
 import {
+  Inject,
   Controller,
   Get,
   Param,
@@ -6,14 +7,12 @@ import {
   Res,
   UseGuards,
   ForbiddenException,
-  NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { existsSync } from 'fs';
-import { join, normalize, resolve, sep } from 'path';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { isValidTenantSlug } from '../utils/tenant-slug';
+import { StorageService } from './storage.service';
 
 /**
  * Sirve archivos del directorio `storage/` con control de acceso.
@@ -27,7 +26,10 @@ import { isValidTenantSlug } from '../utils/tenant-slug';
  */
 @Controller('storage')
 export class StorageController {
-  private readonly storageRoot = resolve(process.cwd(), 'storage');
+  constructor(
+    @Inject(StorageService)
+    private readonly storageService: StorageService,
+  ) {}
 
   // ──────────────────────────────────────────────────────────────
   // Público: imágenes de propiedades (catálogo)
@@ -43,7 +45,11 @@ export class StorageController {
     this.assertSafeSegment(propertyId);
     this.assertSafeFilename(filename);
 
-    return this.sendFile(res, ['properties', slug, propertyId, filename]);
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath('properties', slug, propertyId, filename),
+      'public',
+    );
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -62,7 +68,11 @@ export class StorageController {
     this.assertSafeSegment(requestId);
     this.assertSafeFilename(filename);
 
-    return this.sendFile(res, ['maintenance', slug, requestId, filename]);
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath('maintenance', slug, requestId, filename),
+      'private',
+    );
   }
 
   @Get('maintenance/:slug/:requestId/stage/:filename')
@@ -78,13 +88,17 @@ export class StorageController {
     this.assertSafeSegment(requestId);
     this.assertSafeFilename(filename);
 
-    return this.sendFile(res, [
-      'maintenance',
-      slug,
-      requestId,
-      'stage',
-      filename,
-    ]);
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath(
+        'maintenance',
+        slug,
+        requestId,
+        'stage',
+        filename,
+      ),
+      'private',
+    );
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -101,7 +115,11 @@ export class StorageController {
     this.assertTenantOwnership(req, slug);
     this.assertSafeFilename(filename);
 
-    return this.sendFile(res, ['receipts', slug, filename]);
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath('receipts', slug, filename),
+      'private',
+    );
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -120,7 +138,67 @@ export class StorageController {
     this.assertSafeSegment(applicationId);
     this.assertSafeFilename(filename);
 
-    return this.sendFile(res, ['applications', slug, applicationId, filename]);
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath(
+        'applications',
+        slug,
+        applicationId,
+        filename,
+      ),
+      'private',
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Privado: fotos de inspecciones
+  // ──────────────────────────────────────────────────────────────
+  @Get('inspections/:slug/:inspectionId/:filename')
+  @UseGuards(JwtAuthGuard)
+  serveInspectionFile(
+    @Param('slug') slug: string,
+    @Param('inspectionId') inspectionId: string,
+    @Param('filename') filename: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    this.assertTenantOwnership(req, slug);
+    this.assertSafeSegment(inspectionId);
+    this.assertSafeFilename(filename);
+
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath(
+        'inspections',
+        slug,
+        inspectionId,
+        filename,
+      ),
+      'private',
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Privado: documentos de contratos
+  // ──────────────────────────────────────────────────────────────
+  @Get('contracts/:slug/:contractId/:filename')
+  @UseGuards(JwtAuthGuard)
+  serveContractFile(
+    @Param('slug') slug: string,
+    @Param('contractId') contractId: string,
+    @Param('filename') filename: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    this.assertTenantOwnership(req, slug);
+    this.assertSafeSegment(contractId);
+    this.assertSafeFilename(filename);
+
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath('contracts', slug, contractId, filename),
+      'private',
+    );
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -156,19 +234,19 @@ export class StorageController {
     }
   }
 
-  private sendFile(res: Response, segments: string[]) {
-    const relative = normalize(join(...segments));
-    const absolute = resolve(this.storageRoot, relative);
-
-    // Defensa adicional: garantizar que la ruta final sigue dentro de storage/
-    if (!absolute.startsWith(this.storageRoot + sep)) {
-      throw new ForbiddenException('Invalid path');
+  private async sendFile(
+    res: Response,
+    storagePath: string,
+    visibility: 'public' | 'private',
+  ) {
+    const access = await this.storageService.resolveReadAccess(
+      storagePath,
+      visibility,
+    );
+    if (access.kind === 'redirect') {
+      return res.redirect(access.url);
     }
 
-    if (!existsSync(absolute)) {
-      throw new NotFoundException('File not found');
-    }
-
-    return res.sendFile(absolute);
+    return res.sendFile(access.absolutePath);
   }
 }

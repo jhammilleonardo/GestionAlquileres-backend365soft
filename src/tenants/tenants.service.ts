@@ -29,6 +29,7 @@ export class TenantsService implements OnModuleInit {
 
   async onModuleInit() {
     await this.runStartupMigrations();
+    await this.deactivateOrphanedActiveTenants();
   }
 
   /**
@@ -189,6 +190,63 @@ export class TenantsService implements OnModuleInit {
     }
 
     this.logger.log('Startup migrations completed.');
+  }
+
+  /**
+   * Desactiva tenants marcados como activos cuyo schema o tabla tenant_config
+   * no existe. Esto evita que jobs globales (cron, auth cross-tenant, etc.)
+   * intenten operar sobre tenants huérfanos/incompletos.
+   */
+  private async deactivateOrphanedActiveTenants(): Promise<void> {
+    const rows = await this.dataSource.query<
+      Array<{
+        id: number;
+        slug: string;
+        schema_name: string;
+        schema_exists: boolean;
+        has_tenant_config: boolean;
+      }>
+    >(
+      `SELECT
+         t.id,
+         t.slug,
+         t.schema_name,
+         EXISTS (
+           SELECT 1
+           FROM information_schema.schemata s
+           WHERE s.schema_name = t.schema_name
+         ) AS schema_exists,
+         EXISTS (
+           SELECT 1
+           FROM information_schema.tables tb
+           WHERE tb.table_schema = t.schema_name
+             AND tb.table_name = 'tenant_config'
+         ) AS has_tenant_config
+       FROM public.tenant t
+       WHERE t.is_active = true`,
+    );
+
+    const invalidIds = rows
+      .filter((row) => !row.schema_exists || !row.has_tenant_config)
+      .map((row) => row.id);
+
+    if (invalidIds.length === 0) {
+      return;
+    }
+
+    await this.dataSource.query(
+      `UPDATE public.tenant
+       SET is_active = false,
+           updated_at = NOW()
+       WHERE id = ANY($1::int[])`,
+      [invalidIds],
+    );
+
+    for (const row of rows.filter((row) => invalidIds.includes(row.id))) {
+      this.logger.warn(
+        `[${row.schema_name}] tenant desactivado automáticamente: schema/configuración incompleta`,
+      );
+    }
   }
 
   /** Agrega las columnas faltantes a la tabla properties de un schema. */
@@ -748,20 +806,29 @@ export class TenantsService implements OnModuleInit {
     const tenant = this.tenantRepository.create({
       ...createTenantDto,
       schema_name,
+      // Se crea inactivo hasta finalizar provisioning completo.
+      is_active: false,
     });
 
     const savedTenant = await this.tenantRepository.save(tenant);
 
-    // Crear el schema en PostgreSQL; si falla, eliminar el registro del tenant
+    // Crear el schema en PostgreSQL; si falla, limpiar el registro del tenant.
+    // Al finalizar correctamente, activar según lo solicitado (default true).
     try {
       await this.createTenantSchema(savedTenant, createTenantDto.country);
+      await this.tenantRepository.update(savedTenant.id, {
+        is_active: createTenantDto.is_active ?? true,
+      });
     } catch (error) {
-      // Limpiar el registro huérfano para evitar inconsistencias
-      await this.tenantRepository.delete(savedTenant.id);
+      try {
+        await this.tenantRepository.update(savedTenant.id, { is_active: false });
+      } finally {
+        await this.tenantRepository.delete(savedTenant.id).catch(() => undefined);
+      }
       throw error;
     }
 
-    return savedTenant;
+    return this.findOne(savedTenant.id);
   }
 
   async findAll() {
@@ -783,6 +850,20 @@ export class TenantsService implements OnModuleInit {
 
     if (!tenant) {
       throw new NotFoundException(`Tenant with slug '${slug}' not found`);
+    }
+
+    return tenant;
+  }
+
+  async findActiveBySlug(slug: string) {
+    const tenant = await this.tenantRepository.findOne({
+      where: { slug, is_active: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException(
+        `Active tenant with slug '${slug}' not found`,
+      );
     }
 
     return tenant;

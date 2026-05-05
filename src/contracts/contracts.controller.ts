@@ -14,7 +14,11 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { ContractsService, ContractResult } from './contracts.service';
+import {
+  ContractsService,
+  ContractResult,
+  ContractPdfResult,
+} from './contracts.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { RenewContractDto } from './dto/renew-contract.dto';
@@ -108,8 +112,12 @@ export class AdminContractsController {
       id,
       tenantSlug,
       baseUrl,
-    )) as { path: string; url: string; fullUrl: string };
-    res.download(result.path);
+    )) as ContractPdfResult;
+    if (result.path) {
+      res.download(result.path);
+      return;
+    }
+    res.redirect(result.fullUrl);
   }
 
   @Get(':id/pdf-url')
@@ -258,7 +266,11 @@ export class TenantContractsController {
       tenantSlug,
       baseUrl,
     );
-    res.download(result.path);
+    if (result.path) {
+      res.download(result.path);
+      return;
+    }
+    res.redirect(result.fullUrl);
   }
 
   @Get(':id/pdf-url')

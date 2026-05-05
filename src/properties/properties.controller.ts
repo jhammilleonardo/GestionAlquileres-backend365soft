@@ -35,6 +35,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { multerConfig } from '../common/utils/multer.config';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
+import { storageService } from '../common/storage/storage.service';
 
 // Admin Controller - Gestion completa de propiedades
 @ApiTags('Properties - Admin')
@@ -150,10 +151,12 @@ export class AdminPropertiesController {
 
     const property = await this.propertiesService.findOne(id, slug);
     const images = Array.isArray(property.images) ? [...property.images] : [];
-    const imageUrl = file.path
-      .replace(process.cwd(), '')
-      .replace(/\\/g, '/')
-      .replace(/^\//, ''); // Remove leading slash
+    const imageStoragePath = await storageService.persistUploadedFile(
+      file,
+      storageService.buildStoragePath('properties', slug, String(id), file.filename),
+      'public',
+    );
+    const imageUrl = imageStoragePath.replace(/^\/+/, '');
     images.push(imageUrl);
 
     return this.propertiesService.updateDetails(id, { images }, slug);

@@ -21,6 +21,7 @@ import {
   STAGE_ORDER,
   TECHNICIAN_ALLOWED_TARGET_STAGES,
 } from './enums/maintenance-stage.enum';
+import { storageService } from '../common/storage/storage.service';
 
 @Injectable()
 export class MaintenanceService {
@@ -789,7 +790,17 @@ export class MaintenanceService {
     const savedFiles: any[] = [];
 
     for (const file of files) {
-      const fileUrl = `/storage/maintenance/${tenantSlug}/${requestId}/${file.filename}`;
+      const storagePath = await storageService.persistUploadedFile(
+        file,
+        storageService.buildStoragePath(
+          'maintenance',
+          tenantSlug,
+          String(requestId),
+          file.filename,
+        ),
+        'private',
+      );
+      const fileUrl = storageService.toRoutePath(storagePath);
       const fileType = this.getFileType(file.originalname);
 
       const result = await this.dataSource.query(
@@ -916,7 +927,18 @@ export class MaintenanceService {
     const photoUrls: string[] = [];
 
     for (const file of files) {
-      const fileUrl = `/storage/maintenance/${slug}/${requestId}/stage/${file.filename}`;
+      const storagePath = await storageService.persistUploadedFile(
+        file,
+        storageService.buildStoragePath(
+          'maintenance',
+          slug,
+          String(requestId),
+          'stage',
+          file.filename,
+        ),
+        'private',
+      );
+      const fileUrl = storageService.toRoutePath(storagePath);
       await this.dataSource.query(
         `INSERT INTO maintenance_attachments
            (maintenance_request_id, file_url, file_name, file_type, file_size, uploaded_by)

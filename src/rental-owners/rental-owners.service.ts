@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
+import { AssignOwnerPropertyDto } from './dto/assign-owner-property.dto';
 
 /** Estados de contrato que implican una propiedad "activa" para el propietario. */
 const ACTIVE_PROPERTY_STATUSES = [
@@ -206,6 +207,7 @@ export class RentalOwnersService {
 
     return this.dataSource.query<OwnerPropertyRow[]>(
       `SELECT
+         po.id AS relation_id,
          p.id, p.title, p.status, p.monthly_rent, p.currency,
          po.ownership_percentage, po.is_primary,
          pa.street_address, pa.city, pa.country
@@ -217,6 +219,102 @@ export class RentalOwnersService {
        ORDER BY po.is_primary DESC, p.title ASC`,
       [ownerId],
     );
+  }
+
+  async assignProperty(
+    ownerId: number,
+    dto: AssignOwnerPropertyDto,
+  ): Promise<{ message: string }> {
+    await this.findOne(ownerId);
+
+    const propertyRows = await this.dataSource.query<
+      { id: number; title: string }[]
+    >(`SELECT id, title FROM properties WHERE id = $1`, [dto.property_id]);
+    if (propertyRows.length === 0) {
+      throw new NotFoundException(
+        `Propiedad con ID ${dto.property_id} no encontrada`,
+      );
+    }
+
+    const existingRows = await this.dataSource.query<{ id: number }[]>(
+      `SELECT id FROM property_owners WHERE rental_owner_id = $1 AND property_id = $2`,
+      [ownerId, dto.property_id],
+    );
+
+    if (dto.is_primary === true) {
+      await this.dataSource.query(
+        `UPDATE property_owners
+         SET is_primary = false
+         WHERE property_id = $1 AND rental_owner_id != $2`,
+        [dto.property_id, ownerId],
+      );
+    }
+
+    if (existingRows.length > 0) {
+      const fields: string[] = [];
+      const values: unknown[] = [];
+      let idx = 1;
+
+      if (dto.ownership_percentage !== undefined) {
+        fields.push(`ownership_percentage = $${idx++}`);
+        values.push(dto.ownership_percentage);
+      }
+      if (dto.is_primary !== undefined) {
+        fields.push(`is_primary = $${idx++}`);
+        values.push(dto.is_primary);
+      }
+
+      if (fields.length > 0) {
+        values.push(existingRows[0].id);
+        await this.dataSource.query(
+          `UPDATE property_owners SET ${fields.join(', ')} WHERE id = $${idx}`,
+          values,
+        );
+      }
+
+      return {
+        message: 'Asignación actualizada correctamente',
+      };
+    }
+
+    await this.dataSource.query(
+      `INSERT INTO property_owners
+         (property_id, rental_owner_id, ownership_percentage, is_primary, created_at)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [
+        dto.property_id,
+        ownerId,
+        dto.ownership_percentage ?? 100,
+        dto.is_primary ?? false,
+      ],
+    );
+
+    return {
+      message: `Propiedad "${propertyRows[0].title}" asignada correctamente`,
+    };
+  }
+
+  async removeProperty(
+    ownerId: number,
+    propertyId: number,
+  ): Promise<{ message: string }> {
+    await this.findOne(ownerId);
+
+    const relationRows = await this.dataSource.query<{ id: number }[]>(
+      `SELECT id FROM property_owners WHERE rental_owner_id = $1 AND property_id = $2`,
+      [ownerId, propertyId],
+    );
+    if (relationRows.length === 0) {
+      throw new NotFoundException(
+        'La propiedad no está asignada al propietario indicado',
+      );
+    }
+
+    await this.dataSource.query(`DELETE FROM property_owners WHERE id = $1`, [
+      relationRows[0].id,
+    ]);
+
+    return { message: 'Propiedad removida correctamente del propietario' };
   }
 
   /**
@@ -243,6 +341,31 @@ export class RentalOwnersService {
        WHERE po.rental_owner_id = $1
        GROUP BY DATE_TRUNC('month', py.payment_date), p.id, p.title, py.currency
        ORDER BY period DESC, p.title ASC`,
+      [ownerId],
+    );
+  }
+
+  async getContracts(ownerId: number): Promise<OwnerContractRow[]> {
+    await this.findOne(ownerId);
+
+    return this.dataSource.query<OwnerContractRow[]>(
+      `SELECT
+         c.id,
+         c.contract_number,
+         c.status,
+         c.start_date,
+         c.end_date,
+         c.monthly_rent,
+         c.currency,
+         c.tenant_id,
+         c.tenant_name,
+         c.property_id,
+         p.title AS property_title
+       FROM property_owners po
+       JOIN contracts c ON c.property_id = po.property_id
+       JOIN properties p ON p.id = c.property_id
+       WHERE po.rental_owner_id = $1
+       ORDER BY c.created_at DESC`,
       [ownerId],
     );
   }
@@ -394,6 +517,7 @@ export interface RentalOwnerSummary extends Omit<
 }
 
 export interface OwnerPropertyRow {
+  relation_id: number;
   id: number;
   title: string;
   status: string;
@@ -415,4 +539,18 @@ export interface OwnerStatementRow {
   payment_count: number;
   confirmed_amount: string;
   pending_amount: string;
+}
+
+export interface OwnerContractRow {
+  id: number;
+  contract_number: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  monthly_rent: string;
+  currency: string;
+  tenant_id: number;
+  tenant_name: string;
+  property_id: number;
+  property_title: string;
 }

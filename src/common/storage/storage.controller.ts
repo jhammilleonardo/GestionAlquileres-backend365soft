@@ -45,6 +45,9 @@ export class StorageController {
     this.assertSafeSegment(propertyId);
     this.assertSafeFilename(filename);
 
+    // Imágenes de catálogo son públicas — permitir carga cross-origin desde el frontend
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
     return this.sendFile(
       res,
       this.storageService.buildStoragePath('properties', slug, propertyId, filename),

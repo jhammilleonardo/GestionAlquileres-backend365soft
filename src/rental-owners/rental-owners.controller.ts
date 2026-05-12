@@ -31,6 +31,7 @@ import { RentalOwnersService } from './rental-owners.service';
 import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
 import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
+import { AssignOwnerPropertyDto } from './dto/assign-owner-property.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -169,6 +170,44 @@ export class RentalOwnersController {
     return this.rentalOwnersService.getProperties(id);
   }
 
+  @Post(':id/properties')
+  @ApiOperation({
+    summary: 'Asignar propiedad al propietario',
+    description:
+      'Asigna o actualiza la relación del propietario con una propiedad, incluyendo porcentaje de participación y si es propietario principal.',
+  })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number, description: 'ID del propietario' })
+  async assignProperty(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AssignOwnerPropertyDto,
+  ) {
+    return this.rentalOwnersService.assignProperty(id, dto);
+  }
+
+  @Delete(':id/properties/:propertyId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Remover propiedad del propietario',
+    description:
+      'Elimina la relación entre un propietario y una propiedad asignada.',
+  })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number, description: 'ID del propietario' })
+  @ApiParam({
+    name: 'propertyId',
+    type: Number,
+    description: 'ID de la propiedad a remover',
+  })
+  async removeProperty(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('propertyId', ParseIntPipe) propertyId: number,
+  ) {
+    return this.rentalOwnersService.removeProperty(id, propertyId);
+  }
+
   /**
    * Historial de liquidaciones/pagos agrupado por mes.
    * Los datos se derivan de la tabla payments hasta que exista una tabla
@@ -193,6 +232,21 @@ export class RentalOwnersController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.rentalOwnersService.getStatements(id);
+  }
+
+  @Get(':id/contracts')
+  @ApiOperation({
+    summary: 'Contratos relacionados al propietario',
+    description:
+      'Lista los contratos de las propiedades asignadas al propietario.',
+  })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number })
+  async getContracts(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.rentalOwnersService.getContracts(id);
   }
 
   @Post(':id/create-account')

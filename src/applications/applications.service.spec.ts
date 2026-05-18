@@ -10,6 +10,13 @@ import { DataSource } from 'typeorm';
 import { ApplicationStatus } from './enums/application-status.enum';
 import { ScreeningFinalStatus } from './enums/screening-final-status.enum';
 import { UpdateScreeningDto } from './dto/update-screening.dto';
+import { ApplicationApprovalService } from './application-approval.service';
+import { ApplicationCreationService } from './application-creation.service';
+import { ApplicationDocumentsService } from './application-documents.service';
+import { ApplicationQueriesService } from './application-queries.service';
+import { ApplicationScreeningFeeService } from './application-screening-fee.service';
+import { ApplicationScreeningService } from './application-screening.service';
+import { ApplicationStatusService } from './application-status.service';
 
 const APPLICATION_ID = 1;
 const ADMIN_ID = 99;
@@ -39,36 +46,92 @@ function buildApplication(overrides = {}) {
 
 describe('ApplicationsService — screening', () => {
   let service: ApplicationsService;
-  let dataSource: jest.Mocked<Pick<DataSource, 'query'>>;
+  let dataSource: jest.Mocked<Pick<DataSource, 'query' | 'createQueryRunner'>>;
+  let queryRunner: {
+    query: jest.Mock;
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    commitTransaction: jest.Mock;
+    rollbackTransaction: jest.Mock;
+    release: jest.Mock;
+  };
   let notificationsService: jest.Mocked<NotificationsService>;
   let contractsService: jest.Mocked<ContractsService>;
+  let tenantsService: jest.Mocked<Pick<TenantsService, 'findBySlug'>>;
 
   beforeEach(async () => {
-    dataSource = { query: jest.fn() };
+    queryRunner = {
+      query: jest.fn(),
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+    };
+    dataSource = {
+      query: jest.fn(),
+      createQueryRunner: jest.fn().mockReturnValue(queryRunner),
+    } as unknown as jest.Mocked<
+      Pick<DataSource, 'query' | 'createQueryRunner'>
+    >;
     notificationsService = {
       createForUser: jest.fn().mockResolvedValue(undefined),
+      createForUserInSchema: jest.fn().mockResolvedValue(undefined),
       notifyAdmins: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<NotificationsService>;
     contractsService = {
       create: jest.fn(),
+      emitContractCreatedSideEffects: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<ContractsService>;
+    tenantsService = {
+      findBySlug: jest.fn().mockResolvedValue({
+        slug: TENANT_SLUG,
+        schema_name: 'tenant_empresa1',
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ApplicationsService,
+        ApplicationApprovalService,
+        ApplicationCreationService,
+        ApplicationDocumentsService,
+        ApplicationQueriesService,
+        ApplicationScreeningFeeService,
+        ApplicationScreeningService,
+        ApplicationStatusService,
         { provide: DataSource, useValue: dataSource },
         { provide: NotificationsService, useValue: notificationsService },
         { provide: UsersService, useValue: {} },
         { provide: ContractsService, useValue: contractsService },
         { provide: BlacklistService, useValue: {} },
-        { provide: TenantsService, useValue: {} },
+        { provide: TenantsService, useValue: tenantsService },
       ],
     }).compile();
 
     service = module.get(ApplicationsService);
-    jest
-      .spyOn(service as any, 'setTenantSchema')
-      .mockResolvedValue(undefined);
+  });
+
+  describe('tenant schema reads', () => {
+    it('findOne usa tablas calificadas por schema sin mutar search_path', async () => {
+      const app = buildApplication();
+      dataSource.query.mockResolvedValueOnce([app]);
+
+      await expect(service.findOne(APPLICATION_ID, TENANT_SLUG)).resolves.toBe(
+        app,
+      );
+
+      expect(tenantsService.findBySlug).toHaveBeenCalledWith(TENANT_SLUG);
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'FROM "tenant_empresa1".rental_applications ra',
+        ),
+        [APPLICATION_ID],
+      );
+      expect(dataSource.query).not.toHaveBeenCalledWith(
+        expect.stringContaining('SET search_path'),
+      );
+    });
   });
 
   // ─── uploadDocuments ──────────────────────────────────────────────────────
@@ -152,7 +215,9 @@ describe('ApplicationsService — screening', () => {
 
       expect(result.message).toContain('actualizado');
       expect(result.contract).toBeUndefined();
-      expect(notificationsService.createForUser).not.toHaveBeenCalled();
+      expect(
+        notificationsService.createForUserInSchema.mock.calls,
+      ).toHaveLength(0);
     });
 
     it('debe lanzar BadRequestException si APPROVED y no hay monthly_rent', async () => {
@@ -178,32 +243,27 @@ describe('ApplicationsService — screening', () => {
       const contract = {
         id: 42,
         contract_number: 'CTR-2026-0001',
+        tenant_id: app.applicant_id,
+        property_id: app.property_id,
         status: 'BORRADOR',
         monthly_rent: 3000,
         currency: 'BOB',
         deposit_amount: 3000,
       };
 
-      contractsService.create.mockResolvedValue(contract as any);
+      contractsService.create.mockResolvedValue(contract as never);
 
-      // Secuencia de llamadas a dataSource.query:
-      // 1. findOne (completeScreening)
-      // 2. SELECT checklist (no existe)
-      // 3. INSERT checklist
-      // 4. findOne (approveAndCreateContract → findOne)
-      // 5. findOne (updateStatus → findOne interno)
-      // 6. UPDATE rental_applications (updateStatus → UPDATE)
       dataSource.query
         .mockResolvedValueOnce([app]) // completeScreening → findOne
         .mockResolvedValueOnce([]) // SELECT checklist (no existe)
         .mockResolvedValueOnce([
           { ...checklist, final_status: ScreeningFinalStatus.APPROVED },
-        ]) // INSERT
-        .mockResolvedValueOnce([app]) // approveAndCreateContract → findOne
-        .mockResolvedValueOnce([app]) // updateStatus → findOne interno
+        ]); // INSERT
+      queryRunner.query
+        .mockResolvedValueOnce([app]) // lock application FOR UPDATE
         .mockResolvedValueOnce([
           { ...app, status: ApplicationStatus.APROBADA },
-        ]); // UPDATE status
+        ]); // mark application approved
 
       const dto: UpdateScreeningDto = {
         final_status: ScreeningFinalStatus.APPROVED,
@@ -218,17 +278,21 @@ describe('ApplicationsService — screening', () => {
         TENANT_SLUG,
       );
 
-      expect(contractsService.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          property_id: app.property_id,
-          tenant_id: app.applicant_id,
-          monthly_rent: 3000,
-          application_id: APPLICATION_ID,
-        }),
-        ADMIN_ID,
+      expect(contractsService.create.mock.calls).toContainEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            property_id: app.property_id,
+            tenant_id: app.applicant_id,
+            monthly_rent: 3000,
+            application_id: APPLICATION_ID,
+          }),
+          ADMIN_ID,
+        ]),
       );
       expect(result.contract).toBeDefined();
       expect(result.message).toContain('contrato');
+      expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+      expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();
     });
 
     it('debe actualizar estado a RECHAZADA y notificar al inquilino cuando final_status es REJECTED', async () => {
@@ -257,15 +321,20 @@ describe('ApplicationsService — screening', () => {
       );
 
       expect(result.message).toContain('rechazada');
-      expect(notificationsService.createForUser).toHaveBeenCalledWith(
-        APPLICANT_ID,
-        'application.status.changed',
-        'Resultado de tu solicitud de alquiler',
-        expect.stringContaining('rechazada'),
-        expect.objectContaining({
-          final_status: ScreeningFinalStatus.REJECTED,
-        }),
-        TENANT_SLUG,
+      expect(
+        notificationsService.createForUserInSchema.mock.calls,
+      ).toContainEqual(
+        expect.arrayContaining([
+          'tenant_empresa1',
+          APPLICANT_ID,
+          'application.status.changed',
+          'Resultado de tu solicitud de alquiler',
+          expect.stringContaining('rechazada'),
+          expect.objectContaining({
+            final_status: ScreeningFinalStatus.REJECTED,
+          }),
+          TENANT_SLUG,
+        ]),
       );
     });
 
@@ -297,15 +366,20 @@ describe('ApplicationsService — screening', () => {
       );
 
       expect(result.message).toContain('co-firmante');
-      expect(notificationsService.createForUser).toHaveBeenCalledWith(
-        APPLICANT_ID,
-        'application.status.changed',
-        'Acción requerida en tu solicitud',
-        expect.stringContaining('co-firmante'),
-        expect.objectContaining({
-          final_status: ScreeningFinalStatus.REQUIRES_COSIGNER,
-        }),
-        TENANT_SLUG,
+      expect(
+        notificationsService.createForUserInSchema.mock.calls,
+      ).toContainEqual(
+        expect.arrayContaining([
+          'tenant_empresa1',
+          APPLICANT_ID,
+          'application.status.changed',
+          'Acción requerida en tu solicitud',
+          expect.stringContaining('co-firmante'),
+          expect.objectContaining({
+            final_status: ScreeningFinalStatus.REQUIRES_COSIGNER,
+          }),
+          TENANT_SLUG,
+        ]),
       );
     });
 

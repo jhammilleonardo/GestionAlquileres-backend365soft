@@ -13,6 +13,7 @@ import {
   UploadedFiles,
   BadRequestException,
   ForbiddenException,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -33,9 +34,11 @@ import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
 import { AssignVendorDto } from './dto/assign-vendor.dto';
 import { RateVendorDto } from './dto/rate-vendor.dto';
+import { MaintenanceFiltersDto } from './dto/maintenance-filters.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 
 @ApiTags('Maintenance - Admin')
 @ApiBearerAuth()
@@ -55,28 +58,31 @@ export class AdminMaintenanceController {
   @ApiQuery({ name: 'tenant_id', required: false })
   @ApiQuery({ name: 'property_id', required: false })
   @ApiQuery({ name: 'contract_id', required: false })
-  async findAll(@Param('slug') slug: string, @Query() filters: any) {
+  async findAll(
+    @Param('slug') _slug: string,
+    @Query() filters: MaintenanceFiltersDto,
+  ) {
     return this.maintenanceService.findAll(filters);
   }
 
   @Get('stats')
   @ApiOperation({ summary: 'Obtener estadísticas de mantenimiento' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async getStats(@Param('slug') slug: string) {
+  async getStats() {
     return this.maintenanceService.getAdminStats();
   }
 
   @Get('new')
   @ApiOperation({ summary: 'Obtener solicitudes nuevas' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async getNewRequests(@Param('slug') slug: string) {
+  async getNewRequests() {
     return this.maintenanceService.findAll({ status: 'NEW' });
   }
 
   @Get('urgent')
   @ApiOperation({ summary: 'Obtener solicitudes urgentes' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async getUrgentRequests(@Param('slug') slug: string) {
+  async getUrgentRequests() {
     return this.maintenanceService.findAll({ priority: 'HIGH' });
   }
 
@@ -85,10 +91,10 @@ export class AdminMaintenanceController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
   async findByProperty(
-    @Param('slug') slug: string,
-    @Param('propertyId') propertyId: string,
+    @Param('slug') _slug: string,
+    @Param('propertyId', ParseIntPipe) propertyId: number,
   ) {
-    return this.maintenanceService.findAll({ property_id: +propertyId });
+    return this.maintenanceService.findAll({ property_id: propertyId });
   }
 
   @Get('contract/:contractId')
@@ -96,10 +102,10 @@ export class AdminMaintenanceController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'contractId', type: Number })
   async findByContract(
-    @Param('slug') slug: string,
-    @Param('contractId') contractId: string,
+    @Param('slug') _slug: string,
+    @Param('contractId', ParseIntPipe) contractId: number,
   ) {
-    return this.maintenanceService.findAll({ contract_id: +contractId });
+    return this.maintenanceService.findAll({ contract_id: contractId });
   }
 
   @Get('tenant/:tenantId')
@@ -107,10 +113,10 @@ export class AdminMaintenanceController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'tenantId', type: Number })
   async findByTenant(
-    @Param('slug') slug: string,
-    @Param('tenantId') tenantId: string,
+    @Param('slug') _slug: string,
+    @Param('tenantId', ParseIntPipe) tenantId: number,
   ) {
-    return this.maintenanceService.findByTenant(+tenantId);
+    return this.maintenanceService.findByTenant(tenantId);
   }
 
   @Get(':id')
@@ -118,8 +124,11 @@ export class AdminMaintenanceController {
   @ApiOperation({ summary: 'Obtener detalle de una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  async findOne(@Param('slug') slug: string, @Param('id') id: string) {
-    return this.maintenanceService.findOne(+id);
+  async findOne(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.maintenanceService.findOne(id);
   }
 
   @Patch(':id')
@@ -128,19 +137,22 @@ export class AdminMaintenanceController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async update(
-    @Param('slug') slug: string,
-    @Param('id') id: string,
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateMaintenanceDto: UpdateMaintenanceDto,
   ) {
-    return this.maintenanceService.update(+id, updateMaintenanceDto);
+    return this.maintenanceService.update(id, updateMaintenanceDto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Eliminar una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  async remove(@Param('slug') slug: string, @Param('id') id: string) {
-    await this.maintenanceService.remove(+id);
+  async remove(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    await this.maintenanceService.remove(id);
     return { message: 'Solicitud eliminada correctamente' };
   }
 
@@ -149,8 +161,11 @@ export class AdminMaintenanceController {
   @ApiOperation({ summary: 'Obtener mensajes de una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  async getMessages(@Param('slug') slug: string, @Param('id') id: string) {
-    return this.maintenanceService.getMessages(+id);
+  async getMessages(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.maintenanceService.getMessages(id);
   }
 
   @Post(':id/messages')
@@ -159,15 +174,15 @@ export class AdminMaintenanceController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async addMessage(
-    @Param('slug') slug: string,
-    @Param('id') id: string,
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() createMessageDto: CreateMessageDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
     return this.maintenanceService.addMessage(
-      +id,
+      id,
       createMessageDto,
-      req.user.userId,
+      req.user!.userId,
     );
   }
 
@@ -181,17 +196,17 @@ export class AdminMaintenanceController {
   @UseInterceptors(FilesInterceptor('files', 3, maintenanceMulterConfig))
   async uploadFiles(
     @Param('slug') slug: string,
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @UploadedFiles() files: Express.Multer.File[],
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron archivos');
     }
     return this.maintenanceService.saveUploadedFiles(
-      +id,
+      id,
       files,
-      req.user.userId,
+      req.user!.userId,
       slug,
     );
   }
@@ -201,8 +216,11 @@ export class AdminMaintenanceController {
   @ApiOperation({ summary: 'Historial de etapas de una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  async getStageHistory(@Param('slug') _slug: string, @Param('id') id: string) {
-    return this.maintenanceService.getStageHistory(+id);
+  async getStageHistory(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.maintenanceService.getStageHistory(id);
   }
 
   @Patch(':id/stage')
@@ -214,14 +232,14 @@ export class AdminMaintenanceController {
   @ApiParam({ name: 'id', type: Number })
   async changeStage(
     @Param('slug') _slug: string,
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateStageDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
     return this.maintenanceService.changeStage(
-      +id,
+      id,
       dto.to_stage,
-      req.user.userId,
+      req.user!.userId,
       dto.notes,
     );
   }
@@ -235,10 +253,10 @@ export class AdminMaintenanceController {
   @ApiParam({ name: 'id', type: Number })
   async authorizeWork(
     @Param('slug') _slug: string,
-    @Param('id') id: string,
-    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
   ) {
-    await this.maintenanceService.authorizeWork(+id, req.user.userId);
+    await this.maintenanceService.authorizeWork(id, req.user!.userId);
     return { message: 'Trabajo autorizado correctamente' };
   }
 
@@ -249,9 +267,12 @@ export class AdminMaintenanceController {
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  async assignVendor(@Param('id') id: string, @Body() dto: AssignVendorDto) {
+  async assignVendor(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AssignVendorDto,
+  ) {
     return this.maintenanceService.assignVendor(
-      +id,
+      id,
       dto.vendor_id ?? null,
       dto.assigned_to ?? null,
     );
@@ -265,15 +286,15 @@ export class AdminMaintenanceController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async rateVendor(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() dto: RateVendorDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
     return this.maintenanceService.rateVendor(
-      +id,
+      id,
       dto.rating,
       dto.comment,
-      req.user.userId,
+      req.user!.userId,
     );
   }
 }
@@ -288,15 +309,18 @@ export class TenantMaintenanceController {
   @Get('my-requests')
   @ApiOperation({ summary: 'Obtener mis solicitudes' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async getMyRequests(@Param('slug') slug: string, @Request() req) {
-    return this.maintenanceService.findByTenant(req.user.userId);
+  async getMyRequests(
+    @Param('slug') _slug: string,
+    @Request() req: TenantRequest,
+  ) {
+    return this.maintenanceService.findByTenant(req.user!.userId);
   }
 
   @Get('stats')
   @ApiOperation({ summary: 'Obtener mis estadísticas' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async getStats(@Param('slug') slug: string, @Request() req) {
-    return this.maintenanceService.getTenantStats(req.user.userId);
+  async getStats(@Param('slug') _slug: string, @Request() req: TenantRequest) {
+    return this.maintenanceService.getTenantStats(req.user!.userId);
   }
 
   @Get(':id')
@@ -304,13 +328,13 @@ export class TenantMaintenanceController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async findOne(
-    @Param('slug') slug: string,
-    @Param('id') id: string,
-    @Request() req,
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
   ) {
-    const request = await this.maintenanceService.findOne(+id);
+    const request = await this.maintenanceService.findOne(id);
     // Verificar que la solicitud pertenezca al inquilino
-    if (request.tenant_id !== req.user.userId) {
+    if (request.tenant_id !== req.user!.userId) {
       throw new ForbiddenException('No tienes permiso para ver esta solicitud');
     }
     return request;
@@ -320,16 +344,16 @@ export class TenantMaintenanceController {
   @ApiOperation({ summary: 'Crear una nueva solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   async create(
-    @Param('slug') slug: string,
+    @Param('slug') _slug: string,
     @Body() createMaintenanceDto: CreateMaintenanceDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
     // Si contract_id viene en el DTO, se usa; caso contrario se busca contrato activo.
     const assignedTo = 1; // Por defecto al admin con ID 1
 
     return this.maintenanceService.create(
       createMaintenanceDto,
-      req.user.userId,
+      req.user!.userId,
       createMaintenanceDto.contract_id,
       assignedTo,
     );
@@ -340,15 +364,15 @@ export class TenantMaintenanceController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async getMessages(
-    @Param('slug') slug: string,
-    @Param('id') id: string,
-    @Request() req,
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
   ) {
-    const request = await this.maintenanceService.findOne(+id);
-    if (request.tenant_id !== req.user.userId) {
+    const request = await this.maintenanceService.findOne(id);
+    if (request.tenant_id !== req.user!.userId) {
       throw new ForbiddenException('No tienes permiso para ver esta solicitud');
     }
-    return this.maintenanceService.getMessages(+id, req.user.userId);
+    return this.maintenanceService.getMessages(id, req.user!.userId);
   }
 
   @Post(':id/messages')
@@ -356,21 +380,21 @@ export class TenantMaintenanceController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   async addMessage(
-    @Param('slug') slug: string,
-    @Param('id') id: string,
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() createMessageDto: CreateMessageDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
-    const request = await this.maintenanceService.findOne(+id);
-    if (request.tenant_id !== req.user.userId) {
+    const request = await this.maintenanceService.findOne(id);
+    if (request.tenant_id !== req.user!.userId) {
       throw new ForbiddenException(
         'No tienes permiso para enviar mensajes en esta solicitud',
       );
     }
     return this.maintenanceService.addMessage(
-      +id,
+      id,
       createMessageDto,
-      req.user.userId,
+      req.user!.userId,
     );
   }
 
@@ -383,12 +407,12 @@ export class TenantMaintenanceController {
   @UseInterceptors(FilesInterceptor('files', 3, maintenanceMulterConfig))
   async uploadFiles(
     @Param('slug') slug: string,
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @UploadedFiles() files: Express.Multer.File[],
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
-    const request = await this.maintenanceService.findOne(+id);
-    if (request.tenant_id !== req.user.userId) {
+    const request = await this.maintenanceService.findOne(id);
+    if (request.tenant_id !== req.user!.userId) {
       throw new BadRequestException(
         'No tienes permiso para subir archivos en esta solicitud',
       );
@@ -397,9 +421,9 @@ export class TenantMaintenanceController {
       throw new BadRequestException('No se enviaron archivos');
     }
     return this.maintenanceService.saveUploadedFiles(
-      +id,
+      id,
       files,
-      req.user.userId,
+      req.user!.userId,
       slug,
     );
   }
@@ -416,24 +440,33 @@ export class TecnicoMaintenanceController {
   @Get()
   @ApiOperation({ summary: 'Solicitudes asignadas al técnico' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async findAssigned(@Param('slug') _slug: string, @Request() req) {
-    return this.maintenanceService.findAll({ assigned_to: req.user.userId });
+  async findAssigned(
+    @Param('slug') _slug: string,
+    @Request() req: TenantRequest,
+  ) {
+    return this.maintenanceService.findAll({ assigned_to: req.user!.userId });
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de una solicitud asignada' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  async findOne(@Param('slug') _slug: string, @Param('id') id: string) {
-    return this.maintenanceService.findOne(+id);
+  async findOne(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.maintenanceService.findOne(id);
   }
 
   @Get(':id/stage-history')
   @ApiOperation({ summary: 'Historial de etapas' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  async getStageHistory(@Param('slug') _slug: string, @Param('id') id: string) {
-    return this.maintenanceService.getStageHistory(+id);
+  async getStageHistory(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.maintenanceService.getStageHistory(id);
   }
 
   @Patch(':id/stage')
@@ -444,14 +477,14 @@ export class TecnicoMaintenanceController {
   @ApiParam({ name: 'id', type: Number })
   async changeStage(
     @Param('slug') _slug: string,
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateStageDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
     return this.maintenanceService.changeStageAsTechnician(
-      +id,
+      id,
       dto.to_stage,
-      req.user.userId,
+      req.user!.userId,
       dto.notes,
     );
   }
@@ -463,17 +496,17 @@ export class TecnicoMaintenanceController {
   @UseInterceptors(FilesInterceptor('files', 5, stagePhotoMulterConfig))
   async uploadStagePhotos(
     @Param('slug') slug: string,
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @UploadedFiles() files: Express.Multer.File[],
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron fotos');
     }
     return this.maintenanceService.saveStagePhotos(
-      +id,
+      id,
       files,
-      req.user.userId,
+      req.user!.userId,
       slug,
     );
   }

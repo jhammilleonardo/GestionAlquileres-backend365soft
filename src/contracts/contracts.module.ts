@@ -1,6 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ContractsService } from './contracts.service';
+import { ContractCreationService } from './contract-creation.service';
+import { ContractQueriesService } from './contract-queries.service';
+import { ContractNumberService } from './contract-number.service';
+import { ContractHistoryService } from './contract-history.service';
+import { ContractRenewalService } from './contract-renewal.service';
+import { ContractSigningService } from './contract-signing.service';
 import { PdfService } from './pdf.service';
 import {
   AdminContractsController,
@@ -23,8 +29,26 @@ import { TenantsModule } from '../tenants/tenants.module';
     AuditLogsModule,
     TenantsModule,
   ],
-  providers: [ContractsService, PdfService],
+  providers: [
+    ContractsService,
+    ContractCreationService,
+    ContractQueriesService,
+    ContractNumberService,
+    ContractHistoryService,
+    ContractRenewalService,
+    ContractSigningService,
+    PdfService,
+  ],
   controllers: [AdminContractsController, TenantContractsController],
-  exports: [ContractsService, PdfService],
+  exports: [
+    ContractsService,
+    ContractCreationService,
+    ContractQueriesService,
+    ContractNumberService,
+    ContractHistoryService,
+    ContractRenewalService,
+    ContractSigningService,
+    PdfService,
+  ],
 })
 export class ContractsModule {}

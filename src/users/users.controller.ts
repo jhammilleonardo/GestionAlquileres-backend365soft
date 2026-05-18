@@ -19,6 +19,12 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
+import type { TenantContext } from '../common/middleware/tenant-context.middleware';
+
+interface FindTenantsFilters {
+  status?: 'approved' | 'pending';
+  hasActiveContract?: boolean;
+}
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -31,7 +37,10 @@ export class UsersController {
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Obtener todos los usuarios del tenant' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async findAll(@Param('slug') slug: string, @CurrentTenant() tenant: any) {
+  async findAll(
+    @Param('slug') _slug: string,
+    @CurrentTenant() tenant: TenantContext | undefined,
+  ) {
     if (!tenant) {
       throw new InternalServerErrorException(
         'Tenant no encontrado en el request',
@@ -65,7 +74,7 @@ export class UsersController {
     @Query('status') status?: 'approved' | 'pending' | 'all',
     @Query('hasActiveContract') hasActiveContract?: string,
   ) {
-    const filters: any = {};
+    const filters: FindTenantsFilters = {};
 
     if (status && status !== 'all') {
       filters.status = status;

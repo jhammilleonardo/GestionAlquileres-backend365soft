@@ -2,6 +2,17 @@
 
 Sistema **multitenancy** para gestión de propiedades inmobiliarias. Desarrollado con NestJS, TypeScript y PostgreSQL.
 
+## Estado de arquitectura
+
+La referencia tecnica vigente para multi-tenancy, provisioning de tenants,
+criterios de `search_path`, deuda pendiente y comandos de verificacion esta en:
+
+[BACKEND_ARCHITECTURE_STATUS.md](BACKEND_ARCHITECTURE_STATUS.md)
+
+El roadmap operativo para cerrar el backend al 100% esta en:
+
+[README_BACKEND_100.md](README_BACKEND_100.md)
+
 ## 🛠️ Stack Tecnológico
 
 - **Framework**: NestJS 11.0.1

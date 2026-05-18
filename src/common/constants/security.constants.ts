@@ -22,3 +22,7 @@ export const PASSWORD_STRENGTH_REGEX = /(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
 
 export const PASSWORD_STRENGTH_MESSAGE =
   'La contraseña debe contener al menos una letra minúscula, una mayúscula y un número.';
+
+export const AUTH_LOCKOUT_FAILED_ATTEMPTS = 5;
+export const AUTH_LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
+export const AUTH_LOCKOUT_DURATION_MS = 15 * 60 * 1000;

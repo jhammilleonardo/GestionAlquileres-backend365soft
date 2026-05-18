@@ -17,6 +17,14 @@ import {
 } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
+
+interface NotificationQueryParams {
+  is_read?: string;
+  event_type?: string;
+  limit?: string;
+  offset?: string;
+}
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -55,11 +63,11 @@ export class NotificationsController {
     example: 0,
   })
   async findAll(
-    @Param('slug') slug: string,
-    @Request() req,
-    @Query() filters: any,
+    @Param('slug') _slug: string,
+    @Request() req: TenantRequest,
+    @Query() filters: NotificationQueryParams,
   ) {
-    const userId = req.user.userId; // ID del usuario desde el JWT
+    const userId = req.user!.userId;
     const { is_read, event_type, limit, offset } = filters;
 
     return await this.notificationsService.findAll(userId, {
@@ -76,8 +84,8 @@ export class NotificationsController {
    */
   @Get('stats')
   @ApiOperation({ summary: 'Obtener estadísticas de notificaciones' })
-  async getStats(@Request() req) {
-    const userId = req.user.userId;
+  async getStats(@Request() req: TenantRequest) {
+    const userId = req.user!.userId;
     return await this.notificationsService.getStats(userId);
   }
 
@@ -87,8 +95,8 @@ export class NotificationsController {
    */
   @Patch('read-all')
   @ApiOperation({ summary: 'Marcar todas las notificaciones como leídas' })
-  async markAllAsRead(@Request() req) {
-    const userId = req.user.userId;
+  async markAllAsRead(@Request() req: TenantRequest) {
+    const userId = req.user!.userId;
     const result = await this.notificationsService.markAllAsRead(userId);
     return {
       ...result,
@@ -102,8 +110,8 @@ export class NotificationsController {
   @Get(':id')
   @ApiOperation({ summary: 'Obtener detalle de notificación' })
   @ApiParam({ name: 'id', description: 'ID de notificación', example: 1 })
-  async findOne(@Param('id') id: string, @Request() req) {
-    const userId = req.user.userId;
+  async findOne(@Param('id') id: string, @Request() req: TenantRequest) {
+    const userId = req.user!.userId;
     return await this.notificationsService.findOne(+id, userId);
   }
 
@@ -113,8 +121,8 @@ export class NotificationsController {
   @Patch(':id/read')
   @ApiOperation({ summary: 'Marcar notificación como leída' })
   @ApiParam({ name: 'id', description: 'ID de notificación', example: 1 })
-  async markAsRead(@Param('id') id: string, @Request() req) {
-    const userId = req.user.userId;
+  async markAsRead(@Param('id') id: string, @Request() req: TenantRequest) {
+    const userId = req.user!.userId;
     const notification = await this.notificationsService.markAsRead(
       +id,
       userId,
@@ -131,8 +139,8 @@ export class NotificationsController {
   @Delete(':id')
   @ApiOperation({ summary: 'Eliminar notificación' })
   @ApiParam({ name: 'id', description: 'ID de notificación', example: 1 })
-  async remove(@Param('id') id: string, @Request() req) {
-    const userId = req.user.userId;
+  async remove(@Param('id') id: string, @Request() req: TenantRequest) {
+    const userId = req.user!.userId;
     await this.notificationsService.remove(+id, userId);
     return { message: 'Notificación eliminada exitosamente' };
   }

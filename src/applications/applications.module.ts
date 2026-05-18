@@ -1,6 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApplicationsService } from './applications.service';
+import { ApplicationApprovalService } from './application-approval.service';
+import { ApplicationCreationService } from './application-creation.service';
+import { ApplicationDocumentsService } from './application-documents.service';
+import { ApplicationQueriesService } from './application-queries.service';
+import { ApplicationScreeningFeeService } from './application-screening-fee.service';
+import { ApplicationScreeningService } from './application-screening.service';
+import { ApplicationStatusService } from './application-status.service';
 import { ApplicationsController } from './applications.controller';
 import { RentalApplication } from './entities/application.entity';
 import { ScreeningChecklist } from './entities/screening-checklist.entity';
@@ -20,7 +27,25 @@ import { TenantsModule } from '../tenants/tenants.module';
     TenantsModule,
   ],
   controllers: [ApplicationsController],
-  providers: [ApplicationsService],
-  exports: [ApplicationsService],
+  providers: [
+    ApplicationsService,
+    ApplicationApprovalService,
+    ApplicationCreationService,
+    ApplicationDocumentsService,
+    ApplicationQueriesService,
+    ApplicationScreeningFeeService,
+    ApplicationScreeningService,
+    ApplicationStatusService,
+  ],
+  exports: [
+    ApplicationsService,
+    ApplicationApprovalService,
+    ApplicationCreationService,
+    ApplicationDocumentsService,
+    ApplicationQueriesService,
+    ApplicationScreeningFeeService,
+    ApplicationScreeningService,
+    ApplicationStatusService,
+  ],
 })
 export class ApplicationsModule {}

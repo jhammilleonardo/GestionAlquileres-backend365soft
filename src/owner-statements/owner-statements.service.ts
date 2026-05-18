@@ -33,6 +33,43 @@ interface OwnerStatementRow {
   updated_at: Date;
 }
 
+interface OwnerStatementPdfRow {
+  id: number;
+  owner_name: string;
+  property_title: string;
+  property_address: string | null;
+  property_city: string | null;
+  property_country: string | null;
+  tenant_name: string | null;
+  period_year: number;
+  period_month: number;
+  gross_rent: string | number;
+  maintenance_deduction: string | number;
+  management_commission: string | number;
+  net_amount: string | number;
+  currency: string;
+}
+
+interface ExpensesSumRow {
+  total: string | number | null;
+}
+
+interface DatabaseErrorWithCode {
+  code?: string;
+}
+
+function isDatabaseErrorWithCode(
+  error: unknown,
+  code: string,
+): error is DatabaseErrorWithCode {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as DatabaseErrorWithCode).code === code
+  );
+}
+
 @Injectable()
 export class OwnerStatementsService {
   private readonly logger = new Logger(OwnerStatementsService.name);
@@ -77,8 +114,8 @@ export class OwnerStatementsService {
         values,
       );
       return this.toDto(result[0]);
-    } catch (error) {
-      if (error.code === '23505') {
+    } catch (error: unknown) {
+      if (isDatabaseErrorWithCode(error, '23505')) {
         // Unique constraint violation
         throw new BadRequestException(
           `Ya existe un estado de cuenta para este propietario, propiedad y período`,
@@ -196,7 +233,7 @@ export class OwnerStatementsService {
    * Eliminar un estado de cuenta
    */
   async delete(id: number): Promise<{ message: string }> {
-    const statement = await this.findOne(id);
+    await this.findOne(id);
 
     await this.dataSource.query(`DELETE FROM owner_statements WHERE id = $1`, [
       id,
@@ -212,7 +249,7 @@ export class OwnerStatementsService {
    * Este método recupera toda la información necesaria de las tablas relacionadas
    */
   async generatePdf(id: number, language: 'es' | 'en' = 'es'): Promise<string> {
-    const statement = await this.findOne(id);
+    await this.findOne(id);
 
     const query = `
       SELECT
@@ -236,12 +273,14 @@ export class OwnerStatementsService {
       LEFT JOIN property_addresses pa
         ON pa.property_id = p.id AND pa.address_type = 'address_1'
       LEFT JOIN contracts c
-        ON c.property_id = p.id AND c.status = 'ACTIVE'
+        ON c.property_id = p.id AND c.status IN ('ACTIVO', 'POR_VENCER')
       LEFT JOIN "user" u ON u.id = c.tenant_id
       WHERE os.id = $1
     `;
 
-    const result = await this.dataSource.query(query, [id]);
+    const result = await this.dataSource.query<OwnerStatementPdfRow[]>(query, [
+      id,
+    ]);
 
     if (!result || result.length === 0) {
       throw new NotFoundException(
@@ -296,14 +335,14 @@ export class OwnerStatementsService {
 
     // 2. Consultar gastos automáticos desde la tabla expenses
     // Nota: Usamos query directo para evitar dependencias circulares con ExpensesService
-    const expensesResult = await this.dataSource.query(
+    const expensesResult = await this.dataSource.query<ExpensesSumRow[]>(
       `SELECT SUM(amount) as total FROM expenses 
        WHERE property_id = $1 
        AND date BETWEEN $2 AND $3`,
       [paymentData.propertyId, startDate, endDate],
     );
 
-    const automaticExpenses = parseFloat(expensesResult[0]?.total || '0');
+    const automaticExpenses = Number(expensesResult[0]?.total ?? 0);
 
     // 3. Calcular comisión y monto neto
     const maintenanceDeduction = automaticExpenses;

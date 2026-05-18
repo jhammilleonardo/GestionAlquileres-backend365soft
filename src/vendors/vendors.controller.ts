@@ -19,7 +19,6 @@ import {
   ApiParam,
   ApiOkResponse,
   ApiCreatedResponse,
-  ApiNoContentResponse,
 } from '@nestjs/swagger';
 import { VendorsService } from './vendors.service';
 import { CreateVendorDto, UpdateVendorDto, VendorFiltersDto } from './dto';

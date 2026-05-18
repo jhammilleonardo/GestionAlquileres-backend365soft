@@ -100,9 +100,9 @@ describe('QRBoliviaProcessor', () => {
 
   describe('refundPayment', () => {
     it('debe lanzar NotImplementedException', async () => {
-      await expect(
-        processor.refundPayment('77@slug', 500),
-      ).rejects.toThrow(NotImplementedException);
+      await expect(processor.refundPayment('77@slug', 500)).rejects.toThrow(
+        NotImplementedException,
+      );
     });
   });
 

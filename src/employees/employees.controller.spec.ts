@@ -56,6 +56,7 @@ describe('EmployeesController', () => {
 
       expect(mockEmployeesService.remove).toHaveBeenCalledWith(
         'tenant_test',
+        'test',
         1,
         0,
       );

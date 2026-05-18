@@ -14,6 +14,7 @@ import {
   UploadedFile,
   BadRequestException,
   Res,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -153,7 +154,12 @@ export class AdminPropertiesController {
     const images = Array.isArray(property.images) ? [...property.images] : [];
     const imageStoragePath = await storageService.persistUploadedFile(
       file,
-      storageService.buildStoragePath('properties', slug, String(id), file.filename),
+      storageService.buildStoragePath(
+        'properties',
+        slug,
+        String(id),
+        file.filename,
+      ),
       'public',
     );
     const imageUrl = imageStoragePath.replace(/^\/+/, '');
@@ -306,6 +312,8 @@ export class TenantPropertiesController {
 @Controller(':slug/owner/properties')
 @UseGuards(JwtAuthGuard)
 export class OwnerPropertiesPortalController {
+  private readonly logger = new Logger(OwnerPropertiesPortalController.name);
+
   constructor(
     private readonly ownerStatementsService: OwnerStatementsService,
   ) {}
@@ -358,7 +366,9 @@ export class OwnerPropertiesPortalController {
 
       res.download(filePath, `liquidacion_${statementId}.pdf`, (err) => {
         if (err) {
-          console.error('Error al descargar archivo:', err);
+          this.logger.warn(
+            `Error al descargar archivo de liquidación ${statementId}: ${err.message}`,
+          );
         }
       });
     } catch (error) {

@@ -66,7 +66,7 @@ export interface Payment {
   approved_at?: string | Date;
 
   // Metadata
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 
   // Timestamps
   created_at: string | Date;

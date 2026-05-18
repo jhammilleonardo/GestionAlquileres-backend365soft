@@ -1,6 +1,12 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { PaymentsService } from './payments.service';
+import { PaymentQueriesService } from './payment-queries.service';
+import { PaymentStatusService } from './payment-status.service';
+import { PaymentRefundsService } from './payment-refunds.service';
+import { PaymentWebhookService } from './payment-webhook.service';
+import { PaymentCreationService } from './payment-creation.service';
+import { PaymentMethodsService } from './payment-methods.service';
 import {
   AdminPaymentsController,
   TenantPaymentsController,
@@ -49,6 +55,12 @@ import { QRBoliviaProcessor } from './processors/qr-bolivia.processor';
   ],
   providers: [
     PaymentsService,
+    PaymentQueriesService,
+    PaymentStatusService,
+    PaymentRefundsService,
+    PaymentWebhookService,
+    PaymentCreationService,
+    PaymentMethodsService,
     PaymentProcessorFactory,
     ManualPaymentProcessor,
     StripeProcessor,

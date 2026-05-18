@@ -28,7 +28,7 @@ export class QRBoliviaProcessor implements IPaymentProcessor {
   constructor(private readonly qrService: QrPaymentService) {}
 
   async createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
-    const slug = String(input.metadata?.tenantSlug ?? '');
+    const slug = readMetadataString(input.metadata, 'tenantSlug', '');
 
     const dto: GenerateQrDto = {
       tenant_id: input.tenantId,
@@ -36,7 +36,7 @@ export class QRBoliviaProcessor implements IPaymentProcessor {
       currency: input.currency ?? 'BOB',
       contract_id: input.contractId,
       notes: input.notes,
-      payment_type: String(input.metadata?.payment_type ?? 'RENT'),
+      payment_type: readMetadataString(input.metadata, 'payment_type', 'RENT'),
     };
 
     const result = await this.qrService.generarQrDinamico(slug, dto);
@@ -56,10 +56,9 @@ export class QRBoliviaProcessor implements IPaymentProcessor {
     const [qrIdStr, slug] = transactionId.split('@');
     const qrId = parseInt(qrIdStr, 10);
 
-    const result = await this.qrService.verificarEstadoQr(
-      slug,
-      { qr_id: qrId },
-    );
+    const result = await this.qrService.verificarEstadoQr(slug, {
+      qr_id: qrId,
+    });
 
     const isPagado = result.status === 'PAGADO';
 
@@ -71,12 +70,11 @@ export class QRBoliviaProcessor implements IPaymentProcessor {
     };
   }
 
-  async refundPayment(
-    _transactionId: string,
-    _amount: number,
-  ): Promise<ProcessorResult> {
-    throw new NotImplementedException(
-      'QR Bolivia (MC4/SIP) no soporta reembolsos automáticos. Gestionar manualmente con el banco.',
+  refundPayment(): Promise<ProcessorResult> {
+    return Promise.reject(
+      new NotImplementedException(
+        'QR Bolivia (MC4/SIP) no soporta reembolsos automáticos. Gestionar manualmente con el banco.',
+      ),
     );
   }
 
@@ -87,21 +85,39 @@ export class QRBoliviaProcessor implements IPaymentProcessor {
    * Este método existe para cumplir el contrato de IPaymentProcessor y no debe
    * llamarse directamente desde el WebhookController — usar el endpoint QR dedicado.
    */
-  async handleWebhook(
-    payload: unknown,
-    _signature?: string,
-  ): Promise<WebhookResult> {
-    const body = payload as Record<string, unknown>;
-    const alias = body.alias as string;
+  handleWebhook(payload: unknown): Promise<WebhookResult> {
+    const alias = readPayloadAlias(payload);
 
     if (!alias) {
-      return { status: 'FAILED', raw_event: payload };
+      return Promise.resolve({ status: 'FAILED', raw_event: payload });
     }
 
-    return {
+    return Promise.resolve({
       transaction_id: alias,
       status: 'APPROVED',
       raw_event: payload,
-    };
+    });
   }
+}
+
+function readMetadataString(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+  fallback: string,
+): string {
+  const value = metadata?.[key];
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function readPayloadAlias(payload: unknown): string | null {
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    !('alias' in payload)
+  ) {
+    return null;
+  }
+
+  const alias = payload.alias;
+  return typeof alias === 'string' && alias.length > 0 ? alias : null;
 }

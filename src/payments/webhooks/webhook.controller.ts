@@ -56,13 +56,10 @@ export class WebhookController {
   ): Promise<{ received: boolean }> {
     const rawBody: Buffer = req.rawBody ?? Buffer.from('');
 
-    const result = await this.stripeProcessor.handleWebhook(
-      rawBody,
-      signature,
-    );
+    const result = await this.stripeProcessor.handleWebhook(rawBody, signature);
 
     if (result.transaction_id) {
-      await this.paymentsService.handleWebhookResult(slug, result);
+      await this.paymentsService.handleWebhookResult(slug, result, 'stripe');
     }
 
     return { received: true };
@@ -95,7 +92,7 @@ export class WebhookController {
     );
 
     if (result.transaction_id) {
-      await this.paymentsService.handleWebhookResult(slug, result);
+      await this.paymentsService.handleWebhookResult(slug, result, 'paypal');
     }
 
     return { received: true };
@@ -116,7 +113,7 @@ export class WebhookController {
     const result = await this.payuProcessor.handleWebhook(payload);
 
     if (result.transaction_id) {
-      await this.paymentsService.handleWebhookResult(slug, result);
+      await this.paymentsService.handleWebhookResult(slug, result, 'payu');
     }
 
     return { received: true };

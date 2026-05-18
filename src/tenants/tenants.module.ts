@@ -1,71 +1,53 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantsService } from './tenants.service';
 import { TenantsController } from './tenants.controller';
 import { Tenant } from './metadata/tenant.entity';
-import { DataSource } from 'typeorm';
+import { TenantPublicSchemaService } from './tenant-public-schema.service';
+import { TenantAdminIndexService } from './tenant-admin-index.service';
+import { TenantMaintenanceService } from './tenant-maintenance.service';
+import { TenantSchemaService } from './tenant-schema.service';
+import { TenantStartupUpgradeService } from './tenant-startup-upgrade.service';
+import { TenantConfigProvisioningService } from './tenant-config-provisioning.service';
+import { TenantPaymentsProvisioningService } from './tenant-payments-provisioning.service';
+import { TenantExpensesProvisioningService } from './tenant-expenses-provisioning.service';
+import { TenantInspectionsProvisioningService } from './tenant-inspections-provisioning.service';
+import { TenantMaintenanceProvisioningService } from './tenant-maintenance-provisioning.service';
+import { TenantNotificationsProvisioningService } from './tenant-notifications-provisioning.service';
+import { TenantApplicationsProvisioningService } from './tenant-applications-provisioning.service';
+import { TenantUnitsProvisioningService } from './tenant-units-provisioning.service';
+import { TenantPropertiesProvisioningService } from './tenant-properties-provisioning.service';
+import { TenantContractsProvisioningService } from './tenant-contracts-provisioning.service';
+import { TenantEmployeesProvisioningService } from './tenant-employees-provisioning.service';
+import { TenantAuditComplianceProvisioningService } from './tenant-audit-compliance-provisioning.service';
+import { TenantWebsiteProvisioningService } from './tenant-website-provisioning.service';
+import { TenantProvisioningService } from './tenant-provisioning.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Tenant])],
-  providers: [TenantsService],
+  providers: [
+    TenantsService,
+    TenantPublicSchemaService,
+    TenantAdminIndexService,
+    TenantMaintenanceService,
+    TenantSchemaService,
+    TenantStartupUpgradeService,
+    TenantConfigProvisioningService,
+    TenantPaymentsProvisioningService,
+    TenantExpensesProvisioningService,
+    TenantInspectionsProvisioningService,
+    TenantMaintenanceProvisioningService,
+    TenantNotificationsProvisioningService,
+    TenantApplicationsProvisioningService,
+    TenantUnitsProvisioningService,
+    TenantPropertiesProvisioningService,
+    TenantContractsProvisioningService,
+    TenantEmployeesProvisioningService,
+    TenantAuditComplianceProvisioningService,
+    TenantWebsiteProvisioningService,
+    TenantProvisioningService,
+  ],
   controllers: [TenantsController],
-  exports: [TenantsService],
+  exports: [TenantsService, TenantAdminIndexService],
 })
-export class TenantsModule implements OnModuleInit {
-  constructor(private dataSource: DataSource) {}
-
-  async onModuleInit() {
-    await this.initializeTenantTable();
-  }
-
-  private async initializeTenantTable() {
-    try {
-      // Verificar si la tabla tenant existe
-      const result = await this.dataSource.query(`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables
-          WHERE table_schema = 'public'
-          AND table_name = 'tenant'
-        );
-      `);
-
-      if (!result[0].exists) {
-        console.log('⚠️  Tabla "tenant" no existe. Creándola...');
-
-        // Crear la tabla tenant
-        await this.dataSource.query(`
-          CREATE TABLE public.tenant (
-            id SERIAL PRIMARY KEY,
-            slug VARCHAR NOT NULL UNIQUE,
-            schema_name VARCHAR NOT NULL UNIQUE,
-            company_name VARCHAR NOT NULL,
-            logo_url VARCHAR,
-            currency VARCHAR DEFAULT 'BOB',
-            locale VARCHAR DEFAULT 'es-BO',
-            is_active BOOLEAN DEFAULT true,
-            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-          );
-
-          CREATE INDEX IF NOT EXISTS IDX_TENANT_SLUG ON public.tenant(slug);
-          CREATE INDEX IF NOT EXISTS IDX_TENANT_SCHEMA_NAME ON public.tenant(schema_name);
-          CREATE INDEX IF NOT EXISTS IDX_TENANT_IS_ACTIVE ON public.tenant(is_active);
-        `);
-
-        console.log('✅ Tabla "tenant" creada exitosamente en schema public');
-      } else {
-        console.log('✅ Tabla "tenant" ya existe');
-      }
-
-      // Seguridad operativa: por defecto un tenant nuevo queda inactivo
-      // hasta completar provisioning de schema/tablas.
-      await this.dataSource.query(`
-        ALTER TABLE public.tenant
-        ALTER COLUMN is_active SET DEFAULT false;
-      `);
-    } catch (error) {
-      console.error('❌ Error al inicializar la tabla tenant:', error);
-      throw error;
-    }
-  }
-}
+export class TenantsModule {}

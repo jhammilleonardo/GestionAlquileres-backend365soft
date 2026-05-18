@@ -10,22 +10,35 @@ import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { quoteIdent } from '../utils/sql-identifier';
+import { AuthSecurityService } from '../../auth/auth-security.service';
+
+export interface TenantContext {
+  id: number;
+  slug: string;
+  schema_name: string;
+  company_name: string;
+  currency: string;
+  locale: string;
+}
+
+export interface RequestUserContext {
+  userId: number;
+  email: string;
+  role: string;
+  tenantSlug?: string;
+  rentalOwnerId?: number | null;
+}
 
 export interface TenantRequest extends Request {
-  tenant?: {
-    id: number;
-    slug: string;
-    schema_name: string;
-    company_name: string;
-    currency: string;
-    locale: string;
-  };
-  user?: {
-    userId: number;
-    email: string;
-    role: string;
-    tenantSlug?: string;
-  };
+  tenant?: TenantContext;
+  user?: RequestUserContext;
+}
+
+interface TenantJwtPayload {
+  sub: number;
+  email: string;
+  role: string;
+  tenantSlug?: string;
 }
 
 @Injectable()
@@ -34,13 +47,10 @@ export class TenantContextMiddleware implements NestMiddleware {
     @InjectDataSource() private dataSource: DataSource,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private authSecurityService: AuthSecurityService,
   ) {}
 
   async use(req: TenantRequest, _res: Response, next: NextFunction) {
-    // 1. Siempre resetear al esquema public al inicio de cada petición
-    // Esto evita que una petición use el esquema de la petición anterior en el pool de conexiones
-    await this.dataSource.query('SET search_path TO public');
-
     // Extraer el slug de la URL (primer segmento)
     const urlSlug = this.extractSlugFromUrl(req.originalUrl);
 
@@ -55,14 +65,22 @@ export class TenantContextMiddleware implements NestMiddleware {
         if (!secret || secret.length < 32) {
           throw new Error('JWT_SECRET no configurado correctamente');
         }
-        const payload = this.jwtService.verify(token, { secret });
+        const payload = this.jwtService.verify(token, { secret }) as unknown;
 
-        if (payload.tenantSlug) {
+        if (isTenantJwtPayload(payload) && payload.tenantSlug) {
           tenantSlug = payload.tenantSlug;
 
           // VERIFICACIÓN DE SEGURIDAD: El slug de la URL debe coincidir con el del JWT
           // Esto previene que un usuario acceda a datos de otro tenant manipulando la URL
           if (urlSlug && urlSlug !== tenantSlug) {
+            await this.authSecurityService.recordTenantMismatch({
+              email: payload.email,
+              userId: payload.sub,
+              requestTenantSlug: urlSlug,
+              tokenTenantSlug: tenantSlug,
+              path: req.originalUrl,
+              reason: 'url_slug_mismatch',
+            });
             throw new UnauthorizedException(
               `Tenant slug "${urlSlug}" does not match your authentication token (${tenantSlug})`,
             );
@@ -92,35 +110,41 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     // Si tenemos un slug identificado, configurar el contexto del tenant
     if (tenantSlug) {
-      // IMPORTANTE: Consultar en schema public porque la tabla tenant está ahí
-      const tenant = await this.dataSource.query(
+      // IMPORTANTE: Consultar siempre con schema explícito. El middleware corre
+      // antes del TenantConnectionInterceptor, por lo que no debe depender de
+      // SET search_path ni modificar conexiones compartidas del pool.
+      const tenants = await this.dataSource.query<TenantRequest['tenant'][]>(
         'SELECT * FROM public.tenant WHERE slug = $1 AND is_active = true',
         [tenantSlug],
       );
 
-      if (!tenant || tenant.length === 0) {
+      const tenant = tenants[0];
+
+      if (!tenant) {
         throw new NotFoundException(`Active tenant '${tenantSlug}' not found`);
       }
-
-      // Cambiar al esquema del tenant
-      // Esto asegura que cualquier query posterior solo vea los datos de ESTE tenant
-      // `quoteIdent` valida y escapa el nombre del schema para prevenir
-      // inyección SQL si la fila de `public.tenant` estuviese corrupta.
-      await this.dataSource.query(
-        `SET search_path TO ${quoteIdent(tenant[0].schema_name)}, public`,
-      );
 
       // VERIFICACIÓN ADICIONAL: Si hay un usuario logueado, verificar que EXISTA en este esquema
       // Esto previene el uso de tokens de un tenant en otro tenant
       if (req.user) {
         try {
-          const [userExists] = await this.dataSource.query(
-            'SELECT id FROM "user" WHERE id = $1',
+          const userTable = `${quoteIdent(tenant.schema_name)}."user"`;
+          const userRows = await this.dataSource.query<Array<{ id: number }>>(
+            `SELECT id FROM ${userTable} WHERE id = $1`,
             [req.user.userId],
           );
+          const userExists = userRows[0];
 
           if (!userExists) {
             // Si el ID de usuario no existe en este esquema, el token no es válido para este tenant
+            await this.authSecurityService.recordTenantMismatch({
+              email: req.user.email,
+              userId: req.user.userId,
+              requestTenantSlug: tenant.slug,
+              tokenTenantSlug: req.user.tenantSlug ?? tenant.slug,
+              path: req.originalUrl,
+              reason: 'user_not_found_in_tenant_schema',
+            });
             throw new UnauthorizedException(
               'User not authorized for this company',
             );
@@ -130,13 +154,21 @@ export class TenantContextMiddleware implements NestMiddleware {
             throw error;
           }
           // El schema no tiene tabla user (schema no inicializado), tratar como no autorizado
+          await this.authSecurityService.recordTenantMismatch({
+            email: req.user.email,
+            userId: req.user.userId,
+            requestTenantSlug: tenant.slug,
+            tokenTenantSlug: req.user.tenantSlug ?? tenant.slug,
+            path: req.originalUrl,
+            reason: 'tenant_user_lookup_failed',
+          });
           throw new UnauthorizedException(
             'User not authorized for this company',
           );
         }
       }
 
-      req.tenant = tenant[0];
+      req.tenant = tenant;
     }
 
     next();
@@ -182,4 +214,22 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     return firstSegment;
   }
+}
+
+function isTenantJwtPayload(payload: unknown): payload is TenantJwtPayload {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+
+  const candidate = payload as Partial<TenantJwtPayload>;
+  const hasTenantSlug =
+    candidate.tenantSlug === undefined ||
+    typeof candidate.tenantSlug === 'string';
+
+  return (
+    typeof candidate.sub === 'number' &&
+    typeof candidate.email === 'string' &&
+    typeof candidate.role === 'string' &&
+    hasTenantSlug
+  );
 }

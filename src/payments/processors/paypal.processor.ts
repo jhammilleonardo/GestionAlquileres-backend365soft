@@ -86,11 +86,9 @@ export class PayPalProcessor implements IPaymentProcessor {
                 currency_code: input.currency.toUpperCase(),
                 value: input.amount.toFixed(2),
               },
-              description:
-                input.notes ?? `Pago contrato #${input.contractId}`,
+              description: input.notes ?? `Pago contrato #${input.contractId}`,
               custom_id: String(input.contractId),
-              reference_id:
-                input.reference_number ?? `REF-${input.contractId}`,
+              reference_id: input.reference_number ?? `REF-${input.contractId}`,
             },
           ],
         },
@@ -197,6 +195,7 @@ export class PayPalProcessor implements IPaymentProcessor {
 
     const event = payload as Record<string, unknown>;
     const eventType = event.event_type as string;
+    const eventId = event.id as string | undefined;
     const resource = (event.resource ?? {}) as Record<string, unknown>;
 
     this.logger.log(`PayPal webhook recibido: ${eventType}`);
@@ -204,6 +203,7 @@ export class PayPalProcessor implements IPaymentProcessor {
     switch (eventType) {
       case 'PAYMENT.CAPTURE.COMPLETED':
         return {
+          event_id: eventId,
           transaction_id: resource.id as string,
           status: 'APPROVED',
           raw_event: payload,
@@ -211,21 +211,21 @@ export class PayPalProcessor implements IPaymentProcessor {
       case 'PAYMENT.CAPTURE.DENIED':
       case 'PAYMENT.CAPTURE.DECLINED':
         return {
+          event_id: eventId,
           transaction_id: resource.id as string,
           status: 'FAILED',
           raw_event: payload,
         };
       case 'PAYMENT.CAPTURE.REFUNDED':
         return {
+          event_id: eventId,
           transaction_id: resource.id as string,
           status: 'APPROVED',
           raw_event: payload,
         };
       default:
-        this.logger.debug(
-          `PayPal webhook: evento no manejado — ${eventType}`,
-        );
-        return { status: 'APPROVED', raw_event: payload };
+        this.logger.debug(`PayPal webhook: evento no manejado — ${eventType}`);
+        return { event_id: eventId, status: 'APPROVED', raw_event: payload };
     }
   }
 

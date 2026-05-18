@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
+import { AuthSecurityService } from './auth-security.service';
 import { AuthController } from './auth.controller';
 import { TenantsModule } from '../tenants/tenants.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -33,8 +34,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     TypeOrmModule.forFeature([]),
     NotificationsModule,
   ],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, AuthSecurityService, JwtStrategy],
   controllers: [AuthController],
-  exports: [AuthService],
+  exports: [AuthService, AuthSecurityService],
 })
 export class AuthModule {}

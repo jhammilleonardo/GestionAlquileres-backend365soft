@@ -1,6 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MaintenanceService } from './maintenance.service';
+import { MaintenanceCreationService } from './maintenance-creation.service';
+import { MaintenanceLookupService } from './maintenance-lookup.service';
+import { MaintenanceMessagesService } from './maintenance-messages.service';
+import { MaintenanceStageService } from './maintenance-stage.service';
+import { MaintenanceStatsService } from './maintenance-stats.service';
+import { MaintenanceUpdateService } from './maintenance-update.service';
+import { MaintenanceVendorsService } from './maintenance-vendors.service';
 import {
   AdminMaintenanceController,
   TenantMaintenanceController,
@@ -29,7 +36,16 @@ import { NotificationsModule } from '../notifications/notifications.module';
     TenantMaintenanceController,
     TecnicoMaintenanceController,
   ],
-  providers: [MaintenanceService],
+  providers: [
+    MaintenanceService,
+    MaintenanceCreationService,
+    MaintenanceLookupService,
+    MaintenanceMessagesService,
+    MaintenanceStageService,
+    MaintenanceStatsService,
+    MaintenanceUpdateService,
+    MaintenanceVendorsService,
+  ],
   exports: [MaintenanceService],
 })
 export class MaintenanceModule {}

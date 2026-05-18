@@ -12,19 +12,6 @@ function buildService(queryMock?: jest.Mock): SplitPaymentService {
   return new SplitPaymentService(ds);
 }
 
-function buildQueryRunner(queryMock: jest.Mock, shouldFail = false) {
-  return {
-    connect: jest.fn(),
-    startTransaction: jest.fn(),
-    commitTransaction: jest.fn(),
-    rollbackTransaction: jest.fn(),
-    release: jest.fn(),
-    query: shouldFail
-      ? jest.fn().mockRejectedValueOnce(new Error('DB error'))
-      : queryMock,
-  };
-}
-
 // ─── calculateSplit ────────────────────────────────────────────────────────────
 
 describe('SplitPaymentService — calculateSplit (lógica pura)', () => {
@@ -162,37 +149,8 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
     ownership_percentage: 100,
   };
 
-  function setupQueryRunner(
-    overrides: { querySequence?: unknown[][]; shouldFail?: boolean } = {},
-  ) {
-    const { querySequence = [], shouldFail = false } = overrides;
-
-    let callIndex = 0;
-    const queryMock = jest.fn().mockImplementation(() => {
-      if (shouldFail && callIndex > 0) throw new Error('DB error simulado');
-      const result = querySequence[callIndex] ?? [];
-      callIndex++;
-      return Promise.resolve(result);
-    });
-
-    const qr = {
-      connect: jest.fn().mockResolvedValue(undefined),
-      startTransaction: jest.fn().mockResolvedValue(undefined),
-      commitTransaction: jest.fn().mockResolvedValue(undefined),
-      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
-      release: jest.fn().mockResolvedValue(undefined),
-      query: queryMock,
-    };
-
-    ds = {
-      createQueryRunner: jest.fn().mockReturnValue(qr),
-    } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
-    service = new SplitPaymentService(ds as unknown as DataSource);
-    return { qr, queryMock };
-  }
-
   it('4 — rollback completo cuando falla el registro del split', async () => {
-    // Secuencia: SET search_path, tenant_config, maintenance, owners → luego falla en payment_splits
+    // Secuencia: tenant_config, maintenance, owners -> luego falla en payment_splits
     let call = 0;
     const qr = {
       connect: jest.fn().mockResolvedValue(undefined),
@@ -202,10 +160,9 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
       release: jest.fn().mockResolvedValue(undefined),
       query: jest.fn().mockImplementation(() => {
         call++;
-        if (call === 1) return Promise.resolve([]); // SET search_path
-        if (call === 2) return Promise.resolve([{ commission_percentage: 10 }]); // config
-        if (call === 3) return Promise.resolve([{ total: '0' }]); // maintenance
-        if (call === 4) return Promise.resolve([OWNER_ROW]); // owners
+        if (call === 1) return Promise.resolve([{ commission_percentage: 10 }]); // config
+        if (call === 2) return Promise.resolve([{ total: '0' }]); // maintenance
+        if (call === 3) return Promise.resolve([OWNER_ROW]); // owners
         // Falla en el INSERT de payment_splits
         return Promise.reject(new Error('DB constraint error'));
       }),
@@ -227,7 +184,6 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
 
   it('9 — múltiples pagos en el mismo período acumulan en el statement existente', async () => {
     // El primer call de SELECT owner_statements devuelve una fila existente → UPDATE
-    let call = 0;
     const qr = {
       connect: jest.fn().mockResolvedValue(undefined),
       startTransaction: jest.fn().mockResolvedValue(undefined),
@@ -235,8 +191,6 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
       rollbackTransaction: jest.fn().mockResolvedValue(undefined),
       release: jest.fn().mockResolvedValue(undefined),
       query: jest.fn().mockImplementation((sql: string) => {
-        call++;
-        if (sql.includes('SET search_path')) return Promise.resolve([]);
         if (sql.includes('tenant_config'))
           return Promise.resolve([{ commission_percentage: 10 }]);
         if (sql.includes('maintenance_requests'))
@@ -268,13 +222,14 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
     expect(qr.commitTransaction).toHaveBeenCalledTimes(1);
 
     // Verificar que se usó UPDATE, no INSERT
-    const updateCall = qr.query.mock.calls.find(
+    const queryCalls = qr.query.mock.calls as Array<[string, ...unknown[]]>;
+    const updateCall = queryCalls.find(
       ([sql]: [string]) =>
         sql.includes('UPDATE') && sql.includes('owner_statements'),
     );
     expect(updateCall).toBeDefined();
 
-    const insertCall = qr.query.mock.calls.find(
+    const insertCall = queryCalls.find(
       ([sql]: [string]) =>
         sql.includes('INSERT INTO') && sql.includes('owner_statements'),
     );
@@ -291,9 +246,8 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
       release: jest.fn().mockResolvedValue(undefined),
       query: jest.fn().mockImplementation(() => {
         call++;
-        if (call === 1) return Promise.resolve([]); // SET search_path
-        if (call === 2) return Promise.resolve([{ commission_percentage: 5 }]); // config
-        if (call === 3) return Promise.resolve([{ total: '0' }]); // maintenance
+        if (call === 1) return Promise.resolve([{ commission_percentage: 5 }]); // config
+        if (call === 2) return Promise.resolve([{ total: '0' }]); // maintenance
         return Promise.resolve([]); // property_owners → vacío
       }),
     };

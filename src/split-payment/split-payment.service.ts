@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryRunner } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
 
 export interface SplitCalculation {
@@ -88,7 +88,10 @@ export class SplitPaymentService {
    *
    * Si la propiedad no tiene propietarios, termina sin error.
    */
-  async executeSplit(params: ExecuteSplitParams): Promise<void> {
+  async executeSplit(
+    params: ExecuteSplitParams,
+    externalQueryRunner?: QueryRunner,
+  ): Promise<void> {
     const {
       paymentId,
       totalAmount,
@@ -99,20 +102,20 @@ export class SplitPaymentService {
       unitId,
     } = params;
 
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+    const queryRunner =
+      externalQueryRunner ?? this.dataSource.createQueryRunner();
+    const ownsTransaction = !externalQueryRunner;
+
+    if (ownsTransaction) {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+    }
 
     try {
-      await queryRunner.query(
-        `SET search_path TO ${quoteIdent(schemaName)}, public`,
-      );
-
       // 1. Leer commission_percentage del tenant
-      const configRows: { commission_percentage: number }[] =
-        await queryRunner.query(
-          `SELECT commission_percentage FROM ${quoteIdent(schemaName)}.tenant_config LIMIT 1`,
-        );
+      const configRows = (await queryRunner.query(
+        `SELECT commission_percentage FROM ${quoteIdent(schemaName)}.tenant_config LIMIT 1`,
+      )) as Array<{ commission_percentage: number }>;
       const commissionPercentage =
         configRows.length > 0
           ? Number(configRows[0].commission_percentage ?? 0)
@@ -129,22 +132,34 @@ export class SplitPaymentService {
       );
 
       // 3. Leer propietarios de la propiedad
-      const owners: {
-        rental_owner_id: number;
-        owner_name: string;
-        ownership_percentage: number;
-      }[] = await queryRunner.query(
+      const owners = (await queryRunner.query(
         `SELECT po.rental_owner_id, ro.name AS owner_name, po.ownership_percentage
            FROM ${quoteIdent(schemaName)}.property_owners po
            JOIN ${quoteIdent(schemaName)}.rental_owners ro ON ro.id = po.rental_owner_id
            WHERE po.property_id = $1
              AND po.ownership_percentage > 0`,
         [propertyId],
-      );
+      )) as Array<{
+        rental_owner_id: number;
+        owner_name: string;
+        ownership_percentage: number;
+      }>;
 
       if (!owners || owners.length === 0) {
-        await queryRunner.commitTransaction();
+        if (ownsTransaction) {
+          await queryRunner.commitTransaction();
+        }
         return;
+      }
+
+      const totalOwnership = owners.reduce(
+        (sum, owner) => sum + Number(owner.ownership_percentage),
+        0,
+      );
+      if (Math.abs(totalOwnership - 100) > 0.01) {
+        throw new BadRequestException(
+          `Los porcentajes de propiedad suman ${totalOwnership}%, deben sumar 100%`,
+        );
       }
 
       // 4. Calcular y persistir split por propietario
@@ -188,12 +203,16 @@ export class SplitPaymentService {
         });
       }
 
-      await queryRunner.commitTransaction();
+      if (ownsTransaction) {
+        await queryRunner.commitTransaction();
+      }
       this.logger.log(
         `Split ejecutado: pago #${paymentId}, propiedad #${propertyId}, ${owners.length} propietario(s)`,
       );
     } catch (error: unknown) {
-      await queryRunner.rollbackTransaction();
+      if (ownsTransaction) {
+        await queryRunner.rollbackTransaction();
+      }
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Split payment fallido para pago #${paymentId}: ${message}`,
@@ -201,20 +220,22 @@ export class SplitPaymentService {
       );
       throw error;
     } finally {
-      await queryRunner.release();
+      if (ownsTransaction) {
+        await queryRunner.release();
+      }
     }
   }
 
   // ─── Privados ─────────────────────────────────────────────────────────────
 
   private async fetchMaintenanceDeductions(
-    queryRunner: ReturnType<DataSource['createQueryRunner']>,
+    queryRunner: QueryRunner,
     propertyId: number,
     month: number,
     year: number,
     schemaName: string,
   ): Promise<number> {
-    const hasEstimatedCostColumn: { exists: boolean }[] = await queryRunner.query(
+    const hasEstimatedCostColumn = (await queryRunner.query(
       `SELECT EXISTS (
          SELECT 1
          FROM information_schema.columns
@@ -223,13 +244,13 @@ export class SplitPaymentService {
            AND column_name = 'estimated_cost'
        ) AS exists`,
       [schemaName],
-    );
+    )) as Array<{ exists: boolean }>;
 
     if (!hasEstimatedCostColumn[0]?.exists) {
       return 0;
     }
 
-    const rows: { total: string }[] = await queryRunner.query(
+    const rows = (await queryRunner.query(
       `SELECT COALESCE(SUM(estimated_cost), 0) AS total
        FROM ${quoteIdent(schemaName)}.maintenance_requests
        WHERE property_id = $1
@@ -238,13 +259,13 @@ export class SplitPaymentService {
          AND EXTRACT(YEAR  FROM updated_at) = $3
          AND estimated_cost IS NOT NULL`,
       [propertyId, month, year],
-    );
+    )) as Array<{ total: string }>;
 
     return rows.length > 0 ? Number(rows[0].total) : 0;
   }
 
   private async upsertOwnerStatement(
-    queryRunner: ReturnType<DataSource['createQueryRunner']>,
+    queryRunner: QueryRunner,
     params: {
       rentalOwnerId: number;
       propertyId: number;
@@ -268,14 +289,14 @@ export class SplitPaymentService {
     } = params;
 
     // Verificar si ya existe un statement para este propietario/propiedad/período
-    const existing: { id: number }[] = await queryRunner.query(
+    const existing = (await queryRunner.query(
       `SELECT id FROM ${quoteIdent(schemaName)}.owner_statements
        WHERE rental_owner_id = $1
          AND property_id     = $2
          AND period_month    = $3
          AND period_year     = $4`,
       [rentalOwnerId, propertyId, month, year],
-    );
+    )) as Array<{ id: number }>;
 
     if (existing && existing.length > 0) {
       // Acumular: sumar al registro existente

@@ -8,6 +8,13 @@ import { MaintenanceMessage } from './entities/maintenance-message.entity';
 import { MaintenanceAttachment } from './entities/maintenance-attachment.entity';
 import { Contract } from '../contracts/entities/contract.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MaintenanceCreationService } from './maintenance-creation.service';
+import { MaintenanceLookupService } from './maintenance-lookup.service';
+import { MaintenanceMessagesService } from './maintenance-messages.service';
+import { MaintenanceStageService } from './maintenance-stage.service';
+import { MaintenanceStatsService } from './maintenance-stats.service';
+import { MaintenanceUpdateService } from './maintenance-update.service';
+import { MaintenanceVendorsService } from './maintenance-vendors.service';
 
 const makeDataSource = (queryImpl?: jest.Mock): Partial<DataSource> => ({
   query: queryImpl ?? jest.fn(),
@@ -17,6 +24,16 @@ const makeModule = async (dataSourceQuery: jest.Mock) => {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       MaintenanceService,
+      {
+        provide: MaintenanceCreationService,
+        useValue: { create: jest.fn() },
+      },
+      MaintenanceLookupService,
+      MaintenanceStageService,
+      {
+        provide: MaintenanceMessagesService,
+        useValue: { addMessage: jest.fn(), saveUploadedFiles: jest.fn() },
+      },
       {
         provide: getRepositoryToken(MaintenanceRequest),
         useValue: { find: jest.fn(), findOne: jest.fn() },
@@ -40,6 +57,18 @@ const makeModule = async (dataSourceQuery: jest.Mock) => {
       {
         provide: NotificationsService,
         useValue: { createForUser: jest.fn(), notifyAdmins: jest.fn() },
+      },
+      {
+        provide: MaintenanceStatsService,
+        useValue: { getAdminStats: jest.fn(), getTenantStats: jest.fn() },
+      },
+      {
+        provide: MaintenanceUpdateService,
+        useValue: { update: jest.fn() },
+      },
+      {
+        provide: MaintenanceVendorsService,
+        useValue: { assignVendor: jest.fn(), rateVendor: jest.fn() },
       },
     ],
   }).compile();
@@ -285,6 +314,16 @@ describe('MaintenanceService — Stage Pipeline', () => {
         providers: [
           MaintenanceService,
           {
+            provide: MaintenanceCreationService,
+            useValue: { create: jest.fn() },
+          },
+          MaintenanceLookupService,
+          MaintenanceStageService,
+          {
+            provide: MaintenanceMessagesService,
+            useValue: { addMessage: jest.fn(), saveUploadedFiles: jest.fn() },
+          },
+          {
             provide: getRepositoryToken(MaintenanceRequest),
             useValue: {},
           },
@@ -307,6 +346,18 @@ describe('MaintenanceService — Stage Pipeline', () => {
               createForUser: jest.fn().mockResolvedValue({}),
               notifyAdmins: jest.fn(),
             },
+          },
+          {
+            provide: MaintenanceStatsService,
+            useValue: { getAdminStats: jest.fn(), getTenantStats: jest.fn() },
+          },
+          {
+            provide: MaintenanceUpdateService,
+            useValue: { update: jest.fn() },
+          },
+          {
+            provide: MaintenanceVendorsService,
+            useValue: { assignVendor: jest.fn(), rateVendor: jest.fn() },
           },
         ],
       }).compile();

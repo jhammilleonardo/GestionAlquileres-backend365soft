@@ -27,9 +27,14 @@ export class LifecycleNotificationsService {
 
   /**
    * Llamado cuando un contrato pasa a estado ACTIVO.
-   * Opera con search_path ya establecido por TenantContextMiddleware.
+   * Si recibe schemaName, opera con tablas calificadas y no depende de
+   * search_path.
    */
-  async onContractActivated(contractId: number): Promise<void> {
+  async onContractActivated(
+    contractId: number,
+    schemaName?: string,
+  ): Promise<void> {
+    const schemaPrefix = schemaName ? `${quoteIdent(schemaName)}.` : '';
     const rows = await this.dataSource.query<
       {
         id: number;
@@ -43,8 +48,8 @@ export class LifecycleNotificationsService {
     >(
       `SELECT c.id, c.contract_number, c.tenant_id, c.start_date, c.end_date,
               p.title as property_title
-       FROM contracts c
-       JOIN properties p ON p.id = c.property_id
+       FROM ${schemaPrefix}contracts c
+       JOIN ${schemaPrefix}properties p ON p.id = c.property_id
        WHERE c.id = $1`,
       [contractId],
     );
@@ -52,7 +57,9 @@ export class LifecycleNotificationsService {
     if (rows.length === 0) return;
     const contract = rows[0];
 
-    const channels = await this.getChannels();
+    const channels = schemaName
+      ? await this.getChannelsForSchema(schemaName)
+      : await this.getChannels();
     const title = 'Tu contrato está activo';
     const message =
       `Tu contrato ${contract.contract_number} para ${contract.property_title} ` +
@@ -65,6 +72,19 @@ export class LifecycleNotificationsService {
       start_date: contract.start_date,
       end_date: contract.end_date,
     };
+
+    if (schemaName) {
+      await this.dispatchToSchema(
+        schemaName,
+        contract.tenant_id,
+        NotificationEventType.CONTRACT_ACTIVATED,
+        title,
+        message,
+        metadata,
+        channels,
+      );
+      return;
+    }
 
     await this.dispatch(
       contract.tenant_id,

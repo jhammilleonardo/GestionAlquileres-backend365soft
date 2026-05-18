@@ -30,8 +30,7 @@ import type { TenantRequest } from '../middleware/tenant-context.middleware';
  *   5. Al finalizar el request (éxito o error): liberar la conexión al pool.
  *
  * `SET search_path` (sin LOCAL) persiste en la conexión para la duración del
- * request. Cuando la conexión vuelve al pool, el siguiente request que llegue
- * al middleware la resetea a public antes de usarla (el middleware ya hace esto).
+ * request. Antes de liberar la conexión se resetea a public.
  */
 @Injectable()
 export class TenantConnectionInterceptor implements NestInterceptor {
@@ -43,7 +42,9 @@ export class TenantConnectionInterceptor implements NestInterceptor {
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {
-    this.originalQuery = this.dataSource.query.bind(this.dataSource);
+    this.originalQuery = this.dataSource.query.bind(
+      this.dataSource,
+    ) as DataSource['query'];
     this.patchDataSourceQuery();
   }
 
@@ -73,23 +74,9 @@ export class TenantConnectionInterceptor implements NestInterceptor {
     const req = context.switchToHttp().getRequest<TenantRequest>();
     const schemaName = req.tenant?.schema_name ?? null;
 
-    // Si no hay tenant (health, auth/register-admin, storage público), no
-    // adquirimos QueryRunner — el middleware ya dejó search_path=public.
-    if (!schemaName) {
-      return tenantConnectionStore.run(
-        { queryRunner: null, schemaName: null },
-        () => next.handle(),
-      );
-    }
-
     // Adquirimos la conexión y seteamos el schema ANTES de que el handler
-    // empiece, para que cualquier query del interceptor de salida también
-    // use la conexión correcta.
-    let resolveSetup: () => void;
-    const setupDone = new Promise<void>((resolve) => {
-      resolveSetup = resolve;
-    });
-
+    // empiece. Incluso las rutas sin tenant usan un QueryRunner con
+    // search_path=public para evitar conexiones del pool con estado residual.
     const store = {
       queryRunner: null as ReturnType<DataSource['createQueryRunner']> | null,
       schemaName,
@@ -98,28 +85,21 @@ export class TenantConnectionInterceptor implements NestInterceptor {
     const result$ = new Observable((subscriber) => {
       const queryRunner = this.dataSource.createQueryRunner();
 
-      (async () => {
+      void (async () => {
         try {
           await queryRunner.connect();
-          await queryRunner.query(
-            `SET search_path TO ${quoteIdent(schemaName)}, public`,
-          );
+          const searchPath = schemaName
+            ? `${quoteIdent(schemaName)}, public`
+            : 'public';
+          await queryRunner.query(`SET search_path TO ${searchPath}`);
           store.queryRunner = queryRunner;
-          resolveSetup();
 
           tenantConnectionStore.run(store, () => {
             next
               .handle()
               .pipe(
-                finalize(async () => {
-                  try {
-                    // Resetear antes de devolver al pool
-                    await queryRunner.query('SET search_path TO public');
-                  } catch {
-                    // Si falló, el pool lo recicla igual
-                  } finally {
-                    await queryRunner.release();
-                  }
+                finalize(() => {
+                  void this.releaseQueryRunner(queryRunner);
                 }),
               )
               .subscribe({
@@ -137,5 +117,18 @@ export class TenantConnectionInterceptor implements NestInterceptor {
     });
 
     return result$;
+  }
+
+  private async releaseQueryRunner(
+    queryRunner: ReturnType<DataSource['createQueryRunner']>,
+  ): Promise<void> {
+    try {
+      // Resetear antes de devolver al pool
+      await queryRunner.query('SET search_path TO public');
+    } catch {
+      // Si falló, el pool lo recicla igual
+    } finally {
+      await queryRunner.release();
+    }
   }
 }

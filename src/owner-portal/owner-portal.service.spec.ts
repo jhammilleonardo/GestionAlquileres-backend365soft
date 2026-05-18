@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { OwnerPortalService } from './owner-portal.service';
 import { OwnerStatementPdfService } from '../owner-statements/owner-statement-pdf.service';
 

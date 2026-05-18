@@ -26,6 +26,18 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
 
+interface CurrentTenantContext {
+  schema_name: string;
+  slug: string;
+}
+
+interface EmployeeRequest {
+  user?: {
+    userId: number;
+    role: string;
+  };
+}
+
 @ApiTags('Admin - Employees')
 @ApiBearerAuth()
 @Controller(':slug/admin/employees')
@@ -40,7 +52,14 @@ export class EmployeesController {
     summary: 'Permisos del usuario logueado — usado por el sidebar',
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async getMyPermissions(@Request() req: any, @CurrentTenant() tenant: any) {
+  async getMyPermissions(
+    @Request() req: EmployeeRequest,
+    @CurrentTenant() tenant: CurrentTenantContext,
+  ) {
+    if (!req.user) {
+      return { role: '', allowedModules: [] };
+    }
+
     return this.employeesService.getMyPermissions(tenant.schema_name, req.user);
   }
 
@@ -49,7 +68,7 @@ export class EmployeesController {
     summary: 'Listar empleados con rol, permisos y última conexión',
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  async findAll(@CurrentTenant() tenant: any) {
+  async findAll(@CurrentTenant() tenant: CurrentTenantContext) {
     return this.employeesService.findAll(tenant.schema_name);
   }
 
@@ -59,14 +78,15 @@ export class EmployeesController {
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   async create(
-    @CurrentTenant() tenant: any,
+    @CurrentTenant() tenant: CurrentTenantContext,
     @Body() createEmployeeDto: CreateEmployeeDto,
-    @Request() req,
+    @Request() req: EmployeeRequest,
   ) {
     return this.employeesService.create(
       tenant.schema_name,
+      tenant.slug,
       createEmployeeDto,
-      req.user.userId,
+      req.user?.userId ?? 0,
     );
   }
 
@@ -76,7 +96,7 @@ export class EmployeesController {
   @ApiParam({ name: 'id', description: 'ID del empleado', type: Number })
   async update(
     @Param('id') id: string,
-    @CurrentTenant() tenant: any,
+    @CurrentTenant() tenant: CurrentTenantContext,
     @Body() updateEmployeeDto: UpdateEmployeeDto,
   ) {
     return this.employeesService.update(
@@ -92,12 +112,13 @@ export class EmployeesController {
   @ApiParam({ name: 'id', description: 'ID del empleado', type: Number })
   async updatePermissions(
     @Param('id') id: string,
-    @CurrentTenant() tenant: any,
+    @CurrentTenant() tenant: CurrentTenantContext,
     @Body() updatePermissionsDto: UpdatePermissionsDto,
-    @Request() req,
+    @Request() req: EmployeeRequest,
   ) {
     return this.employeesService.updatePermissions(
       tenant.schema_name,
+      tenant.slug,
       +id,
       updatePermissionsDto.permissions,
       req.user?.userId ?? 0,
@@ -111,11 +132,12 @@ export class EmployeesController {
   @ApiParam({ name: 'id', description: 'ID del empleado', type: Number })
   async remove(
     @Param('id') id: string,
-    @CurrentTenant() tenant: any,
-    @Request() req,
+    @CurrentTenant() tenant: CurrentTenantContext,
+    @Request() req: EmployeeRequest,
   ) {
     return this.employeesService.remove(
       tenant.schema_name,
+      tenant.slug,
       +id,
       req.user?.userId ?? 0,
     );

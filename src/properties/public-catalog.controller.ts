@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { PropertiesService } from './properties.service';
 import { FilterCatalogPropertiesDto } from './dto/filter-catalog-properties.dto';
 import { CreatePropertyContactDto } from './dto/create-property-contact.dto';
@@ -114,17 +115,11 @@ export class PublicCatalogController {
   async findCatalogProperties(
     @Param('slug') slug: string,
     @Query() filters: FilterCatalogPropertiesDto,
-    @Req() req: any,
   ) {
-    const clientIP =
-      req.ip ||
-      req.headers['x-forwarded-for']?.split(',')[0] ||
-      req.connection.remoteAddress;
-
     try {
       return await this.propertiesService.findCatalogProperties(filters, slug);
     } catch (error) {
-      if (error.message.includes('Tenant')) {
+      if (error instanceof Error && error.message.includes('Tenant')) {
         throw new BadRequestException('Invalid tenant slug');
       }
       throw error;
@@ -157,21 +152,16 @@ export class PublicCatalogController {
   async findCatalogPropertyDetail(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: any,
+    @Req() req: Request,
   ) {
-    const clientIP =
-      req.ip ||
-      req.headers['x-forwarded-for']?.split(',')[0] ||
-      req.connection.remoteAddress;
-
     try {
       return await this.propertiesService.findCatalogPropertyDetail(
         id,
         slug,
-        clientIP,
+        getClientIp(req),
       );
     } catch (error) {
-      if (error.message.includes('Tenant')) {
+      if (error instanceof Error && error.message.includes('Tenant')) {
         throw new BadRequestException('Invalid tenant slug');
       }
       throw error;
@@ -206,13 +196,8 @@ export class PublicCatalogController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() contactDto: CreatePropertyContactDto,
-    @Req() req: any,
+    @Req() req: Request,
   ) {
-    const clientIP =
-      req.ip ||
-      req.headers['x-forwarded-for']?.split(',')[0] ||
-      req.connection.remoteAddress;
-
     // Validaciones básicas
     if (!contactDto.name || !contactDto.email || !contactDto.message) {
       throw new BadRequestException(
@@ -231,13 +216,26 @@ export class PublicCatalogController {
         id,
         contactDto,
         slug,
-        clientIP,
+        getClientIp(req),
       );
     } catch (error) {
-      if (error.message.includes('Tenant')) {
+      if (error instanceof Error && error.message.includes('Tenant')) {
         throw new BadRequestException('Invalid tenant slug');
       }
       throw error;
     }
   }
+}
+
+function getClientIp(req: Request): string | undefined {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (typeof forwardedFor === 'string') {
+    return forwardedFor.split(',')[0]?.trim();
+  }
+
+  if (Array.isArray(forwardedFor) && forwardedFor.length > 0) {
+    return forwardedFor[0]?.split(',')[0]?.trim();
+  }
+
+  return req.ip || req.socket.remoteAddress;
 }

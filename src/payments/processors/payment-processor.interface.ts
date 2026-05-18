@@ -30,6 +30,7 @@ export interface ProcessorResult {
  * Resultado al procesar un webhook / callback del procesador.
  */
 export interface WebhookResult {
+  event_id?: string;
   payment_id?: number;
   transaction_id?: string;
   status: 'APPROVED' | 'REJECTED' | 'FAILED';

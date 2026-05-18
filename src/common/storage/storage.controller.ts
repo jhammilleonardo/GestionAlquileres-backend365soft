@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import type { TenantRequest } from '../middleware/tenant-context.middleware';
 import { isValidTenantSlug } from '../utils/tenant-slug';
 import { StorageService } from './storage.service';
 
@@ -50,7 +51,12 @@ export class StorageController {
 
     return this.sendFile(
       res,
-      this.storageService.buildStoragePath('properties', slug, propertyId, filename),
+      this.storageService.buildStoragePath(
+        'properties',
+        slug,
+        propertyId,
+        filename,
+      ),
       'public',
     );
   }
@@ -73,7 +79,12 @@ export class StorageController {
 
     return this.sendFile(
       res,
-      this.storageService.buildStoragePath('maintenance', slug, requestId, filename),
+      this.storageService.buildStoragePath(
+        'maintenance',
+        slug,
+        requestId,
+        filename,
+      ),
       'private',
     );
   }
@@ -199,7 +210,12 @@ export class StorageController {
 
     return this.sendFile(
       res,
-      this.storageService.buildStoragePath('contracts', slug, contractId, filename),
+      this.storageService.buildStoragePath(
+        'contracts',
+        slug,
+        contractId,
+        filename,
+      ),
       'private',
     );
   }
@@ -210,7 +226,7 @@ export class StorageController {
 
   private assertTenantOwnership(req: Request, slug: string) {
     this.assertSafeSlug(slug);
-    const user = (req as any).user;
+    const user = (req as TenantRequest).user;
     if (!user?.tenantSlug || user.tenantSlug !== slug) {
       throw new ForbiddenException('Not authorized for this tenant');
     }

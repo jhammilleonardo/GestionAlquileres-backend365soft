@@ -1,8 +1,11 @@
-# Database Migrations & Setup
+# Database Provisioning & Startup Migrations
 
-Proceso automático de migraciones - Las tablas se crean automáticamente desde las **entidades TypeORM**.
+El proyecto **no usa migraciones TypeORM CLI versionadas**. En su lugar maneja dos mecanismos:
 
-**✨ SIN migraciones SQL manuales - Todo se sincroniza automáticamente en desarrollo**
+1. **Provisionamiento de tenant nuevo**: al crear un tenant se crea su schema y sus tablas base desde `TenantsService`.
+2. **Startup migrations idempotentes**: al arrancar la aplicación se corrigen schemas existentes con `CREATE ... IF NOT EXISTS`, `ALTER ... ADD COLUMN IF NOT EXISTS` y seeds idempotentes.
+
+Esto significa que agregar DDL en el flujo de startup es consistente con el proyecto actual, siempre que sea idempotente, use `quoteIdent` para nombres dinámicos y no dependa de transacciones largas. Si en el futuro se adopta un sistema de migraciones versionadas, este documento debe actualizarse y el DDL de startup debe migrarse gradualmente.
 
 ---
 
@@ -24,7 +27,7 @@ docker compose down      # Detener contenedores existentes
 docker compose up --build # Levantar con rebuild
 ```
 
-**Eso es todo.** TypeORM sincroniza automáticamente las tablas desde las entidades.
+**Eso es todo.** En desarrollo, TypeORM puede sincronizar entidades del schema `public`; los schemas de tenants se mantienen por el flujo de provisionamiento/startup.
 
 ### 3. Verificar Migraciones
 
@@ -38,8 +41,8 @@ SET search_path TO tenant_mi_inmobiliaria;
 \dt  # Ver todas las tablas
 
 # Consulta de verificación
-SELECT table_name FROM information_schema.tables 
-WHERE table_schema = 'tenant_mi_inmobiliaria' 
+SELECT table_name FROM information_schema.tables
+WHERE table_schema = 'tenant_mi_inmobiliaria'
 ORDER BY table_name;
 ```
 
@@ -47,41 +50,43 @@ ORDER BY table_name;
 
 ## Features
 
-✅ **Sincronización Automática**: TypeORM crea/actualiza tablas desde entidades  
-✅ **Sin SQL Manual**: No necesitas escritos de migración SQL  
-✅ **Desarrollo Ágil**: Cambios en `@Entity` = cambios automáticos en BD  
-✅ **Índices & Triggers Decorados**: Configurados en la entidad TypeORM  
+✅ **Provisionamiento automático**: tenants nuevos reciben schema/tablas al crearse
+✅ **Startup migrations idempotentes**: tenants existentes se actualizan al arrancar
+✅ **Desarrollo ágil**: `synchronize` solo aplica en desarrollo y principalmente al schema `public`
+✅ **Sin migraciones CLI versionadas**: no hay carpeta de migraciones TypeORM activa
 
 ---
 
 ## Entidades Sincronizadas
 
-| Módulo | Entidad | Estado |
-|---|---|---|
-| properties | Property, PropertyAddress, RentalOwner, PropertyOwner | ✅ Sincronizado |
-| users | User | ✅ Sincronizado |
-| contracts | Contract | ✅ Sincronizado |
-| maintenance | MaintenanceRequest | ✅ Sincronizado |
-| notifications | Notification | ✅ Sincronizado |
-| applications | RentalApplication | ✅ Sincronizado |
-| applications | **ScreeningChecklist** | **✅ F2-BE-SCREENING Sincronizado** |
-| units | Unit | ✅ Sincronizado |
-| owner-statements | OwnerStatement | ✅ F2-BE-07 Sincronizado |
-| reservations | property_availability, reservations | ✅ Sprint 5 — Startup Migration |
-| vendors | vendors | ✅ Sprint 5 — Startup Migration |
-| lifecycle-notifications | lifecycle_notification_log | ✅ Sprint 5 — Startup Migration |
-| billing-cron | Sin tablas nuevas — usa `payments` y `lifecycle_notification_log` | ✅ Sprint 5 |
-| contract-templates | contract_templates | ✅ Sprint 5 — Startup Migration |
-| property-types | property_types, property_subtypes | ✅ Sprint 6 — Startup Migration + Seed |
+| Módulo                  | Entidad                                                           | Estado                                 |
+| ----------------------- | ----------------------------------------------------------------- | -------------------------------------- |
+| properties              | Property, PropertyAddress, RentalOwner, PropertyOwner             | ✅ Sincronizado                        |
+| users                   | User                                                              | ✅ Sincronizado                        |
+| contracts               | Contract                                                          | ✅ Sincronizado                        |
+| maintenance             | MaintenanceRequest                                                | ✅ Sincronizado                        |
+| notifications           | Notification                                                      | ✅ Sincronizado                        |
+| applications            | RentalApplication                                                 | ✅ Sincronizado                        |
+| applications            | **ScreeningChecklist**                                            | **✅ F2-BE-SCREENING Sincronizado**    |
+| units                   | Unit                                                              | ✅ Sincronizado                        |
+| owner-statements        | OwnerStatement                                                    | ✅ F2-BE-07 Sincronizado               |
+| reservations            | property_availability, reservations                               | ✅ Sprint 5 — Startup Migration        |
+| vendors                 | vendors                                                           | ✅ Sprint 5 — Startup Migration        |
+| lifecycle-notifications | lifecycle_notification_log                                        | ✅ Sprint 5 — Startup Migration        |
+| billing-cron            | Sin tablas nuevas — usa `payments` y `lifecycle_notification_log` | ✅ Sprint 5                            |
+| contract-templates      | contract_templates                                                | ✅ Sprint 5 — Startup Migration        |
+| property-types          | property_types, property_subtypes                                 | ✅ Sprint 6 — Startup Migration + Seed |
 
 ---
 
 ## Recent Changes (Sprint 6 — Catálogo de Tipos de Propiedad)
 
 ### Problema resuelto
+
 Las tablas `property_types` y `property_subtypes` se crean y siembran durante el **provisionamiento** de cada tenant nuevo, pero `runStartupMigrations` no incluía ese paso. Los tenants creados antes de que se añadiera el seed quedaban con la tabla vacía, provocando que el dropdown de "Tipo de Propiedad" en el formulario de crear/editar propiedad apareciera sin opciones.
 
 ### Archivo modificado
+
 - `src/tenants/tenants.service.ts` — nuevo paso `migratePropertyCatalog` al final de `runStartupMigrations`
 
 ### Nuevo paso de migración (`migratePropertyCatalog`)
@@ -122,14 +127,15 @@ INSERT INTO {schema}.property_subtypes (...) VALUES (...) ON CONFLICT (code) DO 
 
 ### Diferencia con `seedPropertyTypesAndSubtypes`
 
-| | `seedPropertyTypesAndSubtypes` | `migratePropertyCatalog` (nuevo) |
-|---|---|---|
-| Crea tablas si no existen | No | Sí — `CREATE TABLE IF NOT EXISTS` |
-| Lanza excepción si faltan tipos | Sí | No — retorna silenciosamente |
-| Úso | Provisionamiento de tenant nuevo | Startup migration (tenants existentes) |
-| Idempotente | Parcialmente | Completamente |
+|                                 | `seedPropertyTypesAndSubtypes`   | `migratePropertyCatalog` (nuevo)       |
+| ------------------------------- | -------------------------------- | -------------------------------------- |
+| Crea tablas si no existen       | No                               | Sí — `CREATE TABLE IF NOT EXISTS`      |
+| Lanza excepción si faltan tipos | Sí                               | No — retorna silenciosamente           |
+| Úso                             | Provisionamiento de tenant nuevo | Startup migration (tenants existentes) |
+| Idempotente                     | Parcialmente                     | Completamente                          |
 
 ### Por qué el seed del provisionamiento no era suficiente
+
 `seedPropertyTypesAndSubtypes` se llama en el paso 19 del flujo de creación de tenant. Si el tenant fue creado antes de que ese paso existiera, o si `createPropertiesTables` fue ejecutado sin el seed posterior, la tabla existía pero vacía. La solución correcta es que `runStartupMigrations` garantice el estado esperado al arrancar el backend.
 
 ---
@@ -137,12 +143,14 @@ INSERT INTO {schema}.property_subtypes (...) VALUES (...) ON CONFLICT (code) DO 
 ## Recent Changes (Sprint 5 — Gestión de Vendors)
 
 ### Nuevos Archivos
+
 - `src/vendors/` — Módulo completo: service, controller, DTOs, enums, tests
 - `src/vendors/enums/vendor-specialty.enum.ts` — `plumbing/electrical/hvac/cleaning/painting/general/other`
 - `src/maintenance/dto/assign-vendor.dto.ts` — DTO para asignar vendor o técnico
 - `src/maintenance/dto/rate-vendor.dto.ts` — DTO para calificar vendor (1-5 + comentario)
 
 ### Archivos Modificados
+
 - `src/maintenance/entities/maintenance-request.entity.ts` — 5 columnas nuevas: `vendor_id`, `vendor_rating`, `vendor_rating_comment`, `vendor_rated_at`, `vendor_rated_by`
 - `src/maintenance/maintenance.service.ts` — Métodos `assignVendor()` y `rateVendor()`
 - `src/maintenance/maintenance.controller.ts` — Endpoints `PATCH :id/assign-vendor` y `POST :id/rate-vendor`
@@ -152,6 +160,7 @@ INSERT INTO {schema}.property_subtypes (...) VALUES (...) ON CONFLICT (code) DO 
 ### Base de Datos — Startup Migrations (idempotentes)
 
 **Nueva tabla `vendors`:**
+
 ```sql
 CREATE TABLE IF NOT EXISTS {schema}.vendors (
   id             SERIAL        PRIMARY KEY,
@@ -173,6 +182,7 @@ CREATE TABLE IF NOT EXISTS {schema}.vendors (
 ```
 
 **Columnas nuevas en `maintenance_requests`:**
+
 ```sql
 ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_id             INT;
 ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rating         INT;
@@ -184,16 +194,16 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 
 ### Endpoints Nuevos
 
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| `GET` | `/:slug/admin/vendors` | Admin | Listar proveedores |
-| `GET` | `/:slug/admin/vendors/:id` | Admin | Obtener proveedor |
-| `POST` | `/:slug/admin/vendors` | Admin | Crear proveedor |
-| `PATCH` | `/:slug/admin/vendors/:id` | Admin | Actualizar proveedor |
-| `DELETE` | `/:slug/admin/vendors/:id` | Admin | Desactivar proveedor |
-| `GET` | `/:slug/admin/vendors/:id/history` | Admin | Historial de órdenes |
-| `PATCH` | `/:slug/admin/maintenance/:id/assign-vendor` | Admin | Asignar vendor/técnico |
-| `POST` | `/:slug/admin/maintenance/:id/rate-vendor` | Admin | Calificar vendor (1-5) |
+| Método   | Ruta                                         | Auth  | Descripción            |
+| -------- | -------------------------------------------- | ----- | ---------------------- |
+| `GET`    | `/:slug/admin/vendors`                       | Admin | Listar proveedores     |
+| `GET`    | `/:slug/admin/vendors/:id`                   | Admin | Obtener proveedor      |
+| `POST`   | `/:slug/admin/vendors`                       | Admin | Crear proveedor        |
+| `PATCH`  | `/:slug/admin/vendors/:id`                   | Admin | Actualizar proveedor   |
+| `DELETE` | `/:slug/admin/vendors/:id`                   | Admin | Desactivar proveedor   |
+| `GET`    | `/:slug/admin/vendors/:id/history`           | Admin | Historial de órdenes   |
+| `PATCH`  | `/:slug/admin/maintenance/:id/assign-vendor` | Admin | Asignar vendor/técnico |
+| `POST`   | `/:slug/admin/maintenance/:id/rate-vendor`   | Admin | Calificar vendor (1-5) |
 
 > Documentación completa: [API-VENDORS.md](./API-VENDORS.md)
 
@@ -202,6 +212,7 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 ## Recent Changes (Sprint 5 — Contract Templates)
 
 ### Nuevos Archivos
+
 - `src/contract-templates/entities/contract-template.entity.ts` — Entidad TypeORM
 - `src/contract-templates/dto/create-contract-template.dto.ts` / `update-contract-template.dto.ts` — DTOs validados
 - `src/contract-templates/contract-templates.service.ts` — CRUD + `substituteVariables()` (función pura de sustitución)
@@ -210,6 +221,7 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 - `src/contract-templates/contract-templates.service.spec.ts` — 16 tests unitarios
 
 ### Archivos Modificados
+
 - `src/contracts/pdf.service.ts` — Interfaz `ContractData` (reemplaza `any`) + nuevo método `generateContractPdfFromTemplate`
 - `src/contracts/contracts.service.ts` — `generatePdf` detecta idioma del tenant, busca plantilla activa y la usa si existe
 - `src/contracts/contracts.module.ts` — Importa `ContractTemplatesModule`
@@ -218,26 +230,26 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 
 ### Base de Datos
 
-| Tabla | Descripción |
-|-------|-------------|
+| Tabla                         | Descripción                                                             |
+| ----------------------------- | ----------------------------------------------------------------------- |
 | `{schema}.contract_templates` | `id, language, name, content (TEXT), is_active, created_at, updated_at` |
 
 **Seed automático al crear tenant**: se insertan 2 plantillas por defecto (ES y EN) que replican el contenido del generador hardcodeado, usando variables `{{contract_number}}`, `{{tenant_name}}`, etc.
 
 ### Variables de plantilla soportadas
 
-| Variable | Valor |
-|----------|-------|
-| `{{contract_number}}` | Número del contrato |
-| `{{tenant_name}}` / `{{tenant_email}}` / `{{tenant_phone}}` | Datos del inquilino |
-| `{{landlord_name}}` | Nombre de la empresa administradora |
-| `{{property_title}}` / `{{property_address}}` / `{{unit_number}}` | Datos de la propiedad |
-| `{{rent_amount}}` / `{{currency}}` / `{{payment_day}}` | Términos financieros |
-| `{{start_date}}` / `{{end_date}}` / `{{duration_months}}` | Vigencia |
-| `{{deposit_amount}}` | Depósito de garantía |
-| `{{late_fee_percentage}}` / `{{grace_days}}` | Condiciones de mora |
-| `{{jurisdiction}}` | Jurisdicción legal |
-| `{{issue_date}}` | Fecha de emisión del documento |
+| Variable                                                          | Valor                               |
+| ----------------------------------------------------------------- | ----------------------------------- |
+| `{{contract_number}}`                                             | Número del contrato                 |
+| `{{tenant_name}}` / `{{tenant_email}}` / `{{tenant_phone}}`       | Datos del inquilino                 |
+| `{{landlord_name}}`                                               | Nombre de la empresa administradora |
+| `{{property_title}}` / `{{property_address}}` / `{{unit_number}}` | Datos de la propiedad               |
+| `{{rent_amount}}` / `{{currency}}` / `{{payment_day}}`            | Términos financieros                |
+| `{{start_date}}` / `{{end_date}}` / `{{duration_months}}`         | Vigencia                            |
+| `{{deposit_amount}}`                                              | Depósito de garantía                |
+| `{{late_fee_percentage}}` / `{{grace_days}}`                      | Condiciones de mora                 |
+| `{{jurisdiction}}`                                                | Jurisdicción legal                  |
+| `{{issue_date}}`                                                  | Fecha de emisión del documento      |
 
 ### Lógica de selección de plantilla
 
@@ -251,6 +263,7 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 ## Recent Changes (Sprint 5 — Facturación Automática / Billing Cron)
 
 ### Nuevos Archivos
+
 - `src/billing-cron/late-fee.calculator.ts` — Funciones puras: `calculateLateFee`, `isPaymentOverdue`, `isMidnightWindowInTz`, `isFirstDayOfMonthInTz`, `getPreviousMonthYear`
 - `src/billing-cron/billing-cron.service.ts` — Lógica: mora automática, recordatorios 7 días, liquidaciones mensuales
 - `src/billing-cron/billing-cron.scheduler.ts` — Cron `0 * * * *` (cada hora): `runDailyBilling` y `runMonthlyStatements`
@@ -258,6 +271,7 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 - `src/billing-cron/billing-cron.service.spec.ts` — 25 tests unitarios
 
 ### Archivos Modificados
+
 - `src/notifications/dto/create-notification.dto.ts` — 2 nuevos valores: `PAYMENT_REMINDER = 'payment.reminder'`, `LATE_FEE_APPLIED = 'payment.late_fee_applied'`
 - `src/notifications/entities/notification.entity.ts` — Mismos 2 valores en el enum de columna TypeORM
 - `src/app.module.ts` — `BillingCronModule` registrado
@@ -266,14 +280,14 @@ ALTER TABLE {schema}.maintenance_requests ADD COLUMN IF NOT EXISTS vendor_rated_
 
 El módulo **no crea tablas nuevas**. Usa las tablas existentes:
 
-| Tabla | Uso |
-|-------|-----|
-| `{schema}.payments` | Lee pagos vencidos (mora) y próximos a vencer (recordatorios). Inserta pagos `LATE_FEE` con `parent_payment_id` apuntando al pago original. |
-| `{schema}.lifecycle_notification_log` | Deduplicación de recordatorios (`event_key = 'payment.reminder.7d'`) |
-| `{schema}.owner_statements` | Upsert mensual de liquidaciones (día 1 del mes en la TZ del tenant) |
-| `{schema}.expenses` | Suma de gastos del mes para calcular `maintenance_deduction` |
-| `{schema}.property_owners` | Identifica el propietario de cada propiedad con contrato activo |
-| `{schema}.tenant_config` | Lee `grace_days_late_fee`, `late_fee_percentage`, `commission_percentage`, `timezone`, `notification_channels` |
+| Tabla                                 | Uso                                                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{schema}.payments`                   | Lee pagos vencidos (mora) y próximos a vencer (recordatorios). Inserta pagos `LATE_FEE` con `parent_payment_id` apuntando al pago original. |
+| `{schema}.lifecycle_notification_log` | Deduplicación de recordatorios (`event_key = 'payment.reminder.7d'`)                                                                        |
+| `{schema}.owner_statements`           | Upsert mensual de liquidaciones (día 1 del mes en la TZ del tenant)                                                                         |
+| `{schema}.expenses`                   | Suma de gastos del mes para calcular `maintenance_deduction`                                                                                |
+| `{schema}.property_owners`            | Identifica el propietario de cada propiedad con contrato activo                                                                             |
+| `{schema}.tenant_config`              | Lee `grace_days_late_fee`, `late_fee_percentage`, `commission_percentage`, `timezone`, `notification_channels`                              |
 
 ### Lógica de timezone
 
@@ -286,11 +300,13 @@ El cron corre **cada hora en UTC**. Por cada tenant comprueba si `hora_local == 
 ## Recent Changes (Sprint 5 — Lifecycle Notifications)
 
 ### Nuevos Archivos
+
 - `src/lifecycle-notifications/lifecycle-notifications.service.ts` — Lógica de eventos: contrato activado, vencimientos 60/30/15 días, inspección de salida, mantenimiento sin asignar
 - `src/lifecycle-notifications/lifecycle-notifications.cron.ts` — Cron jobs: diario 08:00 UTC (contratos) y cada 6 horas (mantenimiento)
 - `src/lifecycle-notifications/lifecycle-notifications.module.ts` — Módulo NestJS exportable
 
 ### Archivos Modificados
+
 - `src/notifications/dto/create-notification.dto.ts` — 6 nuevos valores en `NotificationEventType`
 - `src/notifications/entities/notification.entity.ts` — Mismos 6 valores en el enum de columna TypeORM
 - `src/contracts/contracts.service.ts` — Hook `onContractActivated()` al activar y al firmar contrato
@@ -303,6 +319,7 @@ El cron corre **cada hora en UTC**. Por cada tenant comprueba si `hora_local == 
 ### Base de Datos — Startup Migration (idempotente)
 
 **Nueva tabla `lifecycle_notification_log`** (por schema de tenant):
+
 ```sql
 CREATE TABLE IF NOT EXISTS {schema}.lifecycle_notification_log (
   id          SERIAL       PRIMARY KEY,
@@ -319,6 +336,7 @@ CREATE INDEX IF NOT EXISTS idx_lifecycle_notif_log_entity
 **Propósito:** Deduplicación de notificaciones automáticas. El cron no re-envía si ya existe una fila para `(entity_type, entity_id, event_key)`.
 
 **Ejemplos de `event_key`:**
+
 - `contract.expiring.60` + `entity_type = 'contract'` + `entity_id = 5`
 - `maintenance.unassigned_reminder` + `entity_type = 'maintenance'` + `entity_id = 7`
 
@@ -329,11 +347,13 @@ CREATE INDEX IF NOT EXISTS idx_lifecycle_notif_log_entity
 ## Recent Changes (Sprint 5 — Alquiler Corto Plazo)
 
 ### Nuevos Archivos
+
 - `src/reservations/` — Módulo completo: service, controllers (3), DTOs, enums, tests
 - `src/reservations/enums/availability-status.enum.ts` — `available / blocked / booked`
 - `src/reservations/enums/reservation-status.enum.ts` — `pending / confirmed / cancelled / completed`
 
 ### Archivos Modificados
+
 - `src/units/entities/unit.entity.ts` — 5 campos nuevos: `min_nights`, `max_nights`, `checkin_time`, `checkout_time`, `cleaning_fee`
 - `src/units/dto/create-unit.dto.ts` — Validación de los 5 campos nuevos
 - `src/units/units.service.ts` — Validación de coherencia `rental_type` unidad vs. `tenant_config`
@@ -345,6 +365,7 @@ CREATE INDEX IF NOT EXISTS idx_lifecycle_notif_log_entity
 ### Base de Datos — Startup Migrations (idempotentes)
 
 **Columnas nuevas en `units`:**
+
 ```sql
 ALTER TABLE {schema}.units ADD COLUMN IF NOT EXISTS min_nights    INT;
 ALTER TABLE {schema}.units ADD COLUMN IF NOT EXISTS max_nights    INT;
@@ -354,6 +375,7 @@ ALTER TABLE {schema}.units ADD COLUMN IF NOT EXISTS cleaning_fee  DECIMAL(10,2);
 ```
 
 **Nueva tabla `property_availability`:**
+
 ```sql
 CREATE TABLE IF NOT EXISTS {schema}.property_availability (
   id             SERIAL      PRIMARY KEY,
@@ -371,6 +393,7 @@ CREATE TABLE IF NOT EXISTS {schema}.property_availability (
 ```
 
 **Nueva tabla `reservations`:**
+
 ```sql
 CREATE TABLE IF NOT EXISTS {schema}.reservations (
   id               SERIAL        PRIMARY KEY,
@@ -394,11 +417,11 @@ CREATE TABLE IF NOT EXISTS {schema}.reservations (
 
 ### Endpoints Nuevos
 
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| `GET` | `/:slug/catalog/properties/:id/availability` | Pública | Disponibilidad mensual |
-| `POST` | `/:slug/admin/properties/:id/units/:unitId/block-dates` | Admin | Bloquear fechas |
-| `POST` | `/:slug/tenant/reservations` | Inquilino | Crear reserva |
+| Método | Ruta                                                    | Auth      | Descripción            |
+| ------ | ------------------------------------------------------- | --------- | ---------------------- |
+| `GET`  | `/:slug/catalog/properties/:id/availability`            | Pública   | Disponibilidad mensual |
+| `POST` | `/:slug/admin/properties/:id/units/:unitId/block-dates` | Admin     | Bloquear fechas        |
+| `POST` | `/:slug/tenant/reservations`                            | Inquilino | Crear reserva          |
 
 > Documentación completa: [API-RESERVATIONS.md](./API-RESERVATIONS.md)
 
@@ -407,12 +430,14 @@ CREATE TABLE IF NOT EXISTS {schema}.reservations (
 ## Recent Changes (F2-BE-SCREENING — Screening de Inquilinos)
 
 ### Nuevos Archivos
+
 - `src/applications/enums/screening-final-status.enum.ts` — Enum `APPROVED | REJECTED | REQUIRES_COSIGNER`
 - `src/applications/entities/screening-checklist.entity.ts` — Entidad TypeORM para el checklist
 - `src/applications/dto/update-screening.dto.ts` — DTO validado para el endpoint de screening
 - `src/applications/applications.service.spec.ts` — 10 tests unitarios del flujo de screening
 
 ### Archivos Modificados
+
 - `src/applications/entities/application.entity.ts` — Campo `screening_fee_paid: boolean`
 - `src/applications/applications.module.ts` — Registra `ScreeningChecklist` en TypeORM
 - `src/applications/applications.service.ts` — Métodos `uploadDocuments`, `completeScreening`, `markScreeningFeePaid`
@@ -423,12 +448,14 @@ CREATE TABLE IF NOT EXISTS {schema}.reservations (
 ### Base de Datos — Startup Migrations (idempotentes)
 
 **Columna nueva en `rental_applications`:**
+
 ```sql
 ALTER TABLE {schema}.rental_applications
   ADD COLUMN IF NOT EXISTS screening_fee_paid BOOLEAN NOT NULL DEFAULT FALSE;
 ```
 
 **Nuevo tipo enum:**
+
 ```sql
 CREATE TYPE {schema}.screening_final_status_enum AS ENUM (
   'APPROVED', 'REJECTED', 'REQUIRES_COSIGNER'
@@ -436,6 +463,7 @@ CREATE TYPE {schema}.screening_final_status_enum AS ENUM (
 ```
 
 **Nueva tabla `screening_checklist`:**
+
 ```sql
 CREATE TABLE IF NOT EXISTS {schema}.screening_checklist (
   id                       SERIAL PRIMARY KEY,
@@ -462,6 +490,7 @@ CREATE TABLE IF NOT EXISTS {schema}.screening_checklist (
 **Restricción clave:** `application_id UNIQUE` — una sola fila de checklist por solicitud (upsert garantizado).
 
 ### Almacenamiento de Archivos
+
 ```
 storage/
 └── applications/
@@ -480,6 +509,7 @@ Formatos aceptados: JPEG, PNG, WebP, PDF — máx 10 MB por archivo, hasta 10 ar
 ## Recent Changes (F2-BE-07)
 
 ### Nuevos Archivos
+
 - `src/owner-statements/entities/owner-statement.entity.ts` - Entidad TypeORM
 - `src/owner-statements/dto/owner-statement.dto.ts` - DTOs (CRUD)
 - `src/owner-statements/owner-statements.service.ts` - Lógica de negocio
@@ -488,6 +518,7 @@ Formatos aceptados: JPEG, PNG, WebP, PDF — máx 10 MB por archivo, hasta 10 ar
 - `src/owner-statements/owner-statements.module.ts` - Módulo NestJS
 
 ### Archivos Modificados
+
 - `src/app.module.ts` - Registrar entidad OwnerStatement para sincronización TypeORM
 - `src/payments/payments.module.ts` - Importar OwnerStatementsModule
 - `src/payments/payments.service.ts` - Trigger automático de owner_statements al aprobar pago
@@ -495,9 +526,10 @@ Formatos aceptados: JPEG, PNG, WebP, PDF — máx 10 MB por archivo, hasta 10 ar
 - `src/rental-owners/rental-owners.module.ts` - Importar OwnerStatementsModule
 
 ### Base de Datos Automática
+
 ✅ Tabla `owner_statements` - Se crea automáticamente  
 ✅ Índices de performance - Decorados en la entidad  
-✅ Trigger `updated_at` - Configurado en la entidad  
+✅ Trigger `updated_at` - Configurado en la entidad
 
 ---
 
@@ -506,6 +538,7 @@ Formatos aceptados: JPEG, PNG, WebP, PDF — máx 10 MB por archivo, hasta 10 ar
 Si encuentras problemas de sincronización:
 
 ### Opción 1: Limpiar y Reiniciar (Recomendado)
+
 ```bash
 # Detener todas las instancias
 docker compose down
@@ -518,6 +551,7 @@ docker compose up --build
 ```
 
 ### Opción 2: Reconectar sin Limpiar
+
 ```bash
 docker compose restart backend
 ```

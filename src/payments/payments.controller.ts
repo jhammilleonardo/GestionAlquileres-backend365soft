@@ -13,6 +13,7 @@ import {
   UploadedFile,
   Request,
   Res,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -31,6 +32,18 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { receiptMulterConfig } from '../common/utils/multer.config';
 import { storageService } from '../common/storage/storage.service';
+import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
+
+function getTenantSchemaName(req: TenantRequest, slug: string): string {
+  return req.tenant?.schema_name ?? `tenant_${slug}`;
+}
+
+function getRequestUserId(req: TenantRequest): number {
+  if (!req.user) {
+    throw new UnauthorizedException('Usuario no autenticado');
+  }
+  return req.user.userId;
+}
 
 /**
  * Payments Controller
@@ -54,8 +67,13 @@ export class AdminPaymentsController {
    * Listar todos los pagos con filtros
    */
   @Get()
-  async getAllPayments(@Query() filters: PaymentFiltersDto) {
-    return this.paymentsService.getAllPayments(filters);
+  async getAllPayments(
+    @Param('slug') slug: string,
+    @Query() filters: PaymentFiltersDto,
+    @Request() req: TenantRequest,
+  ) {
+    const schemaName = getTenantSchemaName(req, slug);
+    return this.paymentsService.getAllPayments(filters, schemaName);
   }
 
   /**
@@ -63,8 +81,9 @@ export class AdminPaymentsController {
    * Obtener estadísticas generales
    */
   @Get('stats')
-  async getStats() {
-    return this.paymentsService.getAdminStats();
+  async getStats(@Param('slug') slug: string, @Request() req: TenantRequest) {
+    const schemaName = getTenantSchemaName(req, slug);
+    return this.paymentsService.getAdminStats(schemaName);
   }
 
   /**
@@ -75,10 +94,10 @@ export class AdminPaymentsController {
   async createPaymentAsAdmin(
     @Param('slug') slug: string,
     @Body() dto: CreatePaymentAsAdminDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
-    const adminId = req.user.userId;
-    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    const adminId = getRequestUserId(req);
+    const schemaName = getTenantSchemaName(req, slug);
     return this.paymentsService.createPaymentAsAdmin(dto, adminId, schemaName);
   }
 
@@ -87,8 +106,17 @@ export class AdminPaymentsController {
    * Exportar pagos como CSV con los mismos filtros del listado
    */
   @Get('export')
-  async exportCsv(@Query() filters: PaymentFiltersDto, @Res() res: Response) {
-    const csv = await this.paymentsService.exportPaymentsCsv(filters);
+  async exportCsv(
+    @Param('slug') slug: string,
+    @Query() filters: PaymentFiltersDto,
+    @Res() res: Response,
+    @Request() req: TenantRequest,
+  ) {
+    const schemaName = getTenantSchemaName(req, slug);
+    const csv = await this.paymentsService.exportPaymentsCsv(
+      filters,
+      schemaName,
+    );
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="pagos.csv"');
     res.send(csv);
@@ -99,8 +127,13 @@ export class AdminPaymentsController {
    * Obtener un pago por ID
    */
   @Get(':id')
-  async getPaymentById(@Param('id', ParseIntPipe) id: number) {
-    return this.paymentsService.getPaymentById(id);
+  async getPaymentById(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
+  ) {
+    const schemaName = getTenantSchemaName(req, slug);
+    return this.paymentsService.getPaymentById(id, undefined, schemaName);
   }
 
   /**
@@ -113,10 +146,10 @@ export class AdminPaymentsController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ApprovePaymentDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
-    const adminId = req.user.userId;
-    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    const adminId = getRequestUserId(req);
+    const schemaName = getTenantSchemaName(req, slug);
     return this.paymentsService.approvePayment(id, dto, adminId, schemaName);
   }
 
@@ -130,10 +163,10 @@ export class AdminPaymentsController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectPaymentDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
-    const adminId = req.user.userId;
-    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    const adminId = getRequestUserId(req);
+    const schemaName = getTenantSchemaName(req, slug);
     return this.paymentsService.rejectPayment(id, dto, adminId, schemaName);
   }
 
@@ -146,10 +179,10 @@ export class AdminPaymentsController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePaymentStatusDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
-    const adminId = req.user.userId;
-    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    const adminId = getRequestUserId(req);
+    const schemaName = getTenantSchemaName(req, slug);
     return this.paymentsService.updatePaymentStatus(
       id,
       dto,
@@ -166,9 +199,9 @@ export class AdminPaymentsController {
   async deletePayment(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
-    const schemaName = req.tenant?.schema_name || `tenant_${slug}`;
+    const schemaName = getTenantSchemaName(req, slug);
     await this.paymentsService.deletePayment(id, schemaName);
     return { message: 'Pago eliminado exitosamente' };
   }
@@ -179,12 +212,14 @@ export class AdminPaymentsController {
    */
   @Post(':id/refund')
   async createRefund(
+    @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateRefundDto,
-    @Request() req,
+    @Request() req: TenantRequest,
   ) {
-    const adminId = req.user.userId;
-    await this.paymentsService.createRefund(id, dto, adminId);
+    const adminId = getRequestUserId(req);
+    const schemaName = getTenantSchemaName(req, slug);
+    await this.paymentsService.createRefund(id, dto, adminId, schemaName);
     return { message: 'Reembolso creado exitosamente' };
   }
 }
@@ -218,10 +253,10 @@ export class TenantPaymentsController {
   async createPayment(
     @Param('slug') slug: string,
     @Body() dto: CreatePaymentDto,
-    @Request() req,
+    @Request() req: TenantRequest,
     @UploadedFile() receipt?: Express.Multer.File,
   ) {
-    const tenantId = req.user.userId;
+    const tenantId = getRequestUserId(req);
     // Construir ruta relativa para almacenar en la DB
     const receiptPath = receipt
       ? await storageService.persistUploadedFile(
@@ -245,8 +280,11 @@ export class TenantPaymentsController {
    * Obtener mis pagos
    */
   @Get()
-  async getMyPayments(@Param('slug') slug: string, @Request() req) {
-    const tenantId = req.user.userId;
+  async getMyPayments(
+    @Param('slug') slug: string,
+    @Request() req: TenantRequest,
+  ) {
+    const tenantId = getRequestUserId(req);
     return this.paymentsService.getTenantPayments(tenantId, slug);
   }
 
@@ -255,8 +293,8 @@ export class TenantPaymentsController {
    * Obtener mis estadísticas
    */
   @Get('stats')
-  async getMyStats(@Param('slug') slug: string, @Request() req) {
-    const tenantId = req.user.userId;
+  async getMyStats(@Param('slug') slug: string, @Request() req: TenantRequest) {
+    const tenantId = getRequestUserId(req);
     return this.paymentsService.getTenantStats(tenantId, slug);
   }
 
@@ -265,8 +303,13 @@ export class TenantPaymentsController {
    * Obtener un pago específico (solo si es mío)
    */
   @Get(':id')
-  async getPaymentById(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    const tenantId = req.user.userId;
-    return this.paymentsService.getPaymentById(id, tenantId);
+  async getPaymentById(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
+  ) {
+    const tenantId = getRequestUserId(req);
+    const schemaName = getTenantSchemaName(req, slug);
+    return this.paymentsService.getPaymentById(id, tenantId, schemaName);
   }
 }

@@ -7,6 +7,7 @@ import {
   Max,
   IsEnum,
   IsBoolean,
+  IsObject,
 } from 'class-validator';
 
 export class UpdatePropertyDetailsDto {
@@ -33,15 +34,15 @@ export class UpdatePropertyDetailsDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  images?: string[];
+  images?: string[] | null;
 
   @IsOptional()
   @IsArray()
-  amenities?: string[];
+  amenities?: string[] | null;
 
   @IsOptional()
   @IsArray()
-  included_items?: string[];
+  included_items?: string[] | null;
 
   @IsOptional()
   @IsNumber()
@@ -63,4 +64,50 @@ export class UpdatePropertyDetailsDto {
   @IsOptional()
   @IsString()
   account_holder_name?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthly_rent?: number;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  square_meters?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  bedrooms?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  bathrooms?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  parking_spaces?: number;
+
+  @IsOptional()
+  @IsNumber()
+  year_built?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  is_furnished?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  property_rules?: {
+    pets_allowed?: boolean;
+    smoking_allowed?: boolean;
+    max_occupants?: number;
+    min_lease_months?: number;
+  } | null;
 }

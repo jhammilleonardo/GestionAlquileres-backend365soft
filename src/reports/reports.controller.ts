@@ -1,12 +1,13 @@
-import { Controller, Get, Param, Query, UseGuards, Res } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { ReportsService } from './reports.service';
 import { ReportsExportService } from './reports-export.service';
-import { ReportFilterDto } from './dto/report-filter.dto';
+import { ReportFilterDto, ReportFormat } from './dto/report-filter.dto';
+import { ReportData } from './reports.types';
 
 @ApiTags('Admin Reports')
 @ApiBearerAuth()
@@ -21,10 +22,7 @@ export class ReportsController {
   @Get('rent-roll')
   @ApiOperation({ summary: 'Master Rent Roll Report' })
   @RequirePermission('reports', 'view')
-  async getRentRoll(
-    @Query() filters: ReportFilterDto,
-    @Res() res: Response,
-  ) {
+  async getRentRoll(@Query() filters: ReportFilterDto, @Res() res: Response) {
     const data = await this.reportsService.getRentRoll(filters);
     return this.handleExport(res, data, 'Rent_Roll', filters.format);
   }
@@ -32,10 +30,7 @@ export class ReportsController {
   @Get('vacancies')
   @ApiOperation({ summary: 'Vacancies Report' })
   @RequirePermission('reports', 'view')
-  async getVacancies(
-    @Query() filters: ReportFilterDto,
-    @Res() res: Response,
-  ) {
+  async getVacancies(@Query() filters: ReportFilterDto, @Res() res: Response) {
     const data = await this.reportsService.getVacancies(filters);
     return this.handleExport(res, data, 'Vacancies', filters.format);
   }
@@ -54,10 +49,7 @@ export class ReportsController {
   @Get('pnl')
   @ApiOperation({ summary: 'Profit & Loss Report' })
   @RequirePermission('reports', 'view')
-  async getPnL(
-    @Query() filters: ReportFilterDto,
-    @Res() res: Response,
-  ) {
+  async getPnL(@Query() filters: ReportFilterDto, @Res() res: Response) {
     const data = await this.reportsService.getPnL(filters);
     return this.handleExport(res, data, 'PnL', filters.format);
   }
@@ -65,25 +57,28 @@ export class ReportsController {
   @Get('kpis')
   @ApiOperation({ summary: 'Key Performance Indicators Report' })
   @RequirePermission('reports', 'view')
-  async getKpis(
-    @Query() filters: ReportFilterDto,
-    @Res() res: Response,
-  ) {
+  async getKpis(@Query() filters: ReportFilterDto, @Res() res: Response) {
     const data = await this.reportsService.getKpis(filters);
     return this.handleExport(res, data, 'KPIs', filters.format);
   }
 
-  private async handleExport(res: Response, data: any, reportName: string, format?: string) {
-    if (format === 'excel') {
+  private async handleExport(
+    res: Response,
+    data: ReportData,
+    reportName: string,
+    format?: ReportFormat,
+  ): Promise<Response> {
+    if (format === ReportFormat.EXCEL) {
       const buffer = await this.exportService.toExcel(data, reportName);
       res.set({
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename=${reportName}.xlsx`,
       });
       return res.send(buffer);
     }
-    
-    if (format === 'pdf') {
+
+    if (format === ReportFormat.PDF) {
       const buffer = await this.exportService.toPdf(data, reportName);
       res.set({
         'Content-Type': 'application/pdf',
@@ -92,7 +87,6 @@ export class ReportsController {
       return res.send(buffer);
     }
 
-    // Default to JSON response
     return res.json(data);
   }
 }

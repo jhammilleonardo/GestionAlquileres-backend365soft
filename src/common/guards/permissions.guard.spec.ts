@@ -1,31 +1,45 @@
 import { PermissionsGuard } from './permissions.guard';
 import { Reflector } from '@nestjs/core';
-import { ForbiddenException } from '@nestjs/common';
-import { PERMISSION_KEY } from '../decorators/require-permission.decorator';
+import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-function buildContext(user: object | null, handler = {}, classRef = {}) {
+interface PermissionGuardUser {
+  userId: number;
+  role: string;
+}
+
+type MockDataSource = DataSource & {
+  query: jest.Mock<Promise<unknown>, [string, unknown[]?]>;
+};
+
+function buildContext(
+  user: PermissionGuardUser | null,
+  handler: object = {},
+  classRef: object = {},
+): ExecutionContext {
   return {
     getHandler: () => handler,
     getClass: () => classRef,
     switchToHttp: () => ({
       getRequest: () => ({ user }),
     }),
-  } as any;
+  } as unknown as ExecutionContext;
 }
 
 function buildReflector(
   permission: { module: string; action: string } | undefined,
 ) {
   return {
-    getAllAndOverride: (_key: string) => permission,
+    getAllAndOverride: () => permission,
   } as unknown as Reflector;
 }
 
-function buildDataSource(rows: object[]) {
+function buildDataSource(rows: object[]): MockDataSource {
   return {
-    query: jest.fn().mockResolvedValue(rows),
-  } as unknown as DataSource;
+    query: jest
+      .fn<Promise<unknown>, [string, unknown[]?]>()
+      .mockResolvedValue(rows),
+  } as unknown as MockDataSource;
 }
 
 describe('PermissionsGuard', () => {

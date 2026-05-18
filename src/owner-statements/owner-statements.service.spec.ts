@@ -10,19 +10,24 @@ import {
 } from './dto';
 
 // Mock function
-function mockOwnerStatement(overrides?: Partial<any>): any {
+function mockOwnerStatement(
+  overrides: Partial<OwnerStatementResponseDto> = {},
+): OwnerStatementResponseDto {
   return {
     id: 1,
     rental_owner_id: 5,
     property_id: 10,
+    unit_id: null,
     period_month: 4,
     period_year: 2026,
-    gross_rent: '5000.00',
-    maintenance_deduction: '500.00',
-    management_commission: '750.00',
-    net_amount: '3750.00',
+    gross_rent: 5000,
+    maintenance_deduction: 500,
+    management_commission: 750,
+    net_amount: 3750,
     currency: 'BOB',
     payment_count: 1,
+    status: 'pending',
+    transferred_at: null,
     generated_at: new Date('2026-04-14'),
     created_at: new Date('2026-04-14'),
     updated_at: new Date('2026-04-14'),
@@ -32,7 +37,6 @@ function mockOwnerStatement(overrides?: Partial<any>): any {
 
 describe('OwnerStatementsService', () => {
   let service: OwnerStatementsService;
-  let pdfService: OwnerStatementPdfService;
   const mockDataSource = {
     query: jest.fn(),
   };
@@ -47,7 +51,6 @@ describe('OwnerStatementsService', () => {
     }).compile();
 
     service = module.get<OwnerStatementsService>(OwnerStatementsService);
-    pdfService = module.get<OwnerStatementPdfService>(OwnerStatementPdfService);
     jest.clearAllMocks();
   });
 

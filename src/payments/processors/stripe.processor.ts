@@ -131,11 +131,21 @@ export class StripeProcessor implements IPaymentProcessor {
     switch (event.type) {
       case 'payment_intent.succeeded': {
         const pi = event.data.object as { id: string };
-        return { transaction_id: pi.id, status: 'APPROVED', raw_event: event };
+        return {
+          event_id: event.id,
+          transaction_id: pi.id,
+          status: 'APPROVED',
+          raw_event: event,
+        };
       }
       case 'payment_intent.payment_failed': {
         const pi = event.data.object as { id: string };
-        return { transaction_id: pi.id, status: 'FAILED', raw_event: event };
+        return {
+          event_id: event.id,
+          transaction_id: pi.id,
+          status: 'FAILED',
+          raw_event: event,
+        };
       }
       case 'charge.refunded': {
         const charge = event.data.object as {
@@ -143,13 +153,16 @@ export class StripeProcessor implements IPaymentProcessor {
           payment_intent: string | null;
         };
         const txnId = charge.payment_intent ?? charge.id;
-        return { transaction_id: txnId, status: 'APPROVED', raw_event: event };
+        return {
+          event_id: event.id,
+          transaction_id: txnId,
+          status: 'APPROVED',
+          raw_event: event,
+        };
       }
       default:
-        this.logger.debug(
-          `Stripe webhook: evento no manejado — ${event.type}`,
-        );
-        return { status: 'APPROVED', raw_event: event };
+        this.logger.debug(`Stripe webhook: evento no manejado — ${event.type}`);
+        return { event_id: event.id, status: 'APPROVED', raw_event: event };
     }
   }
 }

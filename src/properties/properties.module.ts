@@ -1,6 +1,18 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PropertiesService } from './properties.service';
+import { PropertySearchService } from './property-search.service';
+import { PropertyOwnersService } from './property-owners.service';
+import { PropertyLeadsService } from './property-leads.service';
+import { PropertyNotificationsService } from './property-notifications.service';
+import { PropertyDetailsService } from './property-details.service';
+import { PropertyStatsService } from './property-stats.service';
+import { PropertyAddressesService } from './property-addresses.service';
+import { PropertyLookupService } from './property-lookup.service';
+import { PropertyCatalogService } from './property-catalog.service';
+import { PropertyCreationService } from './property-creation.service';
+import { PropertyUpdateService } from './property-update.service';
+import { PropertyPublicCatalogService } from './property-public-catalog.service';
 import {
   AdminPropertiesController,
   PublicPropertiesController,
@@ -30,7 +42,21 @@ import { OwnerStatementsModule } from '../owner-statements/owner-statements.modu
     NotificationsModule,
     OwnerStatementsModule,
   ],
-  providers: [PropertiesService],
+  providers: [
+    PropertiesService,
+    PropertySearchService,
+    PropertyOwnersService,
+    PropertyLeadsService,
+    PropertyNotificationsService,
+    PropertyDetailsService,
+    PropertyStatsService,
+    PropertyAddressesService,
+    PropertyLookupService,
+    PropertyCatalogService,
+    PropertyCreationService,
+    PropertyUpdateService,
+    PropertyPublicCatalogService,
+  ],
   controllers: [
     AdminPropertiesController,
     PublicPropertiesController,

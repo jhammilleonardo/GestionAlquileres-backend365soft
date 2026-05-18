@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   ForbiddenException,
 } from '@nestjs/common';
+import type { TenantRequest } from '../middleware/tenant-context.middleware';
 
 /**
  * Guard exclusivo del portal de propietarios (`/:slug/owner/*`).
@@ -18,7 +19,7 @@ import {
 @Injectable()
 export class OwnerPortalGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const { user } = context.switchToHttp().getRequest();
+    const { user } = context.switchToHttp().getRequest<TenantRequest>();
 
     if (user?.role !== 'PROPIETARIO') {
       throw new ForbiddenException(

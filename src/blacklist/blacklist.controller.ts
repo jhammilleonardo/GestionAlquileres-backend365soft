@@ -31,9 +31,23 @@ import {
   BlacklistListResponseDto,
 } from './dto/blacklist.dto';
 import { DocumentType } from './enums/blacklist.enum';
+import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+
+interface BlacklistAuditLogResponse {
+  id: number;
+  action: string;
+  tenant_id: number;
+  admin_user_id: number | null;
+  admin_email: string | null;
+  blacklisted_tenant_id: number | null;
+  document_number: string | null;
+  full_name: string | null;
+  ip_address: string | null;
+  created_at: Date;
+}
 
 /**
  * ADMIN Endpoints - Gestión de lista negra
@@ -84,7 +98,7 @@ export class AdminBlacklistController {
   async addToBlacklist(
     @Param('slug') slug: string,
     @Body() dto: AddToBlacklistDto,
-    @Request() req: any,
+    @Request() req: TenantRequest,
   ): Promise<BlacklistAddResponseDto> {
     this.logger.log(
       `[ADMIN BLACKLIST] Agregando inquilino: ${dto.full_name} (${dto.document_number})`,
@@ -93,8 +107,8 @@ export class AdminBlacklistController {
     return await this.blacklistService.addToBlacklist(
       dto,
       slug,
-      req.user.userId,
-      req.user.email,
+      req.user!.userId,
+      req.user!.email,
       req.ip,
       req.get('user-agent'),
     );
@@ -119,13 +133,13 @@ export class AdminBlacklistController {
   })
   async listBlacklist(
     @Param('slug') slug: string,
-    @Request() req: any,
+    @Request() req: TenantRequest,
   ): Promise<BlacklistListResponseDto[]> {
     this.logger.log(`[ADMIN BLACKLIST] Listando blacklist del tenant ${slug}`);
 
     return await this.blacklistService.listBlacklist(
       slug,
-      req.user.userId,
+      req.user!.userId,
       req.ip,
       req.get('user-agent'),
     );
@@ -156,7 +170,7 @@ export class AdminBlacklistController {
   async removeFromBlacklist(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
-    @Request() req: any,
+    @Request() req: TenantRequest,
   ): Promise<BlacklistAddResponseDto> {
     this.logger.log(
       `[ADMIN BLACKLIST] Eliminando registro de blacklist: ${id}`,
@@ -165,8 +179,8 @@ export class AdminBlacklistController {
     return await this.blacklistService.removeFromBlacklist(
       id,
       slug,
-      req.user.userId,
-      req.user.email,
+      req.user!.userId,
+      req.user!.email,
       req.ip,
       req.get('user-agent'),
     );
@@ -196,16 +210,16 @@ export class AdminBlacklistController {
   })
   async getAuditLog(
     @Param('slug') slug: string,
-    @Request() req: any,
+    @Request() req: TenantRequest,
     @Query('limit') limit?: number,
-  ): Promise<any[]> {
+  ): Promise<BlacklistAuditLogResponse[]> {
     this.logger.log(
       `[ADMIN BLACKLIST] Consultando audit log del tenant ${slug}`,
     );
 
     return await this.blacklistService.getAuditLog(
       slug,
-      req.user.userId,
+      req.user!.userId,
       limit || 100,
     );
   }
@@ -257,7 +271,7 @@ export class PublicBlacklistController {
   async checkBlacklist(
     @Param('slug') slug: string,
     @Query('document') document: string,
-    @Request() req: any,
+    @Request() req: TenantRequest,
     @Query('document_type') documentType?: string,
   ): Promise<BlacklistCheckResponseDto> {
     this.logger.debug(
@@ -303,7 +317,7 @@ export class PublicBlacklistController {
   async checkBlacklistPost(
     @Param('slug') slug: string,
     @Body() dto: CheckBlacklistDto,
-    @Request() req: any,
+    @Request() req: TenantRequest,
   ): Promise<BlacklistCheckResponseDto> {
     this.logger.debug(
       `[BLACKLIST CHECK POST] Verificando documento: ${dto.document_number}`,

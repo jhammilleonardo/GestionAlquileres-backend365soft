@@ -1,5 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, IsEnum, IsDateString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsPositive,
+  IsString,
+} from 'class-validator';
 
 export enum ReportFormat {
   EXCEL = 'excel',
@@ -8,10 +16,12 @@ export enum ReportFormat {
 }
 
 export class ReportFilterDto {
-  @ApiPropertyOptional({ description: 'ID de la propiedad' })
+  @ApiPropertyOptional({ description: 'ID de la propiedad', type: Number })
   @IsOptional()
-  @IsUUID()
-  property_id?: string;
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  property_id?: number;
 
   @ApiPropertyOptional({ description: 'Fecha de inicio (YYYY-MM-DD)' })
   @IsOptional()
@@ -23,12 +33,15 @@ export class ReportFilterDto {
   @IsDateString()
   to?: string;
 
-  @ApiPropertyOptional({ description: 'Estado para filtrar (ej. ACTIVE, PENDING)' })
+  @ApiPropertyOptional({ description: 'Estado para filtrar' })
   @IsOptional()
   @IsString()
   status?: string;
 
-  @ApiPropertyOptional({ enum: ReportFormat, description: 'Formato de exportación' })
+  @ApiPropertyOptional({
+    enum: ReportFormat,
+    description: 'Formato de exportación',
+  })
   @IsOptional()
   @IsEnum(ReportFormat)
   format?: ReportFormat;

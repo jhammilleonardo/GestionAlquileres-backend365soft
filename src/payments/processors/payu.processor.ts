@@ -81,8 +81,7 @@ export class PayUProcessor implements IPaymentProcessor {
             order: {
               accountId: this.accountId,
               referenceCode,
-              description:
-                input.notes ?? `Pago contrato #${input.contractId}`,
+              description: input.notes ?? `Pago contrato #${input.contractId}`,
               language: 'es',
               signature,
               additionalValues: {
@@ -129,10 +128,20 @@ export class PayUProcessor implements IPaymentProcessor {
     );
 
     if (state === 'APPROVED') {
-      return { success: true, transaction_id: txnId, processor_fee: 0, status: 'APPROVED' };
+      return {
+        success: true,
+        transaction_id: txnId,
+        processor_fee: 0,
+        status: 'APPROVED',
+      };
     }
     if (state === 'PENDING') {
-      return { success: true, transaction_id: txnId, processor_fee: 0, status: 'PROCESSING' };
+      return {
+        success: true,
+        transaction_id: txnId,
+        processor_fee: 0,
+        status: 'PROCESSING',
+      };
     }
     return {
       success: false,
@@ -144,10 +153,7 @@ export class PayUProcessor implements IPaymentProcessor {
   }
 
   async confirmPayment(transactionId: string): Promise<ProcessorResult> {
-    const reportsUrl = this.baseUrl.replace(
-      'payments-api',
-      'reports-api',
-    );
+    const reportsUrl = this.baseUrl.replace('payments-api', 'reports-api');
     const isTest = this.config.get<string>('NODE_ENV') !== 'production';
 
     const resp = await firstValueFrom(
@@ -245,6 +251,7 @@ export class PayUProcessor implements IPaymentProcessor {
     const body = payload as Record<string, string>;
     const statePol = body.state_pol ?? '';
     const transactionId = body.transaction_id ?? body.reference_pol ?? '';
+    const eventId = `payu:${transactionId}:${statePol}:${body.reference_pol ?? ''}`;
 
     if (!this.verifyIpnSignature(body)) {
       this.logger.warn(
@@ -258,16 +265,36 @@ export class PayUProcessor implements IPaymentProcessor {
     );
 
     if (statePol === PAYU_STATE_APPROVED) {
-      return { transaction_id: transactionId, status: 'APPROVED', raw_event: payload };
+      return {
+        event_id: eventId,
+        transaction_id: transactionId,
+        status: 'APPROVED',
+        raw_event: payload,
+      };
     }
     if (statePol === PAYU_STATE_DECLINED || statePol === PAYU_STATE_EXPIRED) {
-      return { transaction_id: transactionId, status: 'FAILED', raw_event: payload };
+      return {
+        event_id: eventId,
+        transaction_id: transactionId,
+        status: 'FAILED',
+        raw_event: payload,
+      };
     }
     if (statePol === PAYU_STATE_PENDING) {
-      return { transaction_id: transactionId, status: 'APPROVED', raw_event: payload };
+      return {
+        event_id: eventId,
+        transaction_id: transactionId,
+        status: 'APPROVED',
+        raw_event: payload,
+      };
     }
 
-    return { transaction_id: transactionId, status: 'APPROVED', raw_event: payload };
+    return {
+      event_id: eventId,
+      transaction_id: transactionId,
+      status: 'APPROVED',
+      raw_event: payload,
+    };
   }
 
   /**

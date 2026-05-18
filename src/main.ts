@@ -1,10 +1,11 @@
-import { NestFactory, Reflector } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { TenantConnectionInterceptor } from './common/interceptors/tenant-connection.interceptor';
 import { DataSource } from 'typeorm';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   // rawBody: true expone req.rawBody (Buffer) necesario para verificar firma de Stripe
@@ -63,8 +64,18 @@ async function bootstrap() {
 
   // ── Interceptor global de conexión por tenant (fix race condition) ────────
   const dataSource = app.get(DataSource);
-  const reflector = app.get(Reflector);
   app.useGlobalInterceptors(new TenantConnectionInterceptor(dataSource));
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('365Soft API')
+    .setDescription('API multi-tenant para gestión de alquileres')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, swaggerDocument, {
+    swaggerOptions: { persistAuthorization: true },
+  });
 
   // NOTA: /storage/* es servido por StorageController (con autorización o
   // presigned URL en S3). No se monta useStaticAssets para evitar exponer
@@ -72,4 +83,4 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000);
 }
-bootstrap();
+void bootstrap();

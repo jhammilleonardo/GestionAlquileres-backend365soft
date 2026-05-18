@@ -2,7 +2,6 @@ import {
   IsNumber,
   IsString,
   IsOptional,
-  IsEnum,
   IsBoolean,
   IsArray,
   Min,

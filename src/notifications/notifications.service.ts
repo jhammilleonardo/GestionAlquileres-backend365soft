@@ -7,6 +7,7 @@ import {
   RealtimeNotificationEvent,
 } from './notifications.gateway';
 import { tenantConnectionStore } from '../common/tenant/tenant-connection.store';
+import { quoteIdent } from '../common/utils/sql-identifier';
 
 export interface NotificationRow {
   id: number;
@@ -69,17 +70,65 @@ export class NotificationsService {
     metadata?: Record<string, unknown>,
     tenantSlug?: string,
   ): Promise<NotificationRow> {
-    const result = await this.dataSource.query<NotificationRow[]>(
-      `INSERT INTO notifications (user_id, event_type, title, message, metadata, is_read, created_at)
-       VALUES ($1, $2, $3, $4, $5, false, NOW())
-       RETURNING *`,
-      [userId, eventType as string, title, message, JSON.stringify(metadata ?? {})],
+    const created = await this.insertForUser(
+      'notifications',
+      userId,
+      eventType,
+      title,
+      message,
+      metadata,
     );
-    const created = result[0];
 
     await this.emitUserNotification(eventType, created, tenantSlug);
 
     return created;
+  }
+
+  async createForUserInSchema(
+    schemaName: string,
+    userId: number,
+    eventType: NotificationEventType,
+    title: string,
+    message: string,
+    metadata?: Record<string, unknown>,
+    tenantSlug?: string,
+  ): Promise<NotificationRow> {
+    const created = await this.insertForUser(
+      `${quoteIdent(schemaName)}.notifications`,
+      userId,
+      eventType,
+      title,
+      message,
+      metadata,
+    );
+
+    await this.emitUserNotification(eventType, created, tenantSlug);
+
+    return created;
+  }
+
+  private async insertForUser(
+    tableName: string,
+    userId: number,
+    eventType: NotificationEventType,
+    title: string,
+    message: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<NotificationRow> {
+    const result = await this.dataSource.query<NotificationRow[]>(
+      `INSERT INTO ${tableName} (user_id, event_type, title, message, metadata, is_read, created_at)
+       VALUES ($1, $2, $3, $4, $5, false, NOW())
+       RETURNING *`,
+      [
+        userId,
+        eventType as string,
+        title,
+        message,
+        JSON.stringify(metadata ?? {}),
+      ],
+    );
+
+    return result[0];
   }
 
   async notifyAdmins(
@@ -97,7 +146,13 @@ export class NotificationsService {
     const values: unknown[] = [];
     const placeholders = adminIds.map((adminId, i) => {
       const base = i * 5;
-      values.push(adminId, eventType as string, title, message, JSON.stringify(metadata ?? {}));
+      values.push(
+        adminId,
+        eventType as string,
+        title,
+        message,
+        JSON.stringify(metadata ?? {}),
+      );
       return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, false, NOW())`;
     });
 
@@ -113,13 +168,18 @@ export class NotificationsService {
       const resolvedSlug = await this.resolveTenantSlug(tenantSlug);
       if (resolvedSlug) {
         for (const row of rows) {
-          this.notificationsGateway.emitUserEvent(resolvedSlug, row.user_id, realtimeEvent, {
-            user_id: row.user_id,
-            title,
-            message,
-            metadata: metadata ?? {},
-            notification: row as unknown as Record<string, unknown>,
-          });
+          this.notificationsGateway.emitUserEvent(
+            resolvedSlug,
+            row.user_id,
+            realtimeEvent,
+            {
+              user_id: row.user_id,
+              title,
+              message,
+              metadata: metadata ?? {},
+              notification: row as unknown as Record<string, unknown>,
+            },
+          );
         }
       } else {
         this.logger.warn(
@@ -133,7 +193,12 @@ export class NotificationsService {
 
   async findAll(
     userId: number,
-    filters?: { is_read?: boolean; event_type?: string; limit?: number; offset?: number },
+    filters?: {
+      is_read?: boolean;
+      event_type?: string;
+      limit?: number;
+      offset?: number;
+    },
   ): Promise<NotificationRow[]> {
     const { is_read, event_type, limit = 20, offset = 0 } = filters ?? {};
 
@@ -218,7 +283,11 @@ export class NotificationsService {
     by_type: Record<string, number>;
   }> {
     const result = await this.dataSource.query<
-      Array<{ total: string; unread: string; by_type: Record<string, unknown> | null }>
+      Array<{
+        total: string;
+        unread: string;
+        by_type: Record<string, unknown> | null;
+      }>
     >(
       `SELECT
          COUNT(*) as total,
@@ -247,7 +316,9 @@ export class NotificationsService {
     };
   }
 
-  async getTemplate(eventType: NotificationEventType): Promise<NotificationTemplateRow | null> {
+  async getTemplate(
+    eventType: NotificationEventType,
+  ): Promise<NotificationTemplateRow | null> {
     const results = await this.dataSource.query<NotificationTemplateRow[]>(
       `SELECT * FROM notification_templates WHERE event_type = $1 AND is_active = true`,
       [eventType],
@@ -295,7 +366,12 @@ export class NotificationsService {
         title_template: 'Estado de solicitud actualizado',
         message_template:
           'La solicitud {{ticket_number}} ha cambiado de estado de {{old_status}} a {{new_status}}',
-        variables: ['ticket_number', 'old_status', 'new_status', 'property_title'],
+        variables: [
+          'ticket_number',
+          'old_status',
+          'new_status',
+          'property_title',
+        ],
       },
       {
         event_type: NotificationEventType.MAINTENANCE_MESSAGE_RECEIVED,
@@ -307,13 +383,15 @@ export class NotificationsService {
       {
         event_type: NotificationEventType.MAINTENANCE_ASSIGNED,
         title_template: 'Solicitud asignada',
-        message_template: 'Se te ha asignado la solicitud {{ticket_number}}: {{title}}',
+        message_template:
+          'Se te ha asignado la solicitud {{ticket_number}}: {{title}}',
         variables: ['ticket_number', 'title', 'property_title', 'priority'],
       },
       {
         event_type: NotificationEventType.MAINTENANCE_COMPLETED,
         title_template: 'Solicitud completada',
-        message_template: 'La solicitud {{ticket_number}} ha sido marcada como completada',
+        message_template:
+          'La solicitud {{ticket_number}} ha sido marcada como completada',
         variables: ['ticket_number', 'property_title'],
       },
       {
@@ -326,7 +404,8 @@ export class NotificationsService {
       {
         event_type: NotificationEventType.PROPERTY_AVAILABLE,
         title_template: 'Propiedad disponible',
-        message_template: 'La propiedad {{property_title}} ahora está disponible',
+        message_template:
+          'La propiedad {{property_title}} ahora está disponible',
         variables: ['property_title'],
       },
       {
@@ -346,7 +425,13 @@ export class NotificationsService {
         title_template: 'Nuevo pago registrado',
         message_template:
           '{{tenant_name}} ha registrado un pago de {{amount}} {{currency}} para la propiedad {{property_title}}',
-        variables: ['tenant_name', 'amount', 'currency', 'property_title', 'payment_id'],
+        variables: [
+          'tenant_name',
+          'amount',
+          'currency',
+          'property_title',
+          'payment_id',
+        ],
       },
       {
         event_type: NotificationEventType.PAYMENT_APPROVED,
@@ -373,14 +458,24 @@ export class NotificationsService {
         title_template: 'Contrato firmado',
         message_template:
           '{{tenant_name}} ha firmado el contrato {{contract_number}} para la propiedad {{property_title}}',
-        variables: ['tenant_name', 'contract_number', 'property_title', 'contract_id'],
+        variables: [
+          'tenant_name',
+          'contract_number',
+          'property_title',
+          'contract_id',
+        ],
       },
       {
         event_type: NotificationEventType.CONTRACT_EXPIRING,
         title_template: 'Contrato próximo a vencer',
         message_template:
           'El contrato {{contract_number}} para la propiedad {{property_title}} vence el {{end_date}}',
-        variables: ['contract_number', 'property_title', 'end_date', 'contract_id'],
+        variables: [
+          'contract_number',
+          'property_title',
+          'end_date',
+          'contract_id',
+        ],
       },
     ];
 
@@ -389,7 +484,9 @@ export class NotificationsService {
     );
     const existing = new Set(existingRows.map((r) => r.event_type));
 
-    const missing = defaultTemplates.filter((t) => !existing.has(t.event_type as string));
+    const missing = defaultTemplates.filter(
+      (t) => !existing.has(t.event_type as string),
+    );
     if (missing.length === 0) {
       return;
     }
@@ -397,7 +494,12 @@ export class NotificationsService {
     const values: unknown[] = [];
     const placeholders = missing.map((t, i) => {
       const base = i * 4;
-      values.push(t.event_type, t.title_template, t.message_template, t.variables);
+      values.push(
+        t.event_type,
+        t.title_template,
+        t.message_template,
+        t.variables,
+      );
       return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}::text[], true, NOW(), NOW())`;
     });
 
@@ -426,13 +528,18 @@ export class NotificationsService {
       return;
     }
 
-    this.notificationsGateway.emitUserEvent(resolvedSlug, row.user_id, realtimeEvent, {
-      user_id: row.user_id,
-      title: row.title,
-      message: row.message,
-      metadata: row.metadata,
-      notification: row as unknown as Record<string, unknown>,
-    });
+    this.notificationsGateway.emitUserEvent(
+      resolvedSlug,
+      row.user_id,
+      realtimeEvent,
+      {
+        user_id: row.user_id,
+        title: row.title,
+        message: row.message,
+        metadata: row.metadata,
+        notification: row as unknown as Record<string, unknown>,
+      },
+    );
   }
 
   private async resolveTenantSlug(tenantSlug?: string): Promise<string | null> {

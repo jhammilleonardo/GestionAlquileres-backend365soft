@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -17,21 +18,47 @@ import { NotificationEventType } from '../notifications/dto/create-notification.
 import { quoteIdent } from '../common/utils/sql-identifier';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { AuditAction } from '../audit-logs/enums/audit-action.enum';
+import { AuthSecurityService } from '../auth/auth-security.service';
+
+export interface EmployeePermissionRow {
+  module: string;
+  can_view: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+}
+
+export interface EmployeeRow {
+  id: number;
+  email: string;
+  name: string;
+  phone: string | null;
+  role: string;
+  is_active: boolean;
+  last_connection?: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+  permissions: EmployeePermissionRow[];
+}
+
+type EmployeeWriteParam = string | number | boolean | null;
 
 @Injectable()
 export class EmployeesService {
+  private readonly logger = new Logger(EmployeesService.name);
+
   constructor(
     @InjectDataSource() private dataSource: DataSource,
     private notificationsService: NotificationsService,
     private auditLogsService: AuditLogsService,
+    private authSecurityService: AuthSecurityService,
   ) {}
 
   /**
    * Lista todos los empleados del tenant con su rol, permisos y última conexión
    */
-  async findAll(schemaName: string): Promise<any[]> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const employees = await this.dataSource.query(
+  async findAll(schemaName: string): Promise<EmployeeRow[]> {
+    return this.dataSource.query<EmployeeRow[]>(
       `SELECT
          u.id,
          u.email,
@@ -60,9 +87,6 @@ export class EmployeesService {
        GROUP BY u.id
        ORDER BY u.created_at DESC`,
     );
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return employees;
   }
 
   /**
@@ -70,13 +94,14 @@ export class EmployeesService {
    */
   async create(
     schemaName: string,
+    tenantSlug: string,
     createEmployeeDto: CreateEmployeeDto,
     adminId: number,
-  ): Promise<any> {
+  ): Promise<EmployeeRow> {
     const { name, email, password, phone, permissions } = createEmployeeDto;
 
     // Verificar que el email no esté ya en uso
-    const existing = await this.dataSource.query(
+    const existing = await this.dataSource.query<Array<{ id: number }>>(
       `SELECT id FROM ${quoteIdent(schemaName)}."user" WHERE email = $1`,
       [email],
     );
@@ -87,7 +112,7 @@ export class EmployeesService {
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
     // Crear el usuario con rol EMPLEADO
-    const result = await this.dataSource.query(
+    const result = await this.dataSource.query<EmployeeRow[]>(
       `INSERT INTO ${quoteIdent(schemaName)}."user" (email, password, name, phone, role, is_active, created_at, updated_at)
        VALUES ($1, $2, $3, $4, 'EMPLEADO', true, NOW(), NOW())
        RETURNING id, email, name, phone, role, is_active, created_at, updated_at`,
@@ -132,9 +157,8 @@ export class EmployeesService {
       );
     } catch (error) {
       // No fallar si la notificación no se puede crear
-      console.error(
-        'Error al crear notificación de empleado:',
-        (error as Error).message,
+      this.logger.warn(
+        `Error al crear notificación de empleado: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
@@ -142,8 +166,20 @@ export class EmployeesService {
       userId: adminId,
       action: AuditAction.CREATED,
       entityType: 'employee',
-      entityId: employee.id as number,
+      entityId: employee.id,
       newValues: { email, name, role: 'EMPLEADO' },
+    });
+
+    await this.authSecurityService.recordPermissionsChanged({
+      tenantSlug,
+      targetUserId: employee.id,
+      performedBy: adminId,
+      action: 'employee_created',
+      targetEmail: email,
+      metadata: {
+        role: 'EMPLEADO',
+        permission_count: permissions?.length ?? 0,
+      },
     });
 
     return fullEmployee;
@@ -152,8 +188,8 @@ export class EmployeesService {
   /**
    * Obtiene un empleado por ID
    */
-  async findOne(schemaName: string, id: number): Promise<any> {
-    const result = await this.dataSource.query(
+  async findOne(schemaName: string, id: number): Promise<EmployeeRow> {
+    const result = await this.dataSource.query<EmployeeRow[]>(
       `SELECT
          u.id,
          u.email,
@@ -197,13 +233,13 @@ export class EmployeesService {
     schemaName: string,
     id: number,
     updateEmployeeDto: UpdateEmployeeDto,
-  ): Promise<any> {
+  ): Promise<EmployeeRow> {
     await this.findOne(schemaName, id);
 
     const { name, phone, is_active } = updateEmployeeDto;
 
     const setClauses: string[] = [];
-    const params: any[] = [];
+    const params: EmployeeWriteParam[] = [];
     let paramIndex = 1;
 
     if (name !== undefined) {
@@ -241,10 +277,11 @@ export class EmployeesService {
    */
   async updatePermissions(
     schemaName: string,
+    tenantSlug: string,
     id: number,
     permissions: ModulePermissionsDto[],
     performedBy: number = 0,
-  ): Promise<any> {
+  ): Promise<EmployeeRow> {
     await this.findOne(schemaName, id);
     await this.upsertPermissions(schemaName, id, permissions);
 
@@ -258,6 +295,17 @@ export class EmployeesService {
       },
     });
 
+    await this.authSecurityService.recordPermissionsChanged({
+      tenantSlug,
+      targetUserId: id,
+      performedBy,
+      action: 'permissions_updated',
+      metadata: {
+        permission_count: permissions.length,
+        modules: permissions.map((permission) => permission.module),
+      },
+    });
+
     return this.findOne(schemaName, id);
   }
 
@@ -266,6 +314,7 @@ export class EmployeesService {
    */
   async remove(
     schemaName: string,
+    tenantSlug: string,
     id: number,
     performedBy: number = 0,
   ): Promise<{ message: string }> {
@@ -284,6 +333,14 @@ export class EmployeesService {
       entityType: 'employee',
       entityId: id,
       newValues: { is_active: false },
+    });
+
+    await this.authSecurityService.recordPermissionsChanged({
+      tenantSlug,
+      targetUserId: id,
+      performedBy,
+      action: 'employee_disabled',
+      metadata: { is_active: false },
     });
 
     return {

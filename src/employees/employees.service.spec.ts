@@ -3,6 +3,7 @@ import { EmployeesService } from './employees.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuthSecurityService } from '../auth/auth-security.service';
 
 describe('EmployeesService', () => {
   let service: EmployeesService;
@@ -13,6 +14,10 @@ describe('EmployeesService', () => {
 
   const mockNotificationsService = {
     createForUser: jest.fn(),
+  };
+
+  const mockAuthSecurityService = {
+    recordPermissionsChanged: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeEach(async () => {
@@ -30,6 +35,10 @@ describe('EmployeesService', () => {
         {
           provide: AuditLogsService,
           useValue: { log: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: AuthSecurityService,
+          useValue: mockAuthSecurityService,
         },
       ],
     }).compile();
@@ -84,7 +93,6 @@ describe('EmployeesService', () => {
       };
       mockDataSource.query.mockResolvedValueOnce([mockEmployee]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const result = await service.findOne('tenant_test', 1);
       expect(result).toEqual(mockEmployee);
     });
@@ -105,8 +113,17 @@ describe('EmployeesService', () => {
       // UPDATE call
       mockDataSource.query.mockResolvedValueOnce([]);
 
-      const result = await service.remove('tenant_test', 1);
+      const result = await service.remove('tenant_test', 'test', 1);
       expect(result.message).toContain('desactivado correctamente');
+      expect(
+        mockAuthSecurityService.recordPermissionsChanged,
+      ).toHaveBeenCalledWith({
+        tenantSlug: 'test',
+        targetUserId: 1,
+        performedBy: 0,
+        action: 'employee_disabled',
+        metadata: { is_active: false },
+      });
     });
   });
 });

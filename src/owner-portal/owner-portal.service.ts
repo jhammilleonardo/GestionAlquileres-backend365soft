@@ -82,6 +82,23 @@ export interface OwnerContractDto {
   pdf_url: string;
 }
 
+interface OwnerStatementPdfRow {
+  id: number;
+  owner_name: string;
+  property_title: string;
+  property_address: string | null;
+  property_city: string | null;
+  property_country: string | null;
+  tenant_name: string | null;
+  period_year: number;
+  period_month: number;
+  gross_rent: string | number;
+  maintenance_deduction: string | number;
+  management_commission: string | number;
+  net_amount: string | number;
+  currency: string;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -247,7 +264,7 @@ export class OwnerPortalService {
     // Validar ownership del statement antes de generar el PDF
     await this.assertStatementBelongsToOwner(statementId, rentalOwnerId);
 
-    const result = await this.dataSource.query(
+    const result = await this.dataSource.query<OwnerStatementPdfRow[]>(
       `SELECT
          os.id,
          ro.name    AS owner_name,
@@ -268,7 +285,8 @@ export class OwnerPortalService {
        JOIN properties p ON p.id = os.property_id
        LEFT JOIN property_addresses pa
               ON pa.property_id = p.id AND pa.address_type = 'address_1'
-       LEFT JOIN contracts c ON c.property_id = p.id AND c.status = 'ACTIVE'
+       LEFT JOIN contracts c
+              ON c.property_id = p.id AND c.status IN ('ACTIVO', 'POR_VENCER')
        LEFT JOIN "user" u ON u.id = c.tenant_id
        WHERE os.id = $1`,
       [statementId],
@@ -289,7 +307,7 @@ export class OwnerPortalService {
         property_address: data.property_address ?? 'No especificada',
         property_city: data.property_city ?? '',
         property_country: data.property_country ?? '',
-        tenant_name: data.tenant_name,
+        tenant_name: data.tenant_name ?? undefined,
         period_year: data.period_year,
         period_month: data.period_month,
         gross_rent: Number(data.gross_rent),
@@ -340,7 +358,7 @@ export class OwnerPortalService {
     rentalOwnerId: number,
   ): Promise<void> {
     // Valida ownership y que la propiedad esté en Bolivia (único país donde aplica esta acción)
-    const rows: { id: number }[] = await this.dataSource.query(
+    const rows = await this.dataSource.query<Array<{ id: number }>>(
       `SELECT mr.id
        FROM maintenance_requests mr
        JOIN property_owners po ON po.property_id = mr.property_id
@@ -407,7 +425,7 @@ export class OwnerPortalService {
     statementId: number,
     rentalOwnerId: number,
   ): Promise<void> {
-    const rows: { id: number }[] = await this.dataSource.query(
+    const rows = await this.dataSource.query<Array<{ id: number }>>(
       `SELECT id FROM owner_statements
        WHERE id = $1 AND rental_owner_id = $2`,
       [statementId, rentalOwnerId],

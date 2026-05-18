@@ -4,6 +4,7 @@ import { Request } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomBytes } from 'crypto';
+import type { TenantRequest } from '../middleware/tenant-context.middleware';
 
 // Asegurar que el directorio de storage existe
 const ensureDirExists = (dir: string) => {
@@ -18,12 +19,20 @@ const generateSecureFilename = (originalName: string): string => {
   return `${randomName}${extname(originalName)}`;
 };
 
+const getTenantSlug = (req: Request): string =>
+  (req as TenantRequest).tenant?.slug ?? getRouteParam(req, 'slug') ?? 'temp';
+
+const getRouteParam = (req: Request, key: string): string | undefined => {
+  const value = req.params?.[key];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+};
+
 // Configuración de Multer para propiedades
 export const propertyImageStorage = diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
     // Extraer tenant del request (seteado por el middleware)
-    const tenantSlug = (req as any).tenant?.slug || 'temp';
-    const propertyId = (req.params.id as string) || 'temp';
+    const tenantSlug = getTenantSlug(req);
+    const propertyId = getRouteParam(req, 'id') ?? 'temp';
 
     // Crear path: storage/properties/{tenant_slug}/{property_id}/
     const uploadPath = path.join(
@@ -75,9 +84,8 @@ export const multerConfig = {
 // Configuración de Multer para mantenimiento
 export const maintenanceFileStorage = diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
-    const tenantSlug =
-      (req as any).tenant?.slug || (req.params as any).slug || 'temp';
-    const requestId = (req.params as any).id || 'temp';
+    const tenantSlug = getTenantSlug(req);
+    const requestId = getRouteParam(req, 'id') ?? 'temp';
 
     const uploadPath = path.join(
       process.cwd(),
@@ -134,8 +142,7 @@ export const maintenanceMulterConfig = {
 
 export const receiptFileStorage = diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
-    const tenantSlug =
-      (req as any).tenant?.slug || (req.params as any).slug || 'temp';
+    const tenantSlug = getTenantSlug(req);
 
     const uploadPath = path.join(
       process.cwd(),
@@ -189,9 +196,8 @@ export const receiptMulterConfig = {
 
 export const applicationDocumentStorage = diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
-    const tenantSlug =
-      (req as any).tenant?.slug || (req.params as any).slug || 'temp';
-    const applicationId = (req.params as any).id || 'temp';
+    const tenantSlug = getTenantSlug(req);
+    const applicationId = getRouteParam(req, 'id') ?? 'temp';
 
     const uploadPath = path.join(
       process.cwd(),
@@ -247,9 +253,8 @@ export const applicationDocumentMulterConfig = {
 
 export const stagePhotoStorage = diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
-    const tenantSlug =
-      (req as any).tenant?.slug || (req.params as any).slug || 'temp';
-    const requestId = (req.params as any).id || 'temp';
+    const tenantSlug = getTenantSlug(req);
+    const requestId = getRouteParam(req, 'id') ?? 'temp';
 
     const uploadPath = path.join(
       process.cwd(),
@@ -293,9 +298,8 @@ export const stagePhotoMulterConfig = {
 // Configuración de Multer para fotos de inspecciones
 export const inspectionPhotoStorage = diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
-    const tenantSlug =
-      (req as any).tenant?.slug || (req.params as any).slug || 'temp';
-    const inspectionId = (req.params as any).id || 'temp';
+    const tenantSlug = getTenantSlug(req);
+    const inspectionId = getRouteParam(req, 'id') ?? 'temp';
 
     const uploadPath = path.join(
       process.cwd(),

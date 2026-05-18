@@ -2,11 +2,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { InspectionsService } from './inspections.service';
-import { InspectionType } from './dto/create-inspection.dto';
+import {
+  InspectionArea,
+  InspectionType,
+  ItemCondition,
+} from './dto/create-inspection.dto';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 
-const mockDataSource = {
-  query: jest.fn(),
+const mockDataSource: {
+  query: jest.Mock<Promise<unknown>, [string, unknown[]?]>;
+} = {
+  query: jest.fn<Promise<unknown>, [string, unknown[]?]>(),
 };
 
 const mockLifecycleNotificationsService = {
@@ -14,6 +20,34 @@ const mockLifecycleNotificationsService = {
 };
 
 const SCHEMA = 'tenant_test';
+type FullInspection = Awaited<ReturnType<InspectionsService['findOne']>>;
+
+function mockFullInspection(
+  overrides: Partial<FullInspection> = {},
+): FullInspection {
+  return {
+    id: 1,
+    property_id: 1,
+    unit_id: null,
+    contract_id: null,
+    type: InspectionType.MOVE_IN,
+    scheduled_date: '2026-01-01',
+    completed_date: null,
+    inspector_user_id: null,
+    status: 'completed',
+    notes: null,
+    created_by: 1,
+    created_at: '2026-01-01',
+    updated_at: '2026-01-01',
+    property_title: 'Casa X',
+    unit_number: null,
+    inspector_name: null,
+    inspector_email: null,
+    created_by_name: 'Admin',
+    items: [],
+    ...overrides,
+  };
+}
 
 describe('InspectionsService', () => {
   let service: InspectionsService;
@@ -64,7 +98,7 @@ describe('InspectionsService', () => {
       expect(result).toMatchObject({ id: 1, status: 'scheduled', items: [] });
       expect(mockDataSource.query).toHaveBeenCalledTimes(3);
 
-      const insertCall = mockDataSource.query.mock.calls[0][0] as string;
+      const insertCall = mockDataSource.query.mock.calls[0][0];
       expect(insertCall).toContain('"tenant_test".inspections');
       expect(insertCall).toContain('INSERT INTO');
     });
@@ -91,8 +125,8 @@ describe('InspectionsService', () => {
           type: InspectionType.MOVE_IN,
           scheduled_date: '2026-05-01',
           items: [
-            { area: 'kitchen' as any, item_name: 'Cocina' },
-            { area: 'bathroom' as any, item_name: 'Baño' },
+            { area: InspectionArea.KITCHEN, item_name: 'Cocina' },
+            { area: InspectionArea.BATHROOM, item_name: 'Baño' },
           ],
         },
         42,
@@ -125,9 +159,9 @@ describe('InspectionsService', () => {
           items: [
             {
               id: 10,
-              area: 'kitchen' as any,
+              area: InspectionArea.KITCHEN,
               item_name: 'Cocina',
-              condition: 'good' as any,
+              condition: ItemCondition.GOOD,
             },
           ],
         },
@@ -136,7 +170,7 @@ describe('InspectionsService', () => {
 
       expect(result).toMatchObject({ status: 'in_progress' });
 
-      const statusUpdateCall = mockDataSource.query.mock.calls[3][0] as string;
+      const statusUpdateCall = mockDataSource.query.mock.calls[3][0];
       expect(statusUpdateCall).toContain("status = 'in_progress'");
     });
 
@@ -156,16 +190,16 @@ describe('InspectionsService', () => {
         {
           items: [
             {
-              area: 'bedroom' as any,
+              area: InspectionArea.BEDROOM,
               item_name: 'Piso',
-              condition: 'fair' as any,
+              condition: ItemCondition.FAIR,
             },
           ],
         },
         42,
       );
 
-      const insertCall = mockDataSource.query.mock.calls[1][0] as string;
+      const insertCall = mockDataSource.query.mock.calls[1][0];
       expect(insertCall).toContain('INSERT INTO');
     });
 
@@ -186,9 +220,9 @@ describe('InspectionsService', () => {
         {
           items: [
             {
-              area: 'living_room' as any,
+              area: InspectionArea.LIVING_ROOM,
               item_name: 'Sala',
-              condition: 'good' as any,
+              condition: ItemCondition.GOOD,
             },
           ],
           complete: true,
@@ -198,7 +232,7 @@ describe('InspectionsService', () => {
 
       expect(result).toMatchObject({ status: 'completed' });
 
-      const completeCall = mockDataSource.query.mock.calls[2][0] as string;
+      const completeCall = mockDataSource.query.mock.calls[2][0];
       expect(completeCall).toContain("status = 'completed'");
     });
 
@@ -289,45 +323,47 @@ describe('InspectionsService', () => {
 
   describe('compare', () => {
     it('debe retornar comparativo con ítems degradados detectados', async () => {
-      const moveInFull = {
+      const moveInFull = mockFullInspection({
         id: 1,
-        type: 'move_in',
+        type: InspectionType.MOVE_IN,
         status: 'completed',
         scheduled_date: '2026-01-01',
         property_title: 'Casa X',
         items: [
           {
             id: 1,
-            area: 'living_room',
+            inspection_id: 1,
+            area: InspectionArea.LIVING_ROOM,
             item_name: 'Paredes',
-            condition: 'good',
+            condition: ItemCondition.GOOD,
             notes: null,
             photos: [],
           },
         ],
-      };
-      const moveOutFull = {
+      });
+      const moveOutFull = mockFullInspection({
         id: 2,
-        type: 'move_out',
+        type: InspectionType.MOVE_OUT,
         status: 'completed',
         scheduled_date: '2026-04-01',
         property_title: 'Casa X',
         items: [
           {
             id: 3,
-            area: 'living_room',
+            inspection_id: 2,
+            area: InspectionArea.LIVING_ROOM,
             item_name: 'Paredes',
-            condition: 'damaged',
+            condition: ItemCondition.DAMAGED,
             notes: 'Hueco',
             photos: [],
           },
         ],
-      };
+      });
 
       jest
         .spyOn(service, 'findOne')
-        .mockResolvedValueOnce(moveInFull as any)
-        .mockResolvedValueOnce(moveOutFull as any);
+        .mockResolvedValueOnce(moveInFull)
+        .mockResolvedValueOnce(moveOutFull);
 
       const result = await service.compare(SCHEMA, 1, 2);
 
@@ -340,23 +376,23 @@ describe('InspectionsService', () => {
     });
 
     it('debe lanzar BadRequestException si el tipo de la inspección es incorrecto', async () => {
-      const wrongTypeFull = {
+      const wrongTypeFull = mockFullInspection({
         id: 1,
-        type: 'periodic',
+        type: InspectionType.PERIODIC,
         status: 'completed',
         items: [],
-      };
-      const moveOutFull = {
+      });
+      const moveOutFull = mockFullInspection({
         id: 2,
-        type: 'move_out',
+        type: InspectionType.MOVE_OUT,
         status: 'completed',
         items: [],
-      };
+      });
 
       jest
         .spyOn(service, 'findOne')
-        .mockResolvedValueOnce(wrongTypeFull as any)
-        .mockResolvedValueOnce(moveOutFull as any);
+        .mockResolvedValueOnce(wrongTypeFull)
+        .mockResolvedValueOnce(moveOutFull);
 
       await expect(service.compare(SCHEMA, 1, 2)).rejects.toThrow(
         BadRequestException,

@@ -28,7 +28,9 @@ interface SocketJwtPayload {
 @WebSocketGateway({
   namespace: '/notifications',
   cors: {
-    origin: (process.env.FRONTEND_URLS ?? 'http://localhost:4200,http://localhost:4201')
+    origin: (
+      process.env.FRONTEND_URLS ?? 'http://localhost:4200,http://localhost:4201'
+    )
       .split(',')
       .map((u) => u.trim()),
     credentials: true,
@@ -76,7 +78,10 @@ export class NotificationsGateway
     }
 
     const requestedTenantSlug = this.extractRequestedTenantSlug(client);
-    if (requestedTenantSlug && requestedTenantSlug.trim() !== payload.tenantSlug) {
+    if (
+      requestedTenantSlug &&
+      requestedTenantSlug.trim() !== payload.tenantSlug
+    ) {
       this.rejectConnection(client, 'Tenant mismatch');
       return;
     }
@@ -154,13 +159,15 @@ export class NotificationsGateway
 
   private extractRequestedTenantSlug(client: Socket): string | null {
     const authTenantSlug = this.normalizeString(
-      (client.handshake.auth as Record<string, unknown> | undefined)?.tenantSlug,
+      (client.handshake.auth as Record<string, unknown> | undefined)
+        ?.tenantSlug,
     );
     if (authTenantSlug) {
       return authTenantSlug;
     }
 
-    const queryValue = (client.handshake.query as Record<string, unknown>)?.tenantSlug;
+    const queryValue = (client.handshake.query as Record<string, unknown>)
+      ?.tenantSlug;
     if (Array.isArray(queryValue)) {
       return this.normalizeString(queryValue[0]);
     }
@@ -168,7 +175,9 @@ export class NotificationsGateway
     return this.normalizeString(queryValue);
   }
 
-  private extractTokenFromAuthorizationHeader(authorizationHeader?: string): string | null {
+  private extractTokenFromAuthorizationHeader(
+    authorizationHeader?: string,
+  ): string | null {
     if (!authorizationHeader) {
       return null;
     }

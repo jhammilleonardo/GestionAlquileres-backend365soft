@@ -10,26 +10,8 @@ import type { CreateInspectionDto } from './dto/create-inspection.dto';
 import type { UpdateInspectionItemsDto } from './dto/update-inspection-items.dto';
 import type { FilterInspectionsDto } from './dto/filter-inspections.dto';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
-import { storageService } from '../common/storage/storage.service';
-
-interface PdfDoc extends NodeJS.ReadableStream {
-  fontSize(size: number): PdfDoc;
-  font(font: string): PdfDoc;
-  text(text: string, options?: Record<string, unknown>): PdfDoc;
-  moveDown(lines?: number): PdfDoc;
-  moveTo(x: number, y: number): PdfDoc;
-  lineTo(x: number, y: number): PdfDoc;
-  stroke(): PdfDoc;
-  addPage(): PdfDoc;
-  end(): void;
-  y: number;
-  page: { width: number; margins: { left: number; right: number } };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const PDFDocument = require('pdfkit') as new (
-  options?: Record<string, unknown>,
-) => PdfDoc;
+import { InspectionPhotosService } from './inspection-photos.service';
+import { InspectionPdfService } from './inspection-pdf.service';
 
 export interface InspectionRow {
   id: number;
@@ -62,11 +44,27 @@ export interface InspectionItemRow {
   photos: string[];
 }
 
+export interface InspectionListRow extends InspectionRow {
+  items_count: number;
+}
+
+export interface InspectionDetail extends InspectionRow {
+  currency?: string;
+  unit_floor?: number | null;
+  items: InspectionItemRow[];
+}
+
+interface InspectionExistsRow {
+  id: number;
+}
+
 @Injectable()
 export class InspectionsService {
   constructor(
     @InjectDataSource() private dataSource: DataSource,
     private lifecycleNotificationsService: LifecycleNotificationsService,
+    private inspectionPhotosService: InspectionPhotosService,
+    private inspectionPdfService: InspectionPdfService,
   ) {}
 
   async create(schemaName: string, dto: CreateInspectionDto, userId: number) {
@@ -110,7 +108,10 @@ export class InspectionsService {
     return this.findOne(schemaName, inspection.id);
   }
 
-  async findAll(schemaName: string, filters: FilterInspectionsDto) {
+  async findAll(
+    schemaName: string,
+    filters: FilterInspectionsDto,
+  ): Promise<InspectionListRow[]> {
     const q = quoteIdent(schemaName);
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -147,7 +148,7 @@ export class InspectionsService {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    return this.dataSource.query(
+    return this.dataSource.query<InspectionListRow[]>(
       `SELECT i.*,
               p.title    AS property_title,
               u.unit_number,
@@ -167,7 +168,7 @@ export class InspectionsService {
     );
   }
 
-  async findOne(schemaName: string, id: number) {
+  async findOne(schemaName: string, id: number): Promise<InspectionDetail> {
     const q = quoteIdent(schemaName);
 
     const rows = await this.dataSource.query<InspectionRow[]>(
@@ -228,7 +229,7 @@ export class InspectionsService {
 
     for (const item of dto.items) {
       if (item.id) {
-        const [exists] = await this.dataSource.query(
+        const [exists] = await this.dataSource.query<InspectionExistsRow[]>(
           `SELECT id FROM ${q}.inspection_items WHERE id = $1 AND inspection_id = $2`,
           [item.id, inspectionId],
         );
@@ -302,207 +303,19 @@ export class InspectionsService {
     itemId: number,
     files: Express.Multer.File[],
     tenantSlug: string,
-  ) {
-    const q = quoteIdent(schemaName);
-
-    const [item] = await this.dataSource.query<
-      { id: number; photos: string[] }[]
-    >(
-      `SELECT id, photos FROM ${q}.inspection_items
-       WHERE id = $1 AND inspection_id = $2`,
-      [itemId, inspectionId],
+  ): Promise<{ photos: string[] }> {
+    return this.inspectionPhotosService.addPhotosToItem(
+      schemaName,
+      inspectionId,
+      itemId,
+      files,
+      tenantSlug,
     );
-
-    if (!item) {
-      throw new NotFoundException(
-        `Ítem ${itemId} no encontrado en la inspección ${inspectionId}`,
-      );
-    }
-
-    const newPhotos: string[] = [];
-    for (const file of files) {
-      const storagePath = await storageService.persistUploadedFile(
-        file,
-        storageService.buildStoragePath(
-          'inspections',
-          tenantSlug,
-          String(inspectionId),
-          file.filename,
-        ),
-        'private',
-      );
-      newPhotos.push(storageService.toRoutePath(storagePath));
-    }
-    const allPhotos = [...(item.photos ?? []), ...newPhotos];
-
-    await this.dataSource.query(
-      `UPDATE ${q}.inspection_items
-       SET photos = $1, updated_at = now()
-       WHERE id = $2`,
-      [JSON.stringify(allPhotos), itemId],
-    );
-
-    return { photos: allPhotos };
   }
 
   async generatePdf(schemaName: string, inspectionId: number): Promise<Buffer> {
     const inspection = await this.findOne(schemaName, inspectionId);
-
-    return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
-      const chunks: Buffer[] = [];
-
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      const pageWidth =
-        doc.page.width - doc.page.margins.left - doc.page.margins.right;
-
-      // ── Header ──────────────────────────────────────────────────────────
-      doc
-        .fontSize(22)
-        .font('Helvetica-Bold')
-        .text('REPORTE DE INSPECCIÓN', { align: 'center' });
-
-      doc
-        .fontSize(10)
-        .font('Helvetica')
-        .text(`Generado el ${new Date().toLocaleDateString('es-BO')}`, {
-          align: 'center',
-        });
-
-      doc.moveDown();
-      doc
-        .moveTo(50, doc.y)
-        .lineTo(50 + pageWidth, doc.y)
-        .stroke();
-      doc.moveDown(0.5);
-
-      // ── Inspection details ───────────────────────────────────────────────
-      const typeLabel: Record<string, string> = {
-        move_in: 'Entrada',
-        move_out: 'Salida',
-        periodic: 'Periódica',
-      };
-      const statusLabel: Record<string, string> = {
-        scheduled: 'Programada',
-        in_progress: 'En progreso',
-        completed: 'Completada',
-      };
-
-      doc.fontSize(12).font('Helvetica-Bold').text('Detalles de la Inspección');
-      doc.moveDown(0.3);
-      doc.fontSize(10).font('Helvetica');
-      doc.text(`ID:             #${inspection.id}`);
-      doc.text(
-        `Tipo:           ${typeLabel[inspection.type] ?? inspection.type}`,
-      );
-      doc.text(
-        `Estado:         ${statusLabel[inspection.status] ?? inspection.status}`,
-      );
-      doc.text(`Fecha programada: ${inspection.scheduled_date}`);
-      if (inspection.completed_date) {
-        doc.text(`Fecha completada: ${inspection.completed_date}`);
-      }
-      doc.moveDown();
-
-      // ── Property & unit ──────────────────────────────────────────────────
-      doc.fontSize(12).font('Helvetica-Bold').text('Propiedad');
-      doc.moveDown(0.3);
-      doc.fontSize(10).font('Helvetica');
-      doc.text(`Propiedad: ${inspection.property_title}`);
-      if (inspection.unit_number) {
-        doc.text(`Unidad:    ${inspection.unit_number}`);
-      }
-      doc.moveDown();
-
-      // ── Inspector ────────────────────────────────────────────────────────
-      if (inspection.inspector_name) {
-        doc.fontSize(12).font('Helvetica-Bold').text('Inspector');
-        doc.moveDown(0.3);
-        doc.fontSize(10).font('Helvetica');
-        doc.text(`Nombre: ${inspection.inspector_name}`);
-        if (inspection.inspector_email) {
-          doc.text(`Email:  ${inspection.inspector_email}`);
-        }
-        doc.moveDown();
-      }
-
-      // ── Checklist items grouped by area ──────────────────────────────────
-      doc.fontSize(12).font('Helvetica-Bold').text('Checklist');
-      doc
-        .moveTo(50, doc.y + 4)
-        .lineTo(50 + pageWidth, doc.y + 4)
-        .stroke();
-      doc.moveDown(0.8);
-
-      const conditionLabel: Record<string, string> = {
-        good: 'Bueno',
-        fair: 'Regular',
-        poor: 'Malo',
-        damaged: 'Dañado',
-      };
-      const areaLabel: Record<string, string> = {
-        living_room: 'Sala',
-        kitchen: 'Cocina',
-        bathroom: 'Baño',
-        bedroom: 'Habitación',
-        exterior: 'Exterior',
-        other: 'Otro',
-      };
-
-      const byArea = inspection.items.reduce<
-        Record<string, InspectionItemRow[]>
-      >((acc, item) => {
-        if (!acc[item.area]) acc[item.area] = [];
-        acc[item.area].push(item);
-        return acc;
-      }, {});
-
-      for (const [area, items] of Object.entries(byArea)) {
-        doc
-          .fontSize(11)
-          .font('Helvetica-Bold')
-          .text(areaLabel[area] ?? area);
-        doc.moveDown(0.2);
-
-        for (const item of items) {
-          const condition = conditionLabel[item.condition] ?? item.condition;
-          const photosCount = (item.photos ?? []).length;
-          const photoInfo = photosCount > 0 ? ` [${photosCount} foto(s)]` : '';
-          doc
-            .fontSize(9)
-            .font('Helvetica')
-            .text(`  • ${item.item_name} — ${condition}${photoInfo}`);
-          if (item.notes) {
-            doc
-              .fontSize(8)
-              .font('Helvetica-Oblique')
-              .text(`    ${item.notes}`, { indent: 10 });
-          }
-        }
-        doc.moveDown(0.5);
-      }
-
-      // ── General notes ────────────────────────────────────────────────────
-      if (inspection.notes) {
-        doc.fontSize(12).font('Helvetica-Bold').text('Notas Generales');
-        doc.moveDown(0.3);
-        doc.fontSize(10).font('Helvetica').text(inspection.notes);
-        doc.moveDown();
-      }
-
-      // ── Footer ───────────────────────────────────────────────────────────
-      doc
-        .fontSize(8)
-        .font('Helvetica')
-        .text('365Soft — Plataforma de Gestión de Propiedades', {
-          align: 'center',
-        });
-
-      doc.end();
-    });
+    return this.inspectionPdfService.generate(inspection);
   }
 
   async compare(schemaName: string, moveInId: number, moveOutId: number) {

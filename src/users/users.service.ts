@@ -22,23 +22,20 @@ export class UsersService {
   constructor(@InjectDataSource() private dataSource: DataSource) {}
 
   async findAll(schemaName: string): Promise<UserWithoutPassword[]> {
-    const result = await this.dataSource.query(
+    return this.dataSource.query<UserWithoutPassword[]>(
       `SELECT id, email, name, phone, role, is_active, created_at, updated_at
        FROM ${quoteIdent(schemaName)}."user"
        ORDER BY created_at DESC`,
     );
-
-    return result;
   }
 
   async findAdmins(): Promise<UserWithoutPassword[]> {
     // Nota: El schema se maneja por el search_path en el middleware
-    const result = await this.dataSource.query(
-      `SELECT id, email, name, role
+    return this.dataSource.query<UserWithoutPassword[]>(
+      `SELECT id, email, name, phone, role, is_active, created_at, updated_at
        FROM "user"
        WHERE role = 'ADMIN' AND is_active = true`,
     );
-    return result;
   }
 
   async findTenants(filters?: {
@@ -46,7 +43,7 @@ export class UsersService {
     hasActiveContract?: boolean;
   }): Promise<UserWithoutPassword[]> {
     let query = `
-      SELECT u.id, u.email, u.name, u.phone, u.role, u.is_active, u.created_at,
+      SELECT u.id, u.email, u.name, u.phone, u.role, u.is_active, u.created_at, u.updated_at,
              COUNT(DISTINCT ra.id) as application_count,
              COUNT(DISTINCT CASE WHEN ra.status = 'APROBADA' THEN ra.id END) as approved_applications,
              COUNT(DISTINCT CASE WHEN c.status = 'ACTIVO' THEN c.id END) as active_contracts
@@ -70,12 +67,11 @@ export class UsersService {
 
     query += ` GROUP BY u.id ORDER BY u.created_at DESC`;
 
-    const result = await this.dataSource.query(query);
-    return result;
+    return this.dataSource.query<UserWithoutPassword[]>(query);
   }
 
   async findTenantById(id: number): Promise<UserWithoutPassword | null> {
-    const result = await this.dataSource.query(
+    const result = await this.dataSource.query<UserWithoutPassword[]>(
       `SELECT id, email, name, phone, role, is_active, created_at, updated_at
        FROM "user"
        WHERE id = $1 AND role = 'INQUILINO'`,

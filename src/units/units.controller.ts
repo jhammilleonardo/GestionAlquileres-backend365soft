@@ -13,9 +13,13 @@ import {
 } from '@nestjs/common';
 import {
   ApiTags,
+  ApiBody,
+  ApiBadRequestResponse,
   ApiOperation,
   ApiParam,
   ApiBearerAuth,
+  ApiNotFoundResponse,
+  ApiOkResponse,
 } from '@nestjs/swagger';
 import { UnitsService } from './units.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -23,6 +27,10 @@ import { UpdateUnitDto } from './dto/update-unit.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import {
+  UnitDeleteResponseDto,
+  UnitResponseDto,
+} from './dto/unit-response.dto';
 
 @ApiTags('Units - Admin')
 @ApiBearerAuth()
@@ -36,6 +44,7 @@ export class AdminUnitsController {
   @ApiOperation({ summary: 'Listar unidades de una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
+  @ApiOkResponse({ type: UnitResponseDto, isArray: true })
   async findAll(
     @Param('slug') _slug: string,
     @Param('propertyId', ParseIntPipe) propertyId: number,
@@ -47,6 +56,9 @@ export class AdminUnitsController {
   @ApiOperation({ summary: 'Crear una unidad en una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
+  @ApiBody({ type: CreateUnitDto })
+  @ApiOkResponse({ type: UnitResponseDto })
+  @ApiBadRequestResponse({ description: 'Datos de unidad inválidos' })
   async create(
     @Param('slug') _slug: string,
     @Param('propertyId', ParseIntPipe) propertyId: number,
@@ -60,6 +72,9 @@ export class AdminUnitsController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
   @ApiParam({ name: 'unitId', type: Number })
+  @ApiBody({ type: UpdateUnitDto })
+  @ApiOkResponse({ type: UnitResponseDto })
+  @ApiNotFoundResponse({ description: 'Unidad no encontrada' })
   async update(
     @Param('slug') _slug: string,
     @Param('propertyId', ParseIntPipe) propertyId: number,
@@ -77,6 +92,9 @@ export class AdminUnitsController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
   @ApiParam({ name: 'unitId', type: Number })
+  @ApiOkResponse({ type: UnitDeleteResponseDto })
+  @ApiBadRequestResponse({ description: 'Unidad tiene contratos activos' })
+  @ApiNotFoundResponse({ description: 'Unidad no encontrada' })
   async remove(
     @Param('slug') _slug: string,
     @Param('propertyId', ParseIntPipe) propertyId: number,
@@ -97,6 +115,7 @@ export class PublicUnitsController {
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
+  @ApiOkResponse({ type: UnitResponseDto, isArray: true })
   async findAvailable(
     @Param('slug') _slug: string,
     @Param('propertyId', ParseIntPipe) propertyId: number,

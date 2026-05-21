@@ -18,6 +18,10 @@ import {
   ApiQuery,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiBody,
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiNotFoundResponse,
 } from '@nestjs/swagger';
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto, BlockDatesDto } from './dto';
@@ -25,6 +29,11 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import {
+  BlockDatesResponseDto,
+  DayAvailabilityResponseDto,
+  ReservationResponseDto,
+} from './dto/reservation-response.dto';
 
 interface JwtUser {
   userId: number;
@@ -57,7 +66,10 @@ export class PublicAvailabilityController {
   })
   @ApiOkResponse({
     description: 'Array de fechas con su estado de disponibilidad',
+    type: DayAvailabilityResponseDto,
+    isArray: true,
   })
+  @ApiBadRequestResponse({ description: 'Mes inválido' })
   async getAvailability(
     @Param('id', ParseIntPipe) propertyId: number,
     @Query('month') month: string,
@@ -87,7 +99,13 @@ export class AdminReservationsController {
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la propiedad' })
   @ApiParam({ name: 'unitId', type: Number, description: 'ID de la unidad' })
-  @ApiOkResponse({ description: 'Fechas bloqueadas correctamente' })
+  @ApiBody({ type: BlockDatesDto })
+  @ApiOkResponse({ type: BlockDatesResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Unidad no habilitada para corto plazo',
+  })
+  @ApiConflictResponse({ description: 'Una o más fechas ya están reservadas' })
+  @ApiNotFoundResponse({ description: 'Unidad no encontrada' })
   async blockDates(
     @Param('id', ParseIntPipe) propertyId: number,
     @Param('unitId', ParseIntPipe) unitId: number,
@@ -115,7 +133,13 @@ export class TenantReservationsController {
   @Post()
   @ApiOperation({ summary: 'Crear una reserva de corto plazo' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiCreatedResponse({ description: 'Reserva creada correctamente' })
+  @ApiBody({ type: CreateReservationDto })
+  @ApiCreatedResponse({ type: ReservationResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Fechas inválidas o corto plazo deshabilitado',
+  })
+  @ApiConflictResponse({ description: 'Fechas no disponibles' })
+  @ApiNotFoundResponse({ description: 'Unidad no encontrada' })
   async create(
     @Body() dto: CreateReservationDto,
     @CurrentUser() user: JwtUser,

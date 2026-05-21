@@ -1,35 +1,20 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { CreatePaymentAsAdminDto, CreatePaymentDto } from './dto';
 import { Payment } from './interfaces/payment.interface';
 import { PaymentProcessor, PaymentStatus } from './enums';
-import { NotificationsService } from '../notifications/notifications.service';
-import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { TenantsService } from '../tenants/tenants.service';
 import { quoteIdent } from '../common/utils/sql-identifier';
-
-interface ActiveContractRow {
-  id: number;
-  property_id: number;
-}
-
-interface ContractValidationRow {
-  id: number;
-  tenant_id: number;
-  property_id: number;
-  status: string;
-}
+import { PaymentCreationNotificationService } from './payment-creation-notification.service';
+import { PaymentCreationValidationService } from './payment-creation-validation.service';
 
 @Injectable()
 export class PaymentCreationService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly tenantsService: TenantsService,
-    private readonly notificationsService: NotificationsService,
+    private readonly paymentCreationValidationService: PaymentCreationValidationService,
+    private readonly paymentCreationNotificationService: PaymentCreationNotificationService,
   ) {}
 
   async createPayment(
@@ -50,19 +35,15 @@ export class PaymentCreationService {
 
     try {
       if (!contractId) {
-        const contracts = (await queryRunner.query(
-          `SELECT id, property_id FROM ${schemaPrefix}contracts
-           WHERE tenant_id = $1 AND status IN ('ACTIVO', 'POR_VENCER')
-           ORDER BY created_at DESC LIMIT 1`,
-          [tenantId],
-        )) as ActiveContractRow[];
+        const contract =
+          await this.paymentCreationValidationService.resolveActiveContractForTenant(
+            queryRunner,
+            tenantId,
+            schemaPrefix,
+          );
 
-        if (contracts.length === 0) {
-          throw new BadRequestException('No tiene un contrato activo');
-        }
-
-        contractId = contracts[0].id;
-        propertyId = contracts[0].property_id;
+        contractId = contract.id;
+        propertyId = contract.property_id;
       }
 
       const payments = (await queryRunner.query(
@@ -105,15 +86,19 @@ export class PaymentCreationService {
       }
 
       await queryRunner.commitTransaction();
-      await this.notifyAdminsOfPendingPayment({
-        schemaName,
-        schemaPrefix,
-        tenantSlug,
-        payment,
-        amount: dto.amount,
-        currency: dto.currency || 'BOB',
-        hasReceipt: !!receiptPath,
-      });
+      await this.paymentCreationNotificationService.notifyAdminsOfPendingPayment(
+        {
+          dataSourceQuery: <T>(sql: string, params?: unknown[]) =>
+            this.dataSource.query<T[]>(sql, params),
+          schemaName,
+          schemaPrefix,
+          tenantSlug,
+          payment,
+          amount: dto.amount,
+          currency: dto.currency || 'BOB',
+          hasReceipt: !!receiptPath,
+        },
+      );
 
       return payment;
     } catch (error) {
@@ -135,18 +120,11 @@ export class PaymentCreationService {
     await queryRunner.startTransaction();
 
     try {
-      const contracts = (await queryRunner.query(
-        `SELECT id, tenant_id, property_id, status FROM ${schemaPrefix}contracts WHERE id = $1`,
-        [dto.contract_id],
-      )) as ContractValidationRow[];
-
-      if (contracts.length === 0) {
-        throw new NotFoundException(
-          `Contrato #${dto.contract_id} no encontrado`,
-        );
-      }
-
-      this.validateContractBelongsToPayment(contracts[0], dto);
+      await this.paymentCreationValidationService.validateAdminPaymentContract(
+        queryRunner,
+        dto,
+        schemaPrefix,
+      );
 
       const metadata = this.buildAdminMetadata(dto);
       const payments = (await queryRunner.query(
@@ -194,7 +172,7 @@ export class PaymentCreationService {
       await queryRunner.commitTransaction();
 
       if (dto.status === PaymentStatus.APPROVED) {
-        await this.notifyTenantOfApprovedPayment(
+        await this.paymentCreationNotificationService.notifyTenantOfApprovedPayment(
           dto.tenant_id,
           payment.id,
           dto.amount,
@@ -209,23 +187,6 @@ export class PaymentCreationService {
       throw error;
     } finally {
       await queryRunner.release();
-    }
-  }
-
-  private validateContractBelongsToPayment(
-    contract: ContractValidationRow,
-    dto: CreatePaymentAsAdminDto,
-  ): void {
-    if (contract.tenant_id !== dto.tenant_id) {
-      throw new BadRequestException(
-        'El contrato no pertenece al inquilino especificado',
-      );
-    }
-
-    if (contract.property_id !== dto.property_id) {
-      throw new BadRequestException(
-        'El contrato no pertenece a la propiedad especificada',
-      );
     }
   }
 
@@ -244,90 +205,6 @@ export class PaymentCreationService {
     if (dto.received_by) metadata.received_by = dto.received_by;
 
     return metadata;
-  }
-
-  private async notifyAdminsOfPendingPayment(params: {
-    schemaName: string | null;
-    schemaPrefix: string;
-    tenantSlug?: string;
-    payment: Payment;
-    amount: number;
-    currency: string;
-    hasReceipt: boolean;
-  }): Promise<void> {
-    try {
-      const admins = await this.dataSource.query<{ id: number }[]>(
-        `SELECT id FROM ${params.schemaPrefix}"user" WHERE role = 'ADMIN' AND is_active = true LIMIT 5`,
-      );
-      const receiptNote = params.hasReceipt ? ' con comprobante adjunto' : '';
-
-      await Promise.all(
-        admins.map((admin) =>
-          params.schemaName
-            ? this.notificationsService.createForUserInSchema(
-                params.schemaName,
-                admin.id,
-                NotificationEventType.PAYMENT_CREATED,
-                'Pago pendiente de aprobación',
-                `Un inquilino registró un pago de ${params.amount} ${params.currency}${receiptNote}. Requiere revisión.`,
-                {
-                  payment_id: params.payment.id,
-                  amount: params.amount,
-                  currency: params.currency,
-                  has_receipt: params.hasReceipt,
-                },
-                params.tenantSlug,
-              )
-            : this.notificationsService.createForUser(
-                admin.id,
-                NotificationEventType.PAYMENT_CREATED,
-                'Pago pendiente de aprobación',
-                `Un inquilino registró un pago de ${params.amount} ${params.currency}${receiptNote}. Requiere revisión.`,
-                {
-                  payment_id: params.payment.id,
-                  amount: params.amount,
-                  currency: params.currency,
-                  has_receipt: params.hasReceipt,
-                },
-                params.tenantSlug,
-              ),
-        ),
-      );
-    } catch {
-      // Las notificaciones no deben romper la creación del pago.
-    }
-  }
-
-  private async notifyTenantOfApprovedPayment(
-    tenantId: number,
-    paymentId: number,
-    amount: number,
-    currency: string,
-    schemaName?: string,
-  ): Promise<void> {
-    try {
-      if (schemaName) {
-        await this.notificationsService.createForUserInSchema(
-          schemaName,
-          tenantId,
-          NotificationEventType.PAYMENT_APPROVED,
-          'Pago aprobado',
-          `Tu pago de ${amount} ${currency} ha sido aprobado`,
-          { payment_id: paymentId, amount, currency },
-        );
-        return;
-      }
-
-      await this.notificationsService.createForUser(
-        tenantId,
-        NotificationEventType.PAYMENT_APPROVED,
-        'Pago aprobado',
-        `Tu pago de ${amount} ${currency} ha sido aprobado`,
-        { payment_id: paymentId, amount, currency },
-      );
-    } catch {
-      // Las notificaciones no deben romper la creación del pago.
-    }
   }
 
   private async getTenantSchemaName(tenantSlug: string): Promise<string> {

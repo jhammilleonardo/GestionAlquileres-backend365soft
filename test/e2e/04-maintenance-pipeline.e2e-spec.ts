@@ -27,8 +27,29 @@ import {
 
 const SLUG = 'e2e-maintenance';
 
+interface AuthTokenBody {
+  access_token?: string;
+}
+
+interface RegisteredUserBody {
+  id?: number;
+}
+
+interface IdBody {
+  id?: number;
+}
+
+interface MaintenanceStageBody {
+  current_stage?: string;
+}
+
+interface MaintenanceAssignBody {
+  assigned_to?: number;
+}
+
 describe('E2E #4 — Pipeline de mantenimiento', () => {
   let app: INestApplication;
+  let httpServer: Parameters<typeof request>[0];
   let dataSource: DataSource;
   let adminToken: string;
   let tenantToken: string;
@@ -43,6 +64,7 @@ describe('E2E #4 — Pipeline de mantenimiento', () => {
 
   beforeAll(async () => {
     app = await createTestApp();
+    httpServer = app.getHttpServer() as Parameters<typeof request>[0];
     dataSource = app.get(DataSource);
     await dropTenantSchema(dataSource, SLUG);
   });
@@ -53,7 +75,7 @@ describe('E2E #4 — Pipeline de mantenimiento', () => {
   });
 
   it('1. registra empresa + admin', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .post('/auth/register-admin')
       .send({
         slug: SLUG,
@@ -65,14 +87,15 @@ describe('E2E #4 — Pipeline de mantenimiento', () => {
       })
       .expect(201);
 
-    adminToken = res.body.access_token as string;
+    const body = res.body as AuthTokenBody;
+    adminToken = body.access_token ?? '';
     ({ typeId, subtypeId } = await seedPublicPropertyTypes(dataSource, SLUG));
   });
 
   it('2. registra inquilino y crea propiedad + contrato activo', async () => {
     const schema = schemaNameFromSlug(SLUG);
 
-    const tenantRes = await request(app.getHttpServer())
+    const tenantRes = await request(httpServer)
       .post(`/auth/${SLUG}/register`)
       .send({
         name: 'Inquilino Mant',
@@ -82,16 +105,18 @@ describe('E2E #4 — Pipeline de mantenimiento', () => {
       })
       .expect(201);
 
-    tenantUserId = tenantRes.body.id as number;
+    const tenantBody = tenantRes.body as RegisteredUserBody;
+    tenantUserId = tenantBody.id ?? 0;
 
-    const tenantLogin = await request(app.getHttpServer())
+    const tenantLogin = await request(httpServer)
       .post(`/auth/${SLUG}/login`)
       .send({ email: 'mant@inquilino.com', password: 'Inquilino365Ok!' })
       .expect(200);
 
-    tenantToken = tenantLogin.body.access_token as string;
+    const tenantLoginBody = tenantLogin.body as AuthTokenBody;
+    tenantToken = tenantLoginBody.access_token ?? '';
 
-    const propRes = await request(app.getHttpServer())
+    const propRes = await request(httpServer)
       .post(`/${SLUG}/admin/properties`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
@@ -111,7 +136,8 @@ describe('E2E #4 — Pipeline de mantenimiento', () => {
       })
       .expect(201);
 
-    propertyId = propRes.body.id as number;
+    const propertyBody = propRes.body as IdBody;
+    propertyId = propertyBody.id ?? 0;
 
     const today = new Date().toISOString().split('T')[0];
     const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
@@ -142,16 +168,17 @@ describe('E2E #4 — Pipeline de mantenimiento', () => {
     );
     techUserId = rows[0].id;
 
-    const loginRes = await request(app.getHttpServer())
+    const loginRes = await request(httpServer)
       .post(`/auth/${SLUG}/login`)
       .send({ email: 'tech@e2e-maint.com', password: 'Tecnico365Ok!' })
       .expect(200);
 
-    techToken = loginRes.body.access_token as string;
+    const loginBody = loginRes.body as AuthTokenBody;
+    techToken = loginBody.access_token ?? '';
   });
 
   it('4. el inquilino reporta una solicitud de mantenimiento', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .post(`/${SLUG}/tenant/maintenance`)
       .set('Authorization', `Bearer ${tenantToken}`)
       .send({
@@ -165,13 +192,14 @@ describe('E2E #4 — Pipeline de mantenimiento', () => {
       })
       .expect(201);
 
-    maintenanceId = res.body.id as number;
+    const body = res.body as IdBody & MaintenanceStageBody;
+    maintenanceId = body.id ?? 0;
     expect(maintenanceId).toBeDefined();
-    expect(res.body.current_stage).toBe('REPORTED');
+    expect(body.current_stage).toBe('REPORTED');
   });
 
   it('5. el admin lista solicitudes y ve la nueva', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .get(`/${SLUG}/admin/maintenance`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
@@ -181,67 +209,73 @@ describe('E2E #4 — Pipeline de mantenimiento', () => {
   });
 
   it('6. el admin asigna la solicitud al técnico', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .patch(`/${SLUG}/admin/maintenance/${maintenanceId}/assign-vendor`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ assigned_to: techUserId })
       .expect(200);
 
-    expect(res.body.assigned_to).toBe(techUserId);
+    const body = res.body as MaintenanceAssignBody;
+    expect(body.assigned_to).toBe(techUserId);
   });
 
   it('7. el admin avanza la solicitud a ASSIGNED y luego SCHEDULED', async () => {
-    const assigned = await request(app.getHttpServer())
+    const assigned = await request(httpServer)
       .patch(`/${SLUG}/admin/maintenance/${maintenanceId}/stage`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ to_stage: 'ASSIGNED', notes: 'Orden asignada al técnico.' })
       .expect(200);
 
-    expect(assigned.body.current_stage).toBe('ASSIGNED');
+    const assignedBody = assigned.body as MaintenanceStageBody;
+    expect(assignedBody.current_stage).toBe('ASSIGNED');
 
-    const scheduled = await request(app.getHttpServer())
+    const scheduled = await request(httpServer)
       .patch(`/${SLUG}/admin/maintenance/${maintenanceId}/stage`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ to_stage: 'SCHEDULED', notes: 'Visita técnica agendada.' })
       .expect(200);
 
-    expect(scheduled.body.current_stage).toBe('SCHEDULED');
+    const scheduledBody = scheduled.body as MaintenanceStageBody;
+    expect(scheduledBody.current_stage).toBe('SCHEDULED');
   });
 
   it('8. el admin autoriza el trabajo (regla Bolivia)', async () => {
-    await request(app.getHttpServer())
+    await request(httpServer)
       .patch(`/${SLUG}/admin/maintenance/${maintenanceId}/authorize`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
   });
 
   it('9. el técnico avanza la etapa a IN_PROGRESS', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .patch(`/${SLUG}/tecnico/maintenance/${maintenanceId}/stage`)
       .set('Authorization', `Bearer ${techToken}`)
       .send({ to_stage: 'IN_PROGRESS' })
       .expect(200);
 
-    expect(res.body.current_stage).toBe('IN_PROGRESS');
+    const body = res.body as MaintenanceStageBody;
+    expect(body.current_stage).toBe('IN_PROGRESS');
   });
 
   it('10. el técnico marca la solicitud como COMPLETED', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .patch(`/${SLUG}/tecnico/maintenance/${maintenanceId}/stage`)
       .set('Authorization', `Bearer ${techToken}`)
       .send({ to_stage: 'COMPLETED', notes: 'Grifo reparado sin novedad.' })
       .expect(200);
 
-    expect(res.body.current_stage).toBe('COMPLETED');
+    const body = res.body as MaintenanceStageBody;
+    expect(body.current_stage).toBe('COMPLETED');
   });
 
   it('11. la solicitud queda en estado COMPLETED al consultarla', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .get(`/${SLUG}/admin/maintenance/${maintenanceId}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
-    expect(res.body.current_stage).toBe('COMPLETED');
+    const body = res.body as MaintenanceStageBody;
+    expect(body.current_stage).toBe('COMPLETED');
   });
 
   it('12. se generó al menos una notificación relacionada con el mantenimiento', async () => {

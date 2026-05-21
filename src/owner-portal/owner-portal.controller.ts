@@ -26,6 +26,14 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OwnerPortalGuard } from '../common/guards/owner-portal.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { OwnerPortalService } from './owner-portal.service';
+import {
+  OwnerContractResponseDto,
+  OwnerDashboardResponseDto,
+  OwnerMaintenanceAuthorizationResponseDto,
+  OwnerMaintenanceResponseDto,
+  OwnerPropertyResponseDto,
+  OwnerStatementSummaryResponseDto,
+} from './dto/owner-portal-response.dto';
 
 interface OwnerUser {
   userId: number;
@@ -48,7 +56,7 @@ export class OwnerPortalController {
   @Get('dashboard')
   @ApiOperation({ summary: 'Dashboard del propietario' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiOkResponse({ description: 'Resumen del propietario' })
+  @ApiOkResponse({ type: OwnerDashboardResponseDto })
   @ApiForbiddenResponse({ description: 'Solo accesible con rol PROPIETARIO' })
   async getDashboard(@CurrentUser() user: OwnerUser) {
     return this.ownerPortalService.getDashboard(user.rentalOwnerId);
@@ -59,7 +67,7 @@ export class OwnerPortalController {
   @Get('properties')
   @ApiOperation({ summary: 'Propiedades del propietario' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiOkResponse({ description: 'Lista de propiedades del propietario' })
+  @ApiOkResponse({ type: OwnerPropertyResponseDto, isArray: true })
   async getProperties(@CurrentUser() user: OwnerUser) {
     return this.ownerPortalService.getProperties(user.rentalOwnerId);
   }
@@ -69,7 +77,7 @@ export class OwnerPortalController {
   @Get('statements')
   @ApiOperation({ summary: 'Historial de liquidaciones' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiOkResponse({ description: 'Lista de liquidaciones del propietario' })
+  @ApiOkResponse({ type: OwnerStatementSummaryResponseDto, isArray: true })
   async getStatements(@CurrentUser() user: OwnerUser) {
     return this.ownerPortalService.getStatements(user.rentalOwnerId);
   }
@@ -115,7 +123,7 @@ export class OwnerPortalController {
   @Get('maintenance')
   @ApiOperation({ summary: 'Solicitudes de mantenimiento activas' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiOkResponse({ description: 'Solicitudes de mantenimiento activas' })
+  @ApiOkResponse({ type: OwnerMaintenanceResponseDto, isArray: true })
   async getMaintenance(@CurrentUser() user: OwnerUser) {
     return this.ownerPortalService.getMaintenance(user.rentalOwnerId);
   }
@@ -128,7 +136,7 @@ export class OwnerPortalController {
     type: Number,
     description: 'ID de la solicitud de mantenimiento',
   })
-  @ApiOkResponse({ description: 'Gasto autorizado correctamente' })
+  @ApiOkResponse({ type: OwnerMaintenanceAuthorizationResponseDto })
   @ApiForbiddenResponse({
     description: 'La solicitud no pertenece al propietario o no es de Bolivia',
   })
@@ -147,7 +155,7 @@ export class OwnerPortalController {
   @Get('contracts')
   @ApiOperation({ summary: 'Contratos firmados descargables' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiOkResponse({ description: 'Contratos firmados con PDF' })
+  @ApiOkResponse({ type: OwnerContractResponseDto, isArray: true })
   async getContracts(@CurrentUser() user: OwnerUser) {
     return this.ownerPortalService.getContracts(user.rentalOwnerId);
   }

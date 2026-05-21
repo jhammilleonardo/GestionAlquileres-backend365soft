@@ -39,6 +39,7 @@ import { ContractTemplatesModule } from './contract-templates/contract-templates
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { TenantWebsiteModule } from './tenant-website/tenant-website.module';
 import { ReportsModule } from './reports/reports.module';
+import { ProductionReadinessService } from './common/production/production-readiness.service';
 
 @Module({
   imports: [
@@ -85,7 +86,7 @@ import { ReportsModule } from './reports/reports.module';
         ],
         // Sincronizar automáticamente en desarrollo - crea/actualiza tablas desde las entidades
         synchronize: configService.app.nodeEnv === 'development',
-        logging: configService.app.nodeEnv === 'development',
+        logging: (process.env.TYPEORM_LOGGING ?? 'false') === 'true',
         schema: 'public',
         // Configurar el search_path por defecto
         searchPath: 'public',
@@ -126,6 +127,7 @@ import { ReportsModule } from './reports/reports.module';
   controllers: [AppController],
   providers: [
     AppService,
+    ProductionReadinessService,
     // Guard global de Rate Limiting
     {
       provide: APP_GUARD,
@@ -142,7 +144,7 @@ export class AppModule {
         { path: 'health', method: RequestMethod.GET },
         { path: 'auth/register-admin', method: RequestMethod.POST }, // Crear tenant + admin no requiere tenant context
         // /storage/* se sirve por StorageController con autorización propia
-        { path: 'storage/(.*)', method: RequestMethod.ALL },
+        { path: 'storage/*path', method: RequestMethod.ALL },
         // NOTA: auth/:slug/login y auth/:slug/register NO se excluyen porque necesitan detectar el tenant
       )
       .forRoutes('*');

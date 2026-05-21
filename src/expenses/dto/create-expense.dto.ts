@@ -11,7 +11,6 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ExpenseCategoryEnum } from '../enums/expense-category.enum';
 
 export class CreateExpenseDto {
   @ApiProperty({

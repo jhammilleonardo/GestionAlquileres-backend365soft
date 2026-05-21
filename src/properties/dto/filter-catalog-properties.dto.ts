@@ -7,6 +7,7 @@ import {
   Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * DTO para filtrar propiedades en el catálogo público
@@ -17,6 +18,7 @@ export class FilterCatalogPropertiesDto {
    * Filtro por tipo de propiedad (residential, commercial, etc)
    * Valores: 'residential' | 'commercial' | 'industrial'
    */
+  @ApiPropertyOptional({ example: 'residential' })
   @IsOptional()
   @IsString()
   type?: string;
@@ -24,6 +26,7 @@ export class FilterCatalogPropertiesDto {
   /**
    * Precio mínimo en la moneda del tenant
    */
+  @ApiPropertyOptional({ example: 1000, minimum: 0 })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -33,6 +36,7 @@ export class FilterCatalogPropertiesDto {
   /**
    * Precio máximo en la moneda del tenant
    */
+  @ApiPropertyOptional({ example: 5000, minimum: 0 })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -42,6 +46,7 @@ export class FilterCatalogPropertiesDto {
   /**
    * Cantidad mínima de dormitorios
    */
+  @ApiPropertyOptional({ example: 2, minimum: 0 })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -52,6 +57,7 @@ export class FilterCatalogPropertiesDto {
    * Tipo de alquiler
    * Valores: 'short_term' | 'long_term' | 'any'
    */
+  @ApiPropertyOptional({ example: 'long_term' })
   @IsOptional()
   @IsString()
   rental_type?: string;
@@ -60,6 +66,9 @@ export class FilterCatalogPropertiesDto {
    * Estado de la propiedad
    * Valores: 'DISPONIBLE' | 'OCUPADO' | 'MANTENIMIENTO' | 'RESERVADO'
    */
+  @ApiPropertyOptional({
+    enum: ['DISPONIBLE', 'OCUPADO', 'MANTENIMIENTO', 'RESERVADO'],
+  })
   @IsOptional()
   @IsString()
   @IsEnum(['DISPONIBLE', 'OCUPADO', 'MANTENIMIENTO', 'RESERVADO'])
@@ -68,6 +77,7 @@ export class FilterCatalogPropertiesDto {
   /**
    * Búsqueda de texto libre en título y descripción
    */
+  @ApiPropertyOptional({ example: 'moderno vista' })
   @IsOptional()
   @IsString()
   search?: string;
@@ -75,6 +85,7 @@ export class FilterCatalogPropertiesDto {
   /**
    * Ciudad donde buscar
    */
+  @ApiPropertyOptional({ example: 'La Paz' })
   @IsOptional()
   @IsString()
   city?: string;
@@ -82,6 +93,7 @@ export class FilterCatalogPropertiesDto {
   /**
    * País donde buscar
    */
+  @ApiPropertyOptional({ example: 'Bolivia' })
   @IsOptional()
   @IsString()
   country?: string;
@@ -90,6 +102,9 @@ export class FilterCatalogPropertiesDto {
    * Ordenamiento de resultados
    * Valores: 'price_asc' | 'price_desc' | 'newest' | 'available'
    */
+  @ApiPropertyOptional({
+    enum: ['price_asc', 'price_desc', 'newest', 'available'],
+  })
   @IsOptional()
   @IsString()
   @IsEnum(['price_asc', 'price_desc', 'newest', 'available'])
@@ -98,6 +113,7 @@ export class FilterCatalogPropertiesDto {
   /**
    * Número de página (comienza en 1)
    */
+  @ApiPropertyOptional({ example: 1, minimum: 1 })
   @IsOptional()
   @IsNumber()
   @Min(1)
@@ -107,6 +123,7 @@ export class FilterCatalogPropertiesDto {
   /**
    * Límite de resultados por página (máximo 100)
    */
+  @ApiPropertyOptional({ example: 20, minimum: 1, maximum: 100 })
   @IsOptional()
   @IsNumber()
   @Min(1)

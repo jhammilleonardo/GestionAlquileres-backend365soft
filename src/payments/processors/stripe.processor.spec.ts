@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StripeProcessor } from './stripe.processor';
 import { ProcessorPaymentInput } from './payment-processor.interface';
@@ -23,6 +23,7 @@ jest.mock('stripe', () => {
 
 describe('StripeProcessor', () => {
   let processor: StripeProcessor;
+  let loggerErrorSpy: jest.SpyInstance;
 
   const baseInput: ProcessorPaymentInput = {
     amount: 1200,
@@ -34,6 +35,8 @@ describe('StripeProcessor', () => {
   };
 
   beforeEach(async () => {
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         StripeProcessor,
@@ -55,6 +58,10 @@ describe('StripeProcessor', () => {
     processor = module.get(StripeProcessor);
 
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    loggerErrorSpy.mockRestore();
   });
 
   it('debe tener processorName = "stripe"', () => {
@@ -88,9 +95,14 @@ describe('StripeProcessor', () => {
     });
 
     it('debe calcular la tarifa del procesador correctamente (2.9% + $0.30)', async () => {
-      mockStripeInstance.paymentIntents.create.mockResolvedValue({ id: 'pi_test' });
+      mockStripeInstance.paymentIntents.create.mockResolvedValue({
+        id: 'pi_test',
+      });
 
-      const result = await processor.createPayment({ ...baseInput, amount: 1000 });
+      const result = await processor.createPayment({
+        ...baseInput,
+        amount: 1000,
+      });
 
       // 1000 * 0.029 + 0.30 = 29 + 0.30 = 29.30
       expect(result.processor_fee).toBe(29.3);
@@ -188,7 +200,9 @@ describe('StripeProcessor', () => {
 
     it('debe lanzar BadRequestException si la firma es inválida', async () => {
       mockStripeInstance.webhooks.constructEvent.mockImplementation(() => {
-        throw new Error('No signatures found matching the expected signature for payload');
+        throw new Error(
+          'No signatures found matching the expected signature for payload',
+        );
       });
 
       await expect(

@@ -17,8 +17,10 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
+  ApiBody,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiNotFoundResponse,
 } from '@nestjs/swagger';
 import { VendorsService } from './vendors.service';
 import { CreateVendorDto, UpdateVendorDto, VendorFiltersDto } from './dto';
@@ -26,6 +28,11 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import {
+  VendorHistoryResponseDto,
+  VendorMessageResponseDto,
+  VendorResponseDto,
+} from './dto/vendor-response.dto';
 
 interface JwtUser {
   userId: number;
@@ -44,7 +51,7 @@ export class VendorsController {
   @RequirePermission('vendors', 'view')
   @ApiOperation({ summary: 'Listar proveedores con filtros opcionales' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiOkResponse({ description: 'Lista de proveedores' })
+  @ApiOkResponse({ type: VendorResponseDto, isArray: true })
   findAll(@Query() filters: VendorFiltersDto) {
     return this.vendorsService.findAll(filters);
   }
@@ -54,7 +61,8 @@ export class VendorsController {
   @ApiOperation({ summary: 'Obtener proveedor por ID con contador de órdenes' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Datos del proveedor' })
+  @ApiOkResponse({ type: VendorResponseDto })
+  @ApiNotFoundResponse({ description: 'Proveedor no encontrado' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.vendorsService.findOne(id);
   }
@@ -63,7 +71,8 @@ export class VendorsController {
   @RequirePermission('vendors', 'create')
   @ApiOperation({ summary: 'Crear un nuevo proveedor externo' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiCreatedResponse({ description: 'Proveedor creado correctamente' })
+  @ApiBody({ type: CreateVendorDto })
+  @ApiCreatedResponse({ type: VendorResponseDto })
   create(@Body() dto: CreateVendorDto, @CurrentUser() user: JwtUser) {
     return this.vendorsService.create(dto, user.userId);
   }
@@ -73,7 +82,9 @@ export class VendorsController {
   @ApiOperation({ summary: 'Actualizar datos del proveedor' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Proveedor actualizado' })
+  @ApiBody({ type: UpdateVendorDto })
+  @ApiOkResponse({ type: VendorResponseDto })
+  @ApiNotFoundResponse({ description: 'Proveedor no encontrado' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateVendorDto) {
     return this.vendorsService.update(id, dto);
   }
@@ -84,7 +95,8 @@ export class VendorsController {
   @ApiOperation({ summary: 'Desactivar proveedor (soft delete)' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Proveedor desactivado' })
+  @ApiOkResponse({ type: VendorMessageResponseDto })
+  @ApiNotFoundResponse({ description: 'Proveedor no encontrado' })
   deactivate(@Param('id', ParseIntPipe) id: number) {
     return this.vendorsService.deactivate(id);
   }
@@ -96,7 +108,8 @@ export class VendorsController {
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Historial de órdenes' })
+  @ApiOkResponse({ type: VendorHistoryResponseDto, isArray: true })
+  @ApiNotFoundResponse({ description: 'Proveedor no encontrado' })
   getHistory(@Param('id', ParseIntPipe) id: number) {
     return this.vendorsService.getHistory(id);
   }

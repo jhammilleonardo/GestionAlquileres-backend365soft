@@ -22,6 +22,11 @@ import {
   ApiParam,
   ApiQuery,
   ApiConsumes,
+  ApiBody,
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiCreatedResponse,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { InspectionsService } from './inspections.service';
@@ -33,6 +38,12 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { inspectionPhotoMulterConfig } from '../common/utils/multer.config';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
+import {
+  InspectionCompareResponseDto,
+  InspectionDetailResponseDto,
+  InspectionPhotosResponseDto,
+  InspectionResponseDto,
+} from './dto/inspection-response.dto';
 
 @ApiTags('Inspections')
 @ApiBearerAuth()
@@ -45,6 +56,8 @@ export class InspectionsController {
   @RequirePermission('inspections', 'create')
   @ApiOperation({ summary: 'Crear nueva inspección' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiBody({ type: CreateInspectionDto })
+  @ApiCreatedResponse({ type: InspectionResponseDto })
   create(@Req() req: TenantRequest, @Body() dto: CreateInspectionDto) {
     return this.inspectionsService.create(
       req.tenant!.schema_name,
@@ -60,6 +73,8 @@ export class InspectionsController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiQuery({ name: 'move_in', type: Number })
   @ApiQuery({ name: 'move_out', type: Number })
+  @ApiOkResponse({ type: InspectionCompareResponseDto })
+  @ApiNotFoundResponse({ description: 'Inspección no encontrada' })
   compare(
     @Req() req: TenantRequest,
     @Query('move_in', ParseIntPipe) moveInId: number,
@@ -76,6 +91,7 @@ export class InspectionsController {
   @RequirePermission('inspections', 'view')
   @ApiOperation({ summary: 'Listar inspecciones con filtros' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiOkResponse({ type: InspectionResponseDto, isArray: true })
   findAll(@Req() req: TenantRequest, @Query() filters: FilterInspectionsDto) {
     return this.inspectionsService.findAll(req.tenant!.schema_name, filters);
   }
@@ -84,6 +100,9 @@ export class InspectionsController {
   @RequirePermission('inspections', 'view')
   @ApiOperation({ summary: 'Obtener inspección con ítems' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: InspectionDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Inspección no encontrada' })
   findOne(@Req() req: TenantRequest, @Param('id', ParseIntPipe) id: number) {
     return this.inspectionsService.findOne(req.tenant!.schema_name, id);
   }
@@ -92,6 +111,10 @@ export class InspectionsController {
   @RequirePermission('inspections', 'edit')
   @ApiOperation({ summary: 'Completar / actualizar ítems del checklist' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: UpdateInspectionItemsDto })
+  @ApiOkResponse({ type: InspectionDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Inspección no encontrada' })
   updateItems(
     @Req() req: TenantRequest,
     @Param('id', ParseIntPipe) id: number,
@@ -110,12 +133,29 @@ export class InspectionsController {
   @UseInterceptors(FilesInterceptor('files', 5, inspectionPhotoMulterConfig))
   @ApiOperation({ summary: 'Subir fotos a un ítem de la inspección' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
   @ApiQuery({
     name: 'item_id',
     type: Number,
     description: 'ID del ítem al que se asocian las fotos',
   })
   @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['files'],
+      properties: {
+        files: {
+          type: 'array',
+          maxItems: 5,
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
+  @ApiOkResponse({ type: InspectionPhotosResponseDto })
+  @ApiBadRequestResponse({ description: 'No se enviaron archivos' })
+  @ApiNotFoundResponse({ description: 'Inspección o ítem no encontrado' })
   uploadPhotos(
     @Req() req: TenantRequest,
     @Param('id', ParseIntPipe) id: number,
@@ -138,6 +178,9 @@ export class InspectionsController {
   @RequirePermission('inspections', 'view')
   @ApiOperation({ summary: 'Generar reporte PDF de la inspección' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ description: 'Archivo PDF de inspección' })
+  @ApiNotFoundResponse({ description: 'Inspección no encontrada' })
   async generatePdf(
     @Req() req: TenantRequest,
     @Param('id', ParseIntPipe) id: number,

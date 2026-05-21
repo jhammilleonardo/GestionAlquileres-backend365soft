@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Socket } from 'socket.io';
@@ -7,8 +8,13 @@ describe('NotificationsGateway', () => {
   let gateway: NotificationsGateway;
   let jwtService: { verify: jest.Mock };
   let configService: { get: jest.Mock };
+  let loggerLogSpy: jest.SpyInstance;
+  let loggerWarnSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    loggerLogSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    loggerWarnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
     jwtService = { verify: jest.fn() };
     configService = { get: jest.fn().mockReturnValue('test-jwt-secret') };
 
@@ -18,7 +24,18 @@ describe('NotificationsGateway', () => {
     );
   });
 
-  function createClient(overrides?: Record<string, unknown>): Socket {
+  afterEach(() => {
+    loggerLogSpy.mockRestore();
+    loggerWarnSpy.mockRestore();
+  });
+
+  type TestSocket = Socket & {
+    data: Record<string, unknown>;
+    join: jest.Mock<Promise<void>, [string]>;
+    disconnect: jest.Mock<Socket, [boolean?]>;
+  };
+
+  function createClient(overrides?: Partial<TestSocket>): TestSocket {
     return {
       id: 'socket-1',
       handshake: { auth: {}, headers: {}, query: {} },
@@ -26,7 +43,7 @@ describe('NotificationsGateway', () => {
       join: jest.fn().mockResolvedValue(undefined),
       disconnect: jest.fn(),
       ...overrides,
-    } as unknown as Socket;
+    } as unknown as TestSocket;
   }
 
   const validPayload = {
@@ -62,7 +79,11 @@ describe('NotificationsGateway', () => {
     });
 
     it('debe conectar sin tenantSlug en handshake usando el slug del JWT', () => {
-      jwtService.verify.mockReturnValue({ ...validPayload, tenantSlug: 'acme', sub: 7 });
+      jwtService.verify.mockReturnValue({
+        ...validPayload,
+        tenantSlug: 'acme',
+        sub: 7,
+      });
 
       const client = createClient({
         handshake: { auth: { token: 'token-abc' }, headers: {}, query: {} },
@@ -149,7 +170,10 @@ describe('NotificationsGateway', () => {
     });
 
     it('debe rechazar la conexión si el userId no es un número válido', () => {
-      jwtService.verify.mockReturnValue({ ...validPayload, sub: 'no-es-numero' });
+      jwtService.verify.mockReturnValue({
+        ...validPayload,
+        sub: 'no-es-numero',
+      });
 
       const client = createClient({
         handshake: { auth: { token: 'token-123' }, headers: {}, query: {} },
@@ -166,7 +190,10 @@ describe('NotificationsGateway', () => {
     it('debe emitir el evento al room del tenant', () => {
       const emit = jest.fn();
       const to = jest.fn().mockReturnValue({ emit });
-      Object.defineProperty(gateway, 'server', { value: { to }, writable: true });
+      Object.defineProperty(gateway, 'server', {
+        value: { to },
+        writable: true,
+      });
 
       gateway.emitTenantEvent('demo', 'payment.received', { paymentId: 100 });
 
@@ -179,7 +206,10 @@ describe('NotificationsGateway', () => {
     it('debe emitir el evento al room del usuario', () => {
       const emit = jest.fn();
       const to = jest.fn().mockReturnValue({ emit });
-      Object.defineProperty(gateway, 'server', { value: { to }, writable: true });
+      Object.defineProperty(gateway, 'server', {
+        value: { to },
+        writable: true,
+      });
 
       gateway.emitUserEvent('demo', 25, 'message.new', { threadId: 7 });
 

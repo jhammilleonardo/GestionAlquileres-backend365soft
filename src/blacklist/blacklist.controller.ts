@@ -29,6 +29,7 @@ import {
   BlacklistCheckResponseDto,
   BlacklistAddResponseDto,
   BlacklistListResponseDto,
+  BlacklistAuditLogResponseDto,
 } from './dto/blacklist.dto';
 import { DocumentType } from './enums/blacklist.enum';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
@@ -207,6 +208,7 @@ export class AdminBlacklistController {
   @ApiResponse({
     status: 200,
     description: 'Log de auditoría',
+    type: [BlacklistAuditLogResponseDto],
   })
   async getAuditLog(
     @Param('slug') slug: string,

@@ -4,10 +4,9 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ContractsService, ContractResult } from './contracts.service';
 import { ContractStatus } from './enums/contract-status.enum';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
-import { PdfService } from './pdf.service';
+import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
-import { ContractTemplatesService } from '../contract-templates/contract-templates.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { ContractQueriesService } from './contract-queries.service';
 import { ContractNumberService } from './contract-number.service';
@@ -15,6 +14,10 @@ import { ContractHistoryService } from './contract-history.service';
 import { ContractRenewalService } from './contract-renewal.service';
 import { ContractSigningService } from './contract-signing.service';
 import { ContractCreationService } from './contract-creation.service';
+import { ContractCreationSideEffectsService } from './contract-creation-side-effects.service';
+import { ContractCreationValidationService } from './contract-creation-validation.service';
+import { ContractPdfService } from './contract-pdf.service';
+import { ContractUpdateService } from './contract-update.service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -81,16 +84,18 @@ describe('ContractsService.renew', () => {
       providers: [
         ContractsService,
         ContractCreationService,
+        ContractCreationSideEffectsService,
+        ContractCreationValidationService,
         ContractQueriesService,
         ContractNumberService,
         ContractHistoryService,
+        ContractUpdateService,
         ContractRenewalService,
         ContractSigningService,
+        { provide: ContractPdfService, useValue: { generatePdf: jest.fn() } },
         { provide: getDataSourceToken(), useValue: mockDataSource },
-        { provide: PdfService, useValue: {} },
         { provide: NotificationsService, useValue: {} },
         { provide: LifecycleNotificationsService, useValue: {} },
-        { provide: ContractTemplatesService, useValue: {} },
         { provide: AuditLogsService, useValue: mockAuditLog },
         { provide: TenantsService, useValue: {} },
       ],
@@ -331,35 +336,42 @@ describe('ContractsService.update', () => {
   const mockLifecycleNotifications = {
     onContractActivated: jest.fn().mockResolvedValue(undefined),
   };
+  const mockNotifications = {
+    createForUser: jest.fn().mockResolvedValue(undefined),
+    createForUserInSchema: jest.fn().mockResolvedValue(undefined),
+  };
+  const mockTenantsService = {
+    findBySlug: jest.fn(),
+  };
 
   beforeEach(async () => {
     mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
+    mockTenantsService.findBySlug.mockResolvedValue({
+      slug: 'acme',
+      schema_name: 'tenant_acme',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContractsService,
         ContractCreationService,
+        ContractCreationSideEffectsService,
+        ContractCreationValidationService,
         ContractQueriesService,
         ContractNumberService,
         ContractHistoryService,
+        ContractUpdateService,
         ContractRenewalService,
         ContractSigningService,
+        { provide: ContractPdfService, useValue: { generatePdf: jest.fn() } },
         { provide: getDataSourceToken(), useValue: mockDataSource },
-        { provide: PdfService, useValue: {} },
-        {
-          provide: NotificationsService,
-          useValue: {
-            createForUser: jest.fn().mockResolvedValue(undefined),
-            createForUserInSchema: jest.fn().mockResolvedValue(undefined),
-          },
-        },
+        { provide: NotificationsService, useValue: mockNotifications },
         {
           provide: LifecycleNotificationsService,
           useValue: mockLifecycleNotifications,
         },
-        { provide: ContractTemplatesService, useValue: {} },
         { provide: AuditLogsService, useValue: mockAuditLog },
-        { provide: TenantsService, useValue: {} },
+        { provide: TenantsService, useValue: mockTenantsService },
       ],
     }).compile();
 
@@ -431,6 +443,92 @@ describe('ContractsService.update', () => {
       }),
     );
   });
+
+  it('usa schema calificado y notificación tenant-aware al cancelar contrato tenant', async () => {
+    const oldContract = makeContract({ status: ContractStatus.ACTIVO });
+    const updatedContract = makeContract({ status: ContractStatus.CANCELADO });
+
+    mockQueryRunner.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mockDataSource.query.mockResolvedValueOnce([updatedContract]);
+
+    await service.update(
+      1,
+      {
+        status: ContractStatus.CANCELADO,
+        update_reason: 'Cancelación solicitada',
+      },
+      99,
+      'acme',
+    );
+
+    expect(mockQueryRunner.query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('FROM "tenant_acme".contracts'),
+      [1],
+    );
+    expect(mockQueryRunner.query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('INSERT INTO "tenant_acme".contract_history'),
+      [
+        1,
+        'status',
+        ContractStatus.ACTIVO,
+        ContractStatus.CANCELADO,
+        99,
+        'Cancelación solicitada',
+      ],
+    );
+    expect(mockQueryRunner.query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining(
+        `UPDATE "tenant_acme".properties SET status = 'DISPONIBLE'`,
+      ),
+      [oldContract.property_id],
+    );
+    expect(mockNotifications.createForUserInSchema).toHaveBeenCalledWith(
+      'tenant_acme',
+      oldContract.tenant_id,
+      NotificationEventType.CONTRACT_EXPIRING,
+      'Contrato cancelado',
+      'Tu contrato ha sido cancelado',
+      { contract_id: 1, new_status: ContractStatus.CANCELADO },
+      'acme',
+    );
+    expect(mockNotifications.createForUser).not.toHaveBeenCalled();
+  });
+
+  it('hace rollback si falla una escritura compuesta del cambio de estado', async () => {
+    const oldContract = makeContract({ status: ContractStatus.BORRADOR });
+    const dbError = new Error('property update failed');
+
+    mockQueryRunner.query
+      .mockResolvedValueOnce([oldContract])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(dbError);
+
+    await expect(
+      service.update(
+        1,
+        {
+          status: ContractStatus.ACTIVO,
+          update_reason: 'Aprobación administrativa',
+        },
+        99,
+      ),
+    ).rejects.toThrow(dbError);
+
+    expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+    expect(
+      mockLifecycleNotifications.onContractActivated,
+    ).not.toHaveBeenCalled();
+    expect(mockAuditLog.log).not.toHaveBeenCalled();
+  });
 });
 
 // ─── getContractHistory ───────────────────────────────────────────────────────
@@ -464,16 +562,18 @@ describe('ContractsService.getContractHistory', () => {
       providers: [
         ContractsService,
         ContractCreationService,
+        ContractCreationSideEffectsService,
+        ContractCreationValidationService,
         ContractQueriesService,
         ContractNumberService,
         ContractHistoryService,
+        ContractUpdateService,
         ContractRenewalService,
         ContractSigningService,
+        { provide: ContractPdfService, useValue: { generatePdf: jest.fn() } },
         { provide: getDataSourceToken(), useValue: mockDataSource },
-        { provide: PdfService, useValue: {} },
         { provide: NotificationsService, useValue: {} },
         { provide: LifecycleNotificationsService, useValue: {} },
-        { provide: ContractTemplatesService, useValue: {} },
         { provide: AuditLogsService, useValue: mockAuditLog },
         { provide: TenantsService, useValue: mockTenantsService },
       ],

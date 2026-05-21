@@ -1,55 +1,23 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
-import { NotificationEventType } from '../notifications/dto/create-notification.dto';
-import { NotificationsService } from '../notifications/notifications.service';
 import { TenantsService } from '../tenants/tenants.service';
-import type { ApplicationResult } from './applications.service';
-import { ApplicationApprovalService } from './application-approval.service';
 import { ApplicationQueriesService } from './application-queries.service';
-import { ApplicationStatusService } from './application-status.service';
+import { ApplicationScreeningDecisionService } from './application-screening-decision.service';
+import {
+  ApplicationScreeningResult,
+  ScreeningChecklistRow,
+} from './application-screening.types';
 import { UpdateScreeningDto } from './dto/update-screening.dto';
-import { ApplicationStatus } from './enums/application-status.enum';
-import { ScreeningFinalStatus } from './enums/screening-final-status.enum';
-
-export interface ScreeningChecklistRow {
-  id: number;
-  application_id: number;
-  documents_verified: boolean;
-  employer_call_name: string | null;
-  employer_call_phone: string | null;
-  employer_call_result: string | null;
-  previous_landlord_name: string | null;
-  previous_landlord_phone: string | null;
-  previous_landlord_result: string | null;
-  blacklist_checked: boolean;
-  blacklist_result: string | null;
-  notes: string | null;
-  final_status: ScreeningFinalStatus | null;
-  reviewed_by: number | null;
-  reviewed_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
-export interface ApplicationScreeningResult {
-  message: string;
-  screening: ScreeningChecklistRow;
-  contract?: Record<string, unknown>;
-}
 
 @Injectable()
 export class ApplicationScreeningService {
-  private readonly logger = new Logger(ApplicationScreeningService.name);
-
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly applicationQueriesService: ApplicationQueriesService,
-    private readonly applicationStatusService: ApplicationStatusService,
-    private readonly applicationApprovalService: ApplicationApprovalService,
-    private readonly notificationsService: NotificationsService,
+    private readonly applicationScreeningDecisionService: ApplicationScreeningDecisionService,
     private readonly tenantsService: TenantsService,
   ) {}
 
@@ -80,33 +48,14 @@ export class ApplicationScreeningService {
       };
     }
 
-    if (dto.final_status === ScreeningFinalStatus.APPROVED) {
-      return this.handleScreeningApproved(
-        id,
-        dto,
-        adminId,
-        checklist,
-        tenantSlug,
-      );
-    }
-
-    if (dto.final_status === ScreeningFinalStatus.REJECTED) {
-      return this.handleScreeningRejected(
-        id,
-        dto,
-        application,
-        checklist,
-        tenantSlug,
-      );
-    }
-
-    return this.handleScreeningRequiresCosigner(
+    return this.applicationScreeningDecisionService.handleFinalStatus(dto, {
       id,
-      dto,
       application,
       checklist,
+      adminId,
       tenantSlug,
-    );
+      schemaName,
+    });
   }
 
   private async upsertChecklist(params: {
@@ -188,123 +137,6 @@ export class ApplicationScreeningService {
     );
 
     return created;
-  }
-
-  private async handleScreeningApproved(
-    id: number,
-    dto: UpdateScreeningDto,
-    adminId: number,
-    checklist: ScreeningChecklistRow,
-    tenantSlug: string,
-  ): Promise<ApplicationScreeningResult> {
-    if (!dto.monthly_rent) {
-      throw new BadRequestException(
-        'Se requiere monthly_rent para aprobar una solicitud y generar el contrato',
-      );
-    }
-
-    const result =
-      await this.applicationApprovalService.approveAndCreateContract(
-        id,
-        {
-          monthly_rent: dto.monthly_rent,
-          currency: dto.currency,
-          payment_day: dto.payment_day,
-          deposit_amount: dto.deposit_amount,
-          admin_feedback:
-            dto.admin_feedback ?? `Solicitud aprobada tras screening completo.`,
-        },
-        adminId,
-        tenantSlug,
-      );
-
-    return {
-      message: 'Solicitud aprobada: contrato generado automáticamente',
-      screening: checklist,
-      contract: result.contract_generated as Record<string, unknown>,
-    };
-  }
-
-  private async handleScreeningRejected(
-    id: number,
-    dto: UpdateScreeningDto,
-    application: ApplicationResult,
-    checklist: ScreeningChecklistRow,
-    tenantSlug: string,
-  ): Promise<{ message: string; screening: ScreeningChecklistRow }> {
-    await this.applicationStatusService.updateStatus(
-      id,
-      {
-        status: ApplicationStatus.RECHAZADA,
-        admin_feedback:
-          dto.admin_feedback ??
-          'Solicitud rechazada tras el proceso de screening.',
-      },
-      tenantSlug,
-    );
-
-    try {
-      const schemaName = await this.getTenantSchemaName(tenantSlug);
-      await this.notificationsService.createForUserInSchema(
-        schemaName,
-        Number(application.applicant_id),
-        'application.status.changed' as NotificationEventType,
-        'Resultado de tu solicitud de alquiler',
-        `Tu solicitud para la propiedad ${String(application.property_title)} ha sido rechazada. ${dto.admin_feedback ?? ''}`.trim(),
-        { applicationId: id, final_status: ScreeningFinalStatus.REJECTED },
-        tenantSlug,
-      );
-    } catch (error) {
-      this.logger.error('Error al notificar rechazo al inquilino', error);
-    }
-
-    return {
-      message: 'Solicitud rechazada. Inquilino notificado.',
-      screening: checklist,
-    };
-  }
-
-  private async handleScreeningRequiresCosigner(
-    id: number,
-    dto: UpdateScreeningDto,
-    application: ApplicationResult,
-    checklist: ScreeningChecklistRow,
-    tenantSlug: string,
-  ): Promise<{ message: string; screening: ScreeningChecklistRow }> {
-    await this.applicationStatusService.updateStatus(
-      id,
-      {
-        status: ApplicationStatus.EN_REVISION,
-        admin_feedback:
-          dto.admin_feedback ??
-          'Se requiere un co-firmante para continuar con la solicitud.',
-      },
-      tenantSlug,
-    );
-
-    try {
-      const schemaName = await this.getTenantSchemaName(tenantSlug);
-      await this.notificationsService.createForUserInSchema(
-        schemaName,
-        Number(application.applicant_id),
-        'application.status.changed' as NotificationEventType,
-        'Acción requerida en tu solicitud',
-        `Tu solicitud para la propiedad ${String(application.property_title)} requiere un co-firmante. Comunícate con la administración.`,
-        {
-          applicationId: id,
-          final_status: ScreeningFinalStatus.REQUIRES_COSIGNER,
-        },
-        tenantSlug,
-      );
-    } catch (error) {
-      this.logger.error('Error al notificar co-firmante al inquilino', error);
-    }
-
-    return {
-      message:
-        'Solicitud marcada como requiere co-firmante. Inquilino notificado.',
-      screening: checklist,
-    };
   }
 
   private async getTenantSchemaName(tenantSlug: string): Promise<string> {

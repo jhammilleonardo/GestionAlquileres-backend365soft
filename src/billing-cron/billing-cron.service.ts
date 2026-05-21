@@ -9,6 +9,7 @@ import {
   isFirstDayOfMonthInTz,
   isMidnightWindowInTz,
 } from './late-fee.calculator';
+import { ErrorMonitoringService } from '../common/monitoring/error-monitoring.service';
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ export class BillingCronService {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly errorMonitoring: ErrorMonitoringService,
   ) {}
 
   // ── Entry points (llamados por el scheduler) ────────────────────────────────
@@ -456,15 +458,13 @@ export class BillingCronService {
     );
   }
 
-  /**
-   * Captura el error, lo loguea con contexto y lo reporta a Sentry cuando esté disponible.
-   * No relanza — el caller continúa con el siguiente tenant.
-   */
+  /** Captura el error con contexto y continúa con el siguiente tenant. */
   private captureError(schemaName: string, job: string, error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack : undefined;
     this.logger.error(`[${schemaName}] ${job} falló: ${message}`, stack);
-    // TODO: captureException(error, { tags: { job, tenant: schemaName } })
-    //       Descomentar cuando @sentry/nestjs esté instalado y configurado.
+    this.errorMonitoring.captureException(error, {
+      tags: { job, tenant: schemaName, module: 'billing-cron' },
+    });
   }
 }

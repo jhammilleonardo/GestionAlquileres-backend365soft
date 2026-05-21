@@ -1,11 +1,4 @@
-import {
-  IsEnum,
-  IsOptional,
-  IsNumber,
-  IsDateString,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { IsEnum, IsOptional, IsNumber, IsDateString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateMaintenanceDto {

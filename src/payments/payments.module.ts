@@ -2,10 +2,14 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { PaymentsService } from './payments.service';
 import { PaymentQueriesService } from './payment-queries.service';
+import { PaymentApprovalService } from './payment-approval.service';
 import { PaymentStatusService } from './payment-status.service';
+import { PaymentStatusNotificationService } from './payment-status-notification.service';
 import { PaymentRefundsService } from './payment-refunds.service';
 import { PaymentWebhookService } from './payment-webhook.service';
 import { PaymentCreationService } from './payment-creation.service';
+import { PaymentCreationNotificationService } from './payment-creation-notification.service';
+import { PaymentCreationValidationService } from './payment-creation-validation.service';
 import { PaymentMethodsService } from './payment-methods.service';
 import {
   AdminPaymentsController,
@@ -24,6 +28,7 @@ import { StripeProcessor } from './processors/stripe.processor';
 import { PayPalProcessor } from './processors/paypal.processor';
 import { PayUProcessor } from './processors/payu.processor';
 import { QRBoliviaProcessor } from './processors/qr-bolivia.processor';
+import { StorageModule } from '../common/storage/storage.module';
 
 /**
  * Payments Module
@@ -47,6 +52,7 @@ import { QRBoliviaProcessor } from './processors/qr-bolivia.processor';
     SplitPaymentModule,
     AuditLogsModule,
     QrPaymentModule,
+    StorageModule,
   ],
   controllers: [
     AdminPaymentsController,
@@ -56,10 +62,14 @@ import { QRBoliviaProcessor } from './processors/qr-bolivia.processor';
   providers: [
     PaymentsService,
     PaymentQueriesService,
+    PaymentApprovalService,
     PaymentStatusService,
+    PaymentStatusNotificationService,
     PaymentRefundsService,
     PaymentWebhookService,
     PaymentCreationService,
+    PaymentCreationNotificationService,
+    PaymentCreationValidationService,
     PaymentMethodsService,
     PaymentProcessorFactory,
     ManualPaymentProcessor,

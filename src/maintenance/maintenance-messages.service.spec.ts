@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { MaintenanceMessageNotificationsService } from './maintenance-message-notifications.service';
 import { MaintenanceMessagesService } from './maintenance-messages.service';
 import { MaintenanceLookupService } from './maintenance-lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StorageService } from '../common/storage/storage.service';
 
 const makeQueryRunner = () => ({
   isTransactionActive: false,
@@ -22,6 +24,12 @@ describe('MaintenanceMessagesService', () => {
   let queryRunner: ReturnType<typeof makeQueryRunner>;
   let lookupService: { findOne: jest.Mock };
   let notificationsService: { createForUser: jest.Mock };
+  let storageService: {
+    persistUploadedFile: jest.Mock;
+    buildStoragePath: jest.Mock;
+    toRoutePath: jest.Mock;
+    deleteStoredFile: jest.Mock;
+  };
 
   beforeEach(async () => {
     query = jest.fn();
@@ -29,6 +37,12 @@ describe('MaintenanceMessagesService', () => {
     createQueryRunner = jest.fn().mockReturnValue(queryRunner);
     lookupService = { findOne: jest.fn() };
     notificationsService = { createForUser: jest.fn() };
+    storageService = {
+      persistUploadedFile: jest.fn(),
+      buildStoragePath: jest.fn(),
+      toRoutePath: jest.fn(),
+      deleteStoredFile: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -41,9 +55,14 @@ describe('MaintenanceMessagesService', () => {
           provide: MaintenanceLookupService,
           useValue: lookupService,
         },
+        MaintenanceMessageNotificationsService,
         {
           provide: NotificationsService,
           useValue: notificationsService,
+        },
+        {
+          provide: StorageService,
+          useValue: storageService,
         },
       ],
     }).compile();
@@ -152,5 +171,38 @@ describe('MaintenanceMessagesService', () => {
     expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
     expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
     expect(notificationsService.createForUser).not.toHaveBeenCalled();
+  });
+
+  it('borra archivos persistidos si falla registrar el adjunto en base de datos', async () => {
+    storageService.buildStoragePath.mockReturnValue(
+      'storage/maintenance/acme/1/a.pdf',
+    );
+    storageService.persistUploadedFile.mockResolvedValue(
+      'storage/maintenance/acme/1/a.pdf',
+    );
+    storageService.toRoutePath.mockReturnValue(
+      '/storage/maintenance/acme/1/a.pdf',
+    );
+    queryRunner.query.mockRejectedValueOnce(new Error('insert failed'));
+
+    await expect(
+      service.saveUploadedFiles(
+        1,
+        [
+          {
+            filename: 'a.pdf',
+            originalname: 'a.pdf',
+            size: 123,
+          } as Express.Multer.File,
+        ],
+        10,
+        'acme',
+      ),
+    ).rejects.toThrow('insert failed');
+
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(storageService.deleteStoredFile).toHaveBeenCalledWith(
+      'storage/maintenance/acme/1/a.pdf',
+    );
   });
 });

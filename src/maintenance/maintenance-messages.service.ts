@@ -7,15 +7,13 @@ import {
 import { DataSource, QueryRunner } from 'typeorm';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { MaintenanceLookupService } from './maintenance-lookup.service';
-import { NotificationsService } from '../notifications/notifications.service';
-import { NotificationEventType } from '../notifications/dto/create-notification.dto';
-import { storageService } from '../common/storage/storage.service';
+import { StorageService } from '../common/storage/storage.service';
 import { runTenantTransaction } from '../common/tenant/tenant-transaction';
+import { MaintenanceMessageNotificationsService } from './maintenance-message-notifications.service';
 import type {
   IdRow,
   MaintenanceAttachmentRow,
   MaintenanceMessageRow,
-  UserNameRow,
 } from './maintenance.types';
 
 @Injectable()
@@ -25,7 +23,8 @@ export class MaintenanceMessagesService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly maintenanceLookupService: MaintenanceLookupService,
-    private readonly notificationsService: NotificationsService,
+    private readonly storageService: StorageService,
+    private readonly maintenanceMessageNotificationsService: MaintenanceMessageNotificationsService,
   ) {}
 
   async addMessage(
@@ -78,7 +77,7 @@ export class MaintenanceMessagesService {
       },
     );
 
-    await this.notifyMessageReceived(
+    await this.maintenanceMessageNotificationsService.notifyMessageReceived(
       requestId,
       savedMessage.id,
       createMessageDto.message,
@@ -95,33 +94,53 @@ export class MaintenanceMessagesService {
     tenantSlug: string,
   ): Promise<MaintenanceAttachmentRow[]> {
     const savedFiles: MaintenanceAttachmentRow[] = [];
+    const storedPaths: string[] = [];
 
-    for (const file of files) {
-      const storagePath = await storageService.persistUploadedFile(
-        file,
-        storageService.buildStoragePath(
-          'maintenance',
-          tenantSlug,
-          String(requestId),
-          file.filename,
-        ),
-        'private',
+    try {
+      return await runTenantTransaction(
+        this.dataSource,
+        async (queryRunner) => {
+          for (const file of files) {
+            const storagePath = await this.storageService.persistUploadedFile(
+              file,
+              this.storageService.buildStoragePath(
+                'maintenance',
+                tenantSlug,
+                String(requestId),
+                file.filename,
+              ),
+              'private',
+            );
+            storedPaths.push(storagePath);
+
+            const fileUrl = this.storageService.toRoutePath(storagePath);
+            const fileType = this.getFileType(file.originalname);
+
+            const result = (await queryRunner.query(
+              `INSERT INTO maintenance_attachments(
+              maintenance_request_id, file_url, file_name, file_type, file_size, uploaded_by
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *`,
+              [
+                requestId,
+                fileUrl,
+                file.originalname,
+                fileType,
+                file.size,
+                userId,
+              ],
+            )) as MaintenanceAttachmentRow[];
+
+            savedFiles.push(result[0]);
+          }
+
+          return savedFiles;
+        },
       );
-      const fileUrl = storageService.toRoutePath(storagePath);
-      const fileType = this.getFileType(file.originalname);
-
-      const result = await this.dataSource.query<MaintenanceAttachmentRow[]>(
-        `INSERT INTO maintenance_attachments(
-          maintenance_request_id, file_url, file_name, file_type, file_size, uploaded_by
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING *`,
-        [requestId, fileUrl, file.originalname, fileType, file.size, userId],
-      );
-
-      savedFiles.push(result[0]);
+    } catch (error) {
+      await this.deleteStoredFilesSafely(storedPaths);
+      throw error;
     }
-
-    return savedFiles;
   }
 
   private async linkMessageFiles(
@@ -157,64 +176,6 @@ export class MaintenanceMessagesService {
           ],
         );
       }
-    }
-  }
-
-  private async notifyMessageReceived(
-    requestId: number,
-    messageId: number,
-    message: string,
-    userId: number,
-  ): Promise<void> {
-    try {
-      const request = await this.maintenanceLookupService.findOne(requestId);
-      const isFromTenant = request.tenant_id === userId;
-      const senderName = await this.getUserName(userId);
-      const messagePreview =
-        message.length > 100 ? `${message.substring(0, 100)}...` : message;
-
-      if (isFromTenant) {
-        if (request.assigned_to) {
-          await this.notificationsService.createForUser(
-            request.assigned_to,
-            NotificationEventType.MAINTENANCE_MESSAGE_RECEIVED,
-            'Nuevo mensaje en solicitud',
-            `${senderName} respondió a la solicitud ${request.ticket_number}: ${messagePreview}`,
-            {
-              ticket_number: request.ticket_number,
-              maintenance_request_id: requestId,
-              sender_name: senderName,
-              sender_id: userId,
-              message_preview: messagePreview,
-              is_from_admin: false,
-            },
-          );
-        } else {
-          this.logger.warn(
-            `Mensaje de mantenimiento ${messageId} sin usuario asignado para notificar`,
-          );
-        }
-      } else {
-        await this.notificationsService.createForUser(
-          request.tenant_id,
-          NotificationEventType.MAINTENANCE_MESSAGE_RECEIVED,
-          'Nuevo mensaje en solicitud',
-          `${senderName} respondió a tu solicitud ${request.ticket_number}: ${messagePreview}`,
-          {
-            ticket_number: request.ticket_number,
-            maintenance_request_id: requestId,
-            sender_name: senderName,
-            sender_id: userId,
-            message_preview: messagePreview,
-            is_from_admin: true,
-          },
-        );
-      }
-    } catch (error: unknown) {
-      this.logger.error(
-        `Error al crear notificacion de mensaje de mantenimiento: ${this.getErrorMessage(error)}`,
-        this.getErrorStack(error),
-      );
     }
   }
 
@@ -260,24 +221,8 @@ export class MaintenanceMessagesService {
     return 'unknown';
   }
 
-  private async getUserName(userId: number): Promise<string> {
-    try {
-      const result = await this.dataSource.query<UserNameRow[]>(
-        `SELECT name FROM "user" WHERE id = $1`,
-        [userId],
-      );
-      return result[0]?.name || 'Usuario';
-    } catch {
-      return 'Usuario';
-    }
-  }
-
   private getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
-  }
-
-  private getErrorStack(error: unknown): string | undefined {
-    return error instanceof Error ? error.stack : undefined;
   }
 
   private asRows<T>(value: unknown): T[] {
@@ -295,5 +240,17 @@ export class MaintenanceMessagesService {
 
   private hasUpdatedAttachment(rows: IdRow[]): boolean {
     return rows.some((row) => Number.isInteger(row.id));
+  }
+
+  private async deleteStoredFilesSafely(storagePaths: string[]): Promise<void> {
+    await Promise.all(
+      storagePaths.map((storagePath) =>
+        this.storageService.deleteStoredFile(storagePath).catch((error) => {
+          this.logger.warn(
+            `No se pudo compensar archivo de mantenimiento '${storagePath}': ${this.getErrorMessage(error)}`,
+          );
+        }),
+      ),
+    );
   }
 }

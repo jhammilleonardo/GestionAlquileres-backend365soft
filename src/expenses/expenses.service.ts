@@ -3,20 +3,36 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, Between, Like, In } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Expense } from './entities/expense.entity';
 import { CreateExpenseDto, UpdateExpenseDto, ExpenseFiltersDto } from './dto';
 import { ExpenseCategoryEnum } from './enums/expense-category.enum';
-import { TenantConfigService } from '../tenant-config/tenant-config.service';
 
 export interface ExpenseSummary {
   total_expenses: string;
   by_category: Record<string, string>;
   expense_count: number;
   by_unit?: Record<string, string>;
+}
+
+interface ExpenseSumRow {
+  total: string | null;
+}
+
+interface ExpenseCategorySummaryRow {
+  category: string;
+  total: string;
+}
+
+interface ExpenseUnitSummaryRow {
+  unit_id: number | null;
+  total: string;
+}
+
+interface TenantExpenseConfigRow {
+  custom_expense_categories: string[] | null;
 }
 
 @Injectable()
@@ -27,7 +43,6 @@ export class ExpensesService {
     @InjectRepository(Expense)
     private readonly expenseRepository: Repository<Expense>,
     private readonly dataSource: DataSource,
-    private readonly tenantConfigService: TenantConfigService,
   ) {}
 
   /**
@@ -68,8 +83,8 @@ export class ExpensesService {
 
       this.logger.log(`Expense created: ${saved.id}`);
       return saved;
-    } catch (error) {
-      this.logger.error(`Error creating expense: ${error.message}`);
+    } catch (error: unknown) {
+      this.logger.error(`Error creating expense: ${getErrorMessage(error)}`);
       throw new BadRequestException('Error al crear el gasto');
     }
   }
@@ -238,7 +253,7 @@ export class ExpensesService {
     const totalQuery = query.clone();
     const result = await totalQuery
       .select('SUM(e.amount)', 'total')
-      .getRawOne();
+      .getRawOne<ExpenseSumRow>();
 
     // Gastos por categoría
     const byCategory = await query
@@ -246,7 +261,7 @@ export class ExpensesService {
       .select('e.category', 'category')
       .addSelect('SUM(e.amount)', 'total')
       .groupBy('e.category')
-      .getRawMany();
+      .getRawMany<ExpenseCategorySummaryRow>();
 
     // Gastos por unidad (si aplica)
     const byUnit = await query
@@ -255,7 +270,7 @@ export class ExpensesService {
       .addSelect('SUM(e.amount)', 'total')
       .where('e.unit_id IS NOT NULL')
       .groupBy('e.unit_id')
-      .getRawMany();
+      .getRawMany<ExpenseUnitSummaryRow>();
 
     // Contar gastos
     const countResult = await query.clone().getCount();
@@ -384,9 +399,9 @@ export class ExpensesService {
       .select('SUM(e.amount)', 'total')
       .where('e.property_id = :propertyId', { propertyId })
       .andWhere('e.date BETWEEN :from AND :to', { from, to })
-      .getRawOne();
+      .getRawOne<ExpenseSumRow>();
 
-    return parseFloat(result?.total || 0);
+    return parseFloat(result?.total ?? '0');
   }
 
   /**
@@ -405,7 +420,7 @@ export class ExpensesService {
       .where('e.property_id = :propertyId', { propertyId })
       .andWhere('e.date BETWEEN :from AND :to', { from, to })
       .groupBy('e.category')
-      .getRawMany();
+      .getRawMany<ExpenseCategorySummaryRow>();
 
     return results.reduce(
       (acc, row) => {
@@ -428,11 +443,11 @@ export class ExpensesService {
 
     // 2. Check tenant custom categories
     // Nota: Como search_path ya está seteado, consultamos tenant_config del schema actual
-    const configResult = await this.dataSource.query(
+    const configResult = await this.dataSource.query<TenantExpenseConfigRow[]>(
       `SELECT custom_expense_categories FROM tenant_config LIMIT 1`,
     );
 
-    const customCategories = configResult[0]?.custom_expense_categories || [];
+    const customCategories = configResult[0]?.custom_expense_categories ?? [];
     if (customCategories.includes(category)) {
       return;
     }
@@ -443,4 +458,8 @@ export class ExpensesService {
       )}) o personalizadas (${customCategories.join(', ')})`,
     );
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

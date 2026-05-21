@@ -12,18 +12,50 @@ import {
   HttpStatus,
   UnauthorizedException,
 } from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiCreatedResponse,
+  ApiExtraModels,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+  ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { QrPaymentService } from './qr-payment.service';
-import { GenerateQrDto, VerifyQrDto, QrCallbackDto } from './dto';
+import {
+  GenerateQrDto,
+  GenerateTenantQrDto,
+  VerifyQrDto,
+  QrCallbackDto,
+  QrCallbackResponseDto,
+  QrPaymentResponseDto,
+  QrProviderStatusResponseDto,
+} from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+
+interface AuthenticatedTenantRequest {
+  user: {
+    userId: number;
+  };
+}
 
 // ============================================================
 // ADMIN – endpoints de gestión de QR
 // ============================================================
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
+@ApiTags('QR Payments - Admin')
+@ApiBearerAuth()
+@ApiExtraModels(QrPaymentResponseDto, QrProviderStatusResponseDto)
 @Controller(':slug/admin/qr-payments')
 export class AdminQrPaymentController {
   constructor(private readonly qrPaymentService: QrPaymentService) {}
@@ -33,6 +65,16 @@ export class AdminQrPaymentController {
    * Generar QR dinámico de pago para un inquilino
    */
   @Post()
+  @ApiOperation({
+    summary: 'Generar QR dinámico como administrador',
+    description:
+      'Permite generar un QR para cualquier inquilino del tenant. Requiere tenant_id en el body.',
+  })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiBody({ type: GenerateQrDto })
+  @ApiCreatedResponse({ type: QrPaymentResponseDto })
+  @ApiUnauthorizedResponse({ description: 'JWT inválido o ausente' })
+  @ApiForbiddenResponse({ description: 'Rol distinto de ADMIN' })
   async generarQr(@Param('slug') slug: string, @Body() dto: GenerateQrDto) {
     // Admin puede generar QR para cualquier tenant — sin restricción de ownership
     return this.qrPaymentService.generarQrDinamico(slug, dto);
@@ -44,6 +86,24 @@ export class AdminQrPaymentController {
    */
   @Post('verificar')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verificar estado de QR como administrador',
+    description:
+      'Consulta el proveedor MC4/SIP y, si el QR está pagado, registra el pago de forma idempotente.',
+  })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiBody({ type: VerifyQrDto })
+  @ApiOkResponse({
+    description:
+      'QR actualizado o respuesta funcional del proveedor cuando no puede confirmar estado.',
+    schema: {
+      oneOf: [
+        { $ref: '#/components/schemas/QrPaymentResponseDto' },
+        { $ref: '#/components/schemas/QrProviderStatusResponseDto' },
+      ],
+    },
+  })
+  @ApiBadRequestResponse({ description: 'Se requiere qr_id o alias' })
   async verificarEstado(@Param('slug') slug: string, @Body() dto: VerifyQrDto) {
     // Admin puede verificar cualquier QR — sin restricción de ownership (tenantId=undefined)
     return this.qrPaymentService.verificarEstadoQr(slug, dto, undefined);
@@ -54,6 +114,15 @@ export class AdminQrPaymentController {
    * Listar todos los QRs del tenant (opcionalmente filtrados por inquilino)
    */
   @Get()
+  @ApiOperation({ summary: 'Listar QRs del tenant' })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiQuery({
+    name: 'tenant_id',
+    required: false,
+    type: Number,
+    description: 'Filtra por inquilino específico.',
+  })
+  @ApiOkResponse({ type: QrPaymentResponseDto, isArray: true })
   async listarQrs(
     @Param('slug') slug: string,
     @Query('tenant_id') tenantId?: string,
@@ -70,6 +139,10 @@ export class AdminQrPaymentController {
    */
   @Post(':id/cancelar')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancelar QR pendiente como administrador' })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: QrPaymentResponseDto })
   async cancelarQr(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -83,6 +156,9 @@ export class AdminQrPaymentController {
 // TENANT – endpoints para el inquilino
 // ============================================================
 @UseGuards(JwtAuthGuard)
+@ApiTags('QR Payments - Tenant')
+@ApiBearerAuth()
+@ApiExtraModels(QrPaymentResponseDto, QrProviderStatusResponseDto)
 @Controller(':slug/tenant/qr-payments')
 export class TenantQrPaymentController {
   constructor(private readonly qrPaymentService: QrPaymentService) {}
@@ -92,10 +168,21 @@ export class TenantQrPaymentController {
    * El inquilino solicita un QR de pago para su alquiler
    */
   @Post()
+  @ApiOperation({
+    summary: 'Generar QR para el inquilino autenticado',
+    description:
+      'El backend toma tenant_id desde el JWT; el frontend no debe enviarlo.',
+  })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiBody({ type: GenerateTenantQrDto })
+  @ApiCreatedResponse({ type: QrPaymentResponseDto })
+  @ApiForbiddenResponse({
+    description: 'El contrato no pertenece al inquilino',
+  })
   async generarQr(
     @Param('slug') slug: string,
-    @Body() dto: Omit<GenerateQrDto, 'tenant_id'>,
-    @Request() req,
+    @Body() dto: GenerateTenantQrDto,
+    @Request() req: AuthenticatedTenantRequest,
   ) {
     const tenant_id: number = req.user.userId;
     return this.qrPaymentService.generarQrDinamico(slug, {
@@ -111,10 +198,28 @@ export class TenantQrPaymentController {
    */
   @Post('verificar')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verificar estado de QR propio',
+    description:
+      'Solo permite verificar QRs que pertenecen al inquilino autenticado.',
+  })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiBody({ type: VerifyQrDto })
+  @ApiOkResponse({
+    description: 'QR actualizado o respuesta funcional del proveedor.',
+    schema: {
+      oneOf: [
+        { $ref: '#/components/schemas/QrPaymentResponseDto' },
+        { $ref: '#/components/schemas/QrProviderStatusResponseDto' },
+      ],
+    },
+  })
+  @ApiBadRequestResponse({ description: 'Se requiere qr_id o alias' })
+  @ApiForbiddenResponse({ description: 'El QR no pertenece al inquilino' })
   async verificarEstado(
     @Param('slug') slug: string,
     @Body() dto: VerifyQrDto,
-    @Request() req,
+    @Request() req: AuthenticatedTenantRequest,
   ) {
     const tenantId: number = req.user.userId;
     return this.qrPaymentService.verificarEstadoQr(slug, dto, tenantId);
@@ -125,7 +230,13 @@ export class TenantQrPaymentController {
    * El inquilino ve sus QRs generados
    */
   @Get()
-  async listarMisQrs(@Param('slug') slug: string, @Request() req) {
+  @ApiOperation({ summary: 'Listar QRs del inquilino autenticado' })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiOkResponse({ type: QrPaymentResponseDto, isArray: true })
+  async listarMisQrs(
+    @Param('slug') slug: string,
+    @Request() req: AuthenticatedTenantRequest,
+  ) {
     const tenantId: number = req.user.userId;
     return this.qrPaymentService.listarMisQrs(slug, tenantId);
   }
@@ -137,10 +248,15 @@ export class TenantQrPaymentController {
    */
   @Post(':id/cancelar')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancelar QR pendiente propio' })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: QrPaymentResponseDto })
+  @ApiForbiddenResponse({ description: 'El QR no pertenece al inquilino' })
   async cancelarQr(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
-    @Request() req,
+    @Request() req: AuthenticatedTenantRequest,
   ) {
     const tenantId: number = req.user.userId;
     return this.qrPaymentService.cancelarQr(slug, id, tenantId);
@@ -150,6 +266,7 @@ export class TenantQrPaymentController {
 // ============================================================
 // PÚBLICO – callback del banco MC4/SIP (sin autenticación JWT)
 // ============================================================
+@ApiTags('QR Payments - Public Callback')
 @Controller(':slug/qr-payments')
 export class PublicQrPaymentController {
   constructor(private readonly qrPaymentService: QrPaymentService) {}
@@ -170,6 +287,23 @@ export class PublicQrPaymentController {
   @Post('callback')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Callback público del proveedor MC4/SIP',
+    description:
+      'Endpoint sin JWT protegido por token compartido en query param y validaciones de alias/monto.',
+  })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiQuery({
+    name: 'token',
+    required: true,
+    description: 'MC4_CALLBACK_SECRET registrado con el proveedor.',
+  })
+  @ApiBody({ type: QrCallbackDto })
+  @ApiOkResponse({ type: QrCallbackResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o ausente' })
+  @ApiTooManyRequestsResponse({
+    description: 'Rate limit del callback excedido',
+  })
   async handleCallback(
     @Param('slug') slug: string,
     @Body() dto: QrCallbackDto,

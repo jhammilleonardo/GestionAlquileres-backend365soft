@@ -12,6 +12,7 @@ import {
   PermissionAction,
   PermissionModule,
 } from '../decorators/require-permission.decorator';
+import type { TenantRequest } from '../middleware/tenant-context.middleware';
 
 // Módulos que TECNICO puede acceder (hardcodeado por requerimiento del negocio)
 const TECNICO_ALLOWED: Record<string, PermissionAction[]> = {
@@ -37,7 +38,7 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const { user } = context.switchToHttp().getRequest();
+    const { user } = context.switchToHttp().getRequest<TenantRequest>();
 
     if (!user) {
       throw new ForbiddenException('No autenticado');
@@ -64,7 +65,7 @@ export class PermissionsGuard implements CanActivate {
     // EMPLEADO: permisos configurables — consulta la tabla employee_permissions
     if (role === 'EMPLEADO') {
       const column = `can_${permission.action}`;
-      const rows: { allowed: boolean }[] = await this.dataSource.query(
+      const rows = await this.dataSource.query<Array<{ allowed: boolean }>>(
         `SELECT ${column} AS allowed
          FROM employee_permissions
          WHERE user_id = $1 AND module = $2`,

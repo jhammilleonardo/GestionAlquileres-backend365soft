@@ -24,6 +24,8 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
+  ApiBadRequestResponse,
+  ApiBody,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -35,6 +37,11 @@ import {
   UpdateViolationStatusDto,
   ViolationFiltersDto,
 } from './dto';
+import {
+  PaginatedViolationsResponseDto,
+  ViolationMessageResponseDto,
+  ViolationResponseDto,
+} from './dto/violation-response.dto';
 
 interface JwtUser {
   userId: number;
@@ -55,7 +62,8 @@ export class ViolationsController {
   @RequirePermission('violations', 'create')
   @ApiOperation({ summary: 'Registrar una nueva infracción con evidencia' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiCreatedResponse({ description: 'Infracción registrada correctamente' })
+  @ApiBody({ type: CreateViolationDto })
+  @ApiCreatedResponse({ type: ViolationResponseDto })
   async create(@Body() dto: CreateViolationDto, @CurrentUser() user: JwtUser) {
     return this.violationsService.create(dto, user.userId);
   }
@@ -64,7 +72,7 @@ export class ViolationsController {
   @RequirePermission('violations', 'view')
   @ApiOperation({ summary: 'Listar infracciones con filtros opcionales' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiOkResponse({ description: 'Lista de infracciones' })
+  @ApiOkResponse({ type: PaginatedViolationsResponseDto })
   async findAll(@Query() filters: ViolationFiltersDto) {
     return this.violationsService.findAll(filters);
   }
@@ -74,7 +82,9 @@ export class ViolationsController {
   @ApiOperation({ summary: 'Cambiar el estado de una infracción' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Estado actualizado' })
+  @ApiBody({ type: UpdateViolationStatusDto })
+  @ApiOkResponse({ type: ViolationResponseDto })
+  @ApiBadRequestResponse({ description: 'Transición de estado inválida' })
   @ApiNotFoundResponse({ description: 'Infracción no encontrada' })
   async updateStatus(
     @Param('id', ParseIntPipe) id: number,
@@ -90,9 +100,7 @@ export class ViolationsController {
   @ApiOperation({ summary: 'Enviar notificación formal al inquilino' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({
-    description: 'Notificación enviada y estado actualizado a notified',
-  })
+  @ApiOkResponse({ type: ViolationMessageResponseDto })
   @ApiNotFoundResponse({ description: 'Infracción no encontrada' })
   async notifyTenant(@Param('id', ParseIntPipe) id: number) {
     await this.violationsService.notifyTenant(id);

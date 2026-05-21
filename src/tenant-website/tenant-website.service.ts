@@ -10,6 +10,54 @@ import { UpdateTenantWebsiteDto } from './dto/update-tenant-website.dto';
 import { ContactFormDto } from './dto/contact-form.dto';
 import { quoteIdent } from '../common/utils/sql-identifier';
 
+export interface TenantWebsiteRow {
+  id: number;
+  subdomain: string | null;
+  company_description: string | null;
+  logo_url: string | null;
+  primary_color: string;
+  secondary_color: string;
+  contact_email: string | null;
+  contact_phone: string | null;
+  social_links: Record<string, string>;
+  meta_title: string | null;
+  meta_description: string | null;
+  is_published: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface PublicWebsitePropertyRow {
+  id: number;
+  title: string;
+  description: string | null;
+  monthly_rent: string | number | null;
+  currency: string;
+  square_meters: string | number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  parking_spaces: number | null;
+  is_furnished: boolean;
+  images: unknown;
+  amenities: unknown;
+  rental_type: string | null;
+  property_type: string;
+  city: string | null;
+  street_address: string | null;
+}
+
+export type PublicWebsite = TenantWebsiteRow & {
+  properties: PublicWebsitePropertyRow[];
+};
+
+interface PublicTenantRow {
+  schema_name: string;
+}
+
+interface WebsiteContactRow {
+  id: number;
+}
+
 @Injectable()
 export class TenantWebsiteService {
   private readonly logger = new Logger(TenantWebsiteService.name);
@@ -19,8 +67,8 @@ export class TenantWebsiteService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async getOrCreate(schemaName: string) {
-    const rows = await this.dataSource.query(
+  async getOrCreate(schemaName: string): Promise<TenantWebsiteRow> {
+    const rows = await this.dataSource.query<TenantWebsiteRow[]>(
       `SELECT * FROM ${quoteIdent(schemaName)}.tenant_website LIMIT 1`,
     );
 
@@ -28,14 +76,17 @@ export class TenantWebsiteService {
       return rows[0];
     }
 
-    const created = await this.dataSource.query(
+    const created = await this.dataSource.query<TenantWebsiteRow[]>(
       `INSERT INTO ${quoteIdent(schemaName)}.tenant_website DEFAULT VALUES RETURNING *`,
     );
 
     return created[0];
   }
 
-  async update(schemaName: string, dto: UpdateTenantWebsiteDto) {
+  async update(
+    schemaName: string,
+    dto: UpdateTenantWebsiteDto,
+  ): Promise<TenantWebsiteRow> {
     const website = await this.getOrCreate(schemaName);
 
     if (dto.subdomain !== undefined) {
@@ -94,7 +145,7 @@ export class TenantWebsiteService {
     fields.push(`updated_at = now()`);
     values.push(website.id);
 
-    const rows = await this.dataSource.query(
+    const rows = await this.dataSource.query<TenantWebsiteRow[]>(
       `UPDATE ${quoteIdent(schemaName)}.tenant_website
        SET ${fields.join(', ')}
        WHERE id = $${idx}
@@ -105,10 +156,10 @@ export class TenantWebsiteService {
     return rows[0];
   }
 
-  async togglePublish(schemaName: string) {
+  async togglePublish(schemaName: string): Promise<TenantWebsiteRow> {
     const website = await this.getOrCreate(schemaName);
 
-    const rows = await this.dataSource.query(
+    const rows = await this.dataSource.query<TenantWebsiteRow[]>(
       `UPDATE ${quoteIdent(schemaName)}.tenant_website
        SET is_published = NOT is_published, updated_at = now()
        WHERE id = $1
@@ -119,8 +170,8 @@ export class TenantWebsiteService {
     return rows[0];
   }
 
-  async getPublicWebsite(subdomain: string) {
-    const tenants = await this.dataSource.query(
+  async getPublicWebsite(subdomain: string): Promise<PublicWebsite> {
+    const tenants = await this.dataSource.query<PublicTenantRow[]>(
       `SELECT * FROM public.tenant WHERE slug = $1`,
       [subdomain],
     );
@@ -129,9 +180,9 @@ export class TenantWebsiteService {
       throw new NotFoundException(`Sitio '${subdomain}' no encontrado`);
     }
 
-    const { schema_name: schemaName } = tenants[0] as { schema_name: string };
+    const { schema_name: schemaName } = tenants[0];
 
-    const [website] = await this.dataSource.query(
+    const [website] = await this.dataSource.query<TenantWebsiteRow[]>(
       `SELECT * FROM ${quoteIdent(schemaName)}.tenant_website LIMIT 1`,
     );
 
@@ -139,7 +190,7 @@ export class TenantWebsiteService {
       throw new NotFoundException(`Sitio '${subdomain}' no publicado`);
     }
 
-    const properties = await this.dataSource.query(
+    const properties = await this.dataSource.query<PublicWebsitePropertyRow[]>(
       `SELECT
          p.id,
          p.title,
@@ -171,8 +222,12 @@ export class TenantWebsiteService {
     };
   }
 
-  async submitContact(subdomain: string, dto: ContactFormDto, userIp: string) {
-    const tenants = await this.dataSource.query(
+  async submitContact(
+    subdomain: string,
+    dto: ContactFormDto,
+    userIp: string,
+  ): Promise<{ id: number; message: string }> {
+    const tenants = await this.dataSource.query<PublicTenantRow[]>(
       `SELECT * FROM public.tenant WHERE slug = $1`,
       [subdomain],
     );
@@ -181,9 +236,11 @@ export class TenantWebsiteService {
       throw new NotFoundException(`Sitio '${subdomain}' no encontrado`);
     }
 
-    const { schema_name: schemaName } = tenants[0] as { schema_name: string };
+    const { schema_name: schemaName } = tenants[0];
 
-    const [website] = await this.dataSource.query(
+    const [website] = await this.dataSource.query<
+      Pick<TenantWebsiteRow, 'id' | 'is_published'>[]
+    >(
       `SELECT id, is_published FROM ${quoteIdent(schemaName)}.tenant_website LIMIT 1`,
     );
 
@@ -191,7 +248,7 @@ export class TenantWebsiteService {
       throw new BadRequestException('El sitio no está disponible');
     }
 
-    const [contact] = await this.dataSource.query(
+    const [contact] = await this.dataSource.query<WebsiteContactRow[]>(
       `INSERT INTO ${quoteIdent(schemaName)}.website_contacts
          (name, email, phone, message, user_ip)
        VALUES ($1, $2, $3, $4, $5)
@@ -208,8 +265,8 @@ export class TenantWebsiteService {
     schemaName: string,
     subdomain: string,
     currentId: number,
-  ) {
-    const rows = await this.dataSource.query(
+  ): Promise<void> {
+    const rows = await this.dataSource.query<Array<{ id: number }>>(
       `SELECT id FROM ${quoteIdent(schemaName)}.tenant_website
        WHERE subdomain = $1 AND id != $2`,
       [subdomain, currentId],

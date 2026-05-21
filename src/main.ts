@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { TenantConnectionInterceptor } from './common/interceptors/tenant-connection.interceptor';
@@ -8,10 +8,15 @@ import { DataSource } from 'typeorm';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   // rawBody: true expone req.rawBody (Buffer) necesario para verificar firma de Stripe
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
+
+  if ((process.env.TRUST_PROXY ?? '').toLowerCase() === 'true') {
+    app.set('trust proxy', 1);
+  }
 
   // ── Cabeceras de seguridad HTTP ─────────────────────────────────────────
   app.use(
@@ -66,16 +71,30 @@ async function bootstrap() {
   const dataSource = app.get(DataSource);
   app.useGlobalInterceptors(new TenantConnectionInterceptor(dataSource));
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('365Soft API')
-    .setDescription('API multi-tenant para gestión de alquileres')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, swaggerDocument, {
-    swaggerOptions: { persistAuthorization: true },
-  });
+  const swaggerEnabled =
+    process.env.NODE_ENV !== 'production' ||
+    (process.env.SWAGGER_ENABLED ?? '').toLowerCase() === 'true';
+  if (swaggerEnabled) {
+    try {
+      const swaggerConfig = new DocumentBuilder()
+        .setTitle('365Soft API')
+        .setDescription('API multi-tenant para gestión de alquileres')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+      const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+      SwaggerModule.setup('docs', app, swaggerDocument, {
+        swaggerOptions: { persistAuthorization: true },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      logger.error(`Swagger no pudo generarse: ${message}`, stack);
+      if ((process.env.SWAGGER_FAIL_FAST ?? '').toLowerCase() === 'true') {
+        throw error;
+      }
+    }
+  }
 
   // NOTA: /storage/* es servido por StorageController (con autorización o
   // presigned URL en S3). No se monta useStaticAssets para evitar exponer

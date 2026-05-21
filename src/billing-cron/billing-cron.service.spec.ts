@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { Logger } from '@nestjs/common';
 import { BillingCronService } from './billing-cron.service';
+import { ErrorMonitoringService } from '../common/monitoring/error-monitoring.service';
 import {
   calculateLateFee,
   isPaymentOverdue,
@@ -128,22 +130,30 @@ describe('getPreviousMonthYear', () => {
 // ─── Tests de BillingCronService (integración con DataSource mock) ─────────────
 
 const mockDataSource = { query: jest.fn() };
+const mockErrorMonitoring = { captureException: jest.fn() };
 
 describe('BillingCronService', () => {
   let service: BillingCronService;
+  let loggerErrorSpy: jest.SpyInstance;
 
   beforeEach(async () => {
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BillingCronService,
         { provide: getDataSourceToken(), useValue: mockDataSource },
+        { provide: ErrorMonitoringService, useValue: mockErrorMonitoring },
       ],
     }).compile();
 
     service = module.get<BillingCronService>(BillingCronService);
   });
 
-  afterEach(() => jest.resetAllMocks());
+  afterEach(() => {
+    loggerErrorSpy.mockRestore();
+    jest.resetAllMocks();
+  });
 
   describe('runDailyBilling', () => {
     it('no procesa tenant si no está en ventana de medianoche', async () => {

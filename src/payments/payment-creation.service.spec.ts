@@ -3,7 +3,9 @@ import { DataSource } from 'typeorm';
 import { TenantsService } from '../tenants/tenants.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentStatus } from './enums';
+import { PaymentCreationNotificationService } from './payment-creation-notification.service';
 import { PaymentCreationService } from './payment-creation.service';
+import { PaymentCreationValidationService } from './payment-creation-validation.service';
 
 describe('PaymentCreationService', () => {
   let service: PaymentCreationService;
@@ -26,6 +28,8 @@ describe('PaymentCreationService', () => {
     createForUserInSchema: jest.Mock<Promise<unknown>, unknown[]>;
     createForUser: jest.Mock<Promise<unknown>, unknown[]>;
   };
+  let paymentCreationNotificationService: PaymentCreationNotificationService;
+  let paymentCreationValidationService: PaymentCreationValidationService;
 
   beforeEach(() => {
     queryRunner = {
@@ -60,11 +64,16 @@ describe('PaymentCreationService', () => {
         .fn<Promise<unknown>, unknown[]>()
         .mockResolvedValue({}),
     };
+    paymentCreationNotificationService = new PaymentCreationNotificationService(
+      notificationsService as unknown as NotificationsService,
+    );
+    paymentCreationValidationService = new PaymentCreationValidationService();
 
     service = new PaymentCreationService(
       dataSource as unknown as DataSource,
       tenantsService as unknown as TenantsService,
-      notificationsService as unknown as NotificationsService,
+      paymentCreationValidationService,
+      paymentCreationNotificationService,
     );
   });
 
@@ -104,6 +113,7 @@ describe('PaymentCreationService', () => {
     );
     expect(dataSource.query).toHaveBeenCalledWith(
       expect.stringContaining('FROM "tenant_acme"."user"'),
+      undefined,
     );
     expect(notificationsService.createForUserInSchema).toHaveBeenCalledTimes(2);
     expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);

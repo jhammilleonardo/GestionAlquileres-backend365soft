@@ -20,6 +20,6 @@ export class AssignVendorDto {
   @IsPositive()
   assigned_to?: number;
 
-  @ValidateIf((o) => !o.vendor_id && !o.assigned_to)
+  @ValidateIf((o: AssignVendorDto) => !o.vendor_id && !o.assigned_to)
   protected _requiresOne: never;
 }

@@ -54,7 +54,7 @@ export class RentalOwnersService {
       ORDER BY ro.name ASC
     `);
 
-    return rows.map(this.toSummary);
+    return rows.map((row) => this.toSummary(row));
   }
 
   // ─── CRUD ────────────────────────────────────────────────────────────────
@@ -427,7 +427,7 @@ export class RentalOwnersService {
     }
 
     // Verificar si ya existe un usuario con su email
-    const existingUser = await this.dataSource.query(
+    const existingUser = await this.dataSource.query<{ id: number }[]>(
       `SELECT id FROM "user" WHERE email = $1`,
       [owner.primary_email],
     );

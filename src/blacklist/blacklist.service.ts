@@ -1,7 +1,6 @@
 import {
   Injectable,
   BadRequestException,
-  ForbiddenException,
   NotFoundException,
   InternalServerErrorException,
   Logger,
@@ -29,6 +28,23 @@ interface AuditLogRow {
   full_name: string | null;
   ip_address: string | null;
   created_at: Date;
+}
+
+interface BlacklistedTenantIdRow {
+  id: number;
+}
+
+interface BlacklistedTenantRow {
+  id: number;
+  full_name: string;
+  document_number: string;
+  document_type: string;
+  reason: string;
+  reported_by_tenant_id: number;
+  admin_email?: string | null;
+  created_at: Date;
+  updated_at?: Date;
+  reported_by_tenant_name?: string;
 }
 
 @Injectable()
@@ -60,7 +76,7 @@ export class BlacklistService {
       }
 
       // Validar que los datos no sean duplicados (mismo documento ya existe)
-      const existing = await this.dataSource.query(
+      const existing = await this.dataSource.query<BlacklistedTenantIdRow[]>(
         `SELECT id FROM public.blacklisted_tenants 
          WHERE document_number = $1 AND document_type = $2`,
         [dto.document_number, dto.document_type],
@@ -73,7 +89,7 @@ export class BlacklistService {
       }
 
       // Insertar en tabla de blacklist
-      const result = await this.dataSource.query(
+      const result = await this.dataSource.query<BlacklistedTenantIdRow[]>(
         `INSERT INTO public.blacklisted_tenants 
          (full_name, document_number, document_type, reason, reported_by_tenant_id, admin_id, admin_email, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
@@ -114,10 +130,11 @@ export class BlacklistService {
         id: blacklistedId,
         message: `Inquilino ${dto.full_name} agregado exitosamente a la lista negra`,
       };
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       this.logger.error(
-        `Error al agregar a blacklist: ${error.message}`,
-        error.stack,
+        `Error al agregar a blacklist: ${message}`,
+        getErrorStack(error),
       );
       if (error instanceof BadRequestException) {
         throw error;
@@ -151,7 +168,9 @@ export class BlacklistService {
       const documentType = dto.document_type || 'CEDULA';
 
       // Buscar en lista negra
-      const blacklistedRecords = await this.dataSource.query(
+      const blacklistedRecords = await this.dataSource.query<
+        BlacklistedTenantRow[]
+      >(
         `SELECT 
           bt.id,
           bt.full_name,
@@ -213,10 +232,11 @@ export class BlacklistService {
         is_blacklisted: false,
         message: '✅ El documento no se encuentra en la lista negra',
       };
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       this.logger.error(
-        `Error al verificar blacklist: ${error.message}`,
-        error.stack,
+        `Error al verificar blacklist: ${message}`,
+        getErrorStack(error),
       );
       if (error instanceof BadRequestException) {
         throw error;
@@ -259,7 +279,9 @@ export class BlacklistService {
       );
 
       // Obtener lista completa
-      const blacklistedRecords = await this.dataSource.query(
+      const blacklistedRecords = await this.dataSource.query<
+        BlacklistListResponseDto[]
+      >(
         `SELECT 
           bt.id,
           bt.full_name,
@@ -277,10 +299,11 @@ export class BlacklistService {
       );
 
       return blacklistedRecords;
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       this.logger.error(
-        `Error al listar blacklist: ${error.message}`,
-        error.stack,
+        `Error al listar blacklist: ${message}`,
+        getErrorStack(error),
       );
       throw new InternalServerErrorException('Error al obtener lista negra');
     }
@@ -306,7 +329,7 @@ export class BlacklistService {
       }
 
       // Obtener registro antes de eliminarlo (para auditoría)
-      const record = await this.dataSource.query(
+      const record = await this.dataSource.query<BlacklistedTenantRow[]>(
         `SELECT * FROM public.blacklisted_tenants WHERE id = $1`,
         [blacklistId],
       );
@@ -343,10 +366,11 @@ export class BlacklistService {
         success: true,
         message: `Registro ${record[0].full_name} eliminado de la lista negra`,
       };
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       this.logger.error(
-        `Error al eliminar de blacklist: ${error.message}`,
-        error.stack,
+        `Error al eliminar de blacklist: ${message}`,
+        getErrorStack(error),
       );
       if (
         error instanceof BadRequestException ||
@@ -394,9 +418,9 @@ export class BlacklistService {
           userAgent || null,
         ],
       );
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(
-        `Error al registrar acción en audit log: ${error.message}`,
+        `Error al registrar acción en audit log: ${getErrorMessage(error)}`,
       );
       // No lanzar error para que no bloquee la operación principal
     }
@@ -421,7 +445,7 @@ export class BlacklistService {
         `[AUDIT] Admin ${adminId} consultando audit log del tenant ${tenantSlug}`,
       );
 
-      return await this.dataSource.query(
+      return await this.dataSource.query<AuditLogRow[]>(
         `SELECT 
           id,
           action,
@@ -439,14 +463,23 @@ export class BlacklistService {
          LIMIT $2`,
         [tenant.id, limit],
       );
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
       this.logger.error(
-        `Error al obtener audit log: ${error.message}`,
-        error.stack,
+        `Error al obtener audit log: ${message}`,
+        getErrorStack(error),
       );
       throw new InternalServerErrorException(
         'Error al obtener registro de auditoría',
       );
     }
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  return error instanceof Error ? error.stack : undefined;
 }

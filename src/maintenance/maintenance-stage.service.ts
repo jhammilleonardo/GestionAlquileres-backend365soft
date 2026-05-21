@@ -2,7 +2,8 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
-import { storageService } from '../common/storage/storage.service';
+import { StorageService } from '../common/storage/storage.service';
+import { runTenantTransaction } from '../common/tenant/tenant-transaction';
 import { MaintenanceLookupService } from './maintenance-lookup.service';
 import {
   MaintenanceStage,
@@ -23,6 +24,7 @@ export class MaintenanceStageService {
     private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
     private readonly maintenanceLookupService: MaintenanceLookupService,
+    private readonly storageService: StorageService,
   ) {}
 
   isValidStageTransition(from: string, to: string): boolean {
@@ -122,41 +124,51 @@ export class MaintenanceStageService {
     slug: string,
   ): Promise<Array<{ file_url: string }>> {
     const photoUrls: string[] = [];
+    const storedPaths: string[] = [];
 
-    for (const file of files) {
-      const storagePath = await storageService.persistUploadedFile(
-        file,
-        storageService.buildStoragePath(
-          'maintenance',
-          slug,
-          String(requestId),
-          'stage',
-          file.filename,
-        ),
-        'private',
-      );
-      const fileUrl = storageService.toRoutePath(storagePath);
-      await this.dataSource.query(
-        `INSERT INTO maintenance_attachments
-           (maintenance_request_id, file_url, file_name, file_type, file_size, uploaded_by)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [requestId, fileUrl, file.originalname, 'image', file.size, userId],
-      );
-      photoUrls.push(fileUrl);
-    }
+    try {
+      await runTenantTransaction(this.dataSource, async (queryRunner) => {
+        for (const file of files) {
+          const storagePath = await this.storageService.persistUploadedFile(
+            file,
+            this.storageService.buildStoragePath(
+              'maintenance',
+              slug,
+              String(requestId),
+              'stage',
+              file.filename,
+            ),
+            'private',
+          );
+          storedPaths.push(storagePath);
 
-    if (photoUrls.length > 0) {
-      await this.dataSource.query(
-        `UPDATE maintenance_stage_history
-         SET photos = photos || $1::jsonb
-         WHERE id = (
-           SELECT id FROM maintenance_stage_history
-           WHERE request_id = $2
-           ORDER BY created_at DESC
-           LIMIT 1
-         )`,
-        [JSON.stringify(photoUrls), requestId],
-      );
+          const fileUrl = this.storageService.toRoutePath(storagePath);
+          await queryRunner.query(
+            `INSERT INTO maintenance_attachments
+               (maintenance_request_id, file_url, file_name, file_type, file_size, uploaded_by)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [requestId, fileUrl, file.originalname, 'image', file.size, userId],
+          );
+          photoUrls.push(fileUrl);
+        }
+
+        if (photoUrls.length > 0) {
+          await queryRunner.query(
+            `UPDATE maintenance_stage_history
+             SET photos = photos || $1::jsonb
+             WHERE id = (
+               SELECT id FROM maintenance_stage_history
+               WHERE request_id = $2
+               ORDER BY created_at DESC
+               LIMIT 1
+             )`,
+            [JSON.stringify(photoUrls), requestId],
+          );
+        }
+      });
+    } catch (error) {
+      await this.deleteStoredFilesSafely(storedPaths);
+      throw error;
     }
 
     return photoUrls.map((url) => ({ file_url: url }));
@@ -250,5 +262,17 @@ export class MaintenanceStageService {
 
   private getErrorStack(error: unknown): string | undefined {
     return error instanceof Error ? error.stack : undefined;
+  }
+
+  private async deleteStoredFilesSafely(storagePaths: string[]): Promise<void> {
+    await Promise.all(
+      storagePaths.map((storagePath) =>
+        this.storageService.deleteStoredFile(storagePath).catch((error) => {
+          this.logger.warn(
+            `No se pudo compensar foto de etapa '${storagePath}': ${this.getErrorMessage(error)}`,
+          );
+        }),
+      ),
+    );
   }
 }

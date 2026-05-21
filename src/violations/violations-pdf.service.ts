@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import PDFDocument from 'pdfkit';
 
 interface PdfDoc extends NodeJS.ReadableStream {
   fontSize(size: number): PdfDoc;
@@ -22,10 +23,9 @@ interface PdfDoc extends NodeJS.ReadableStream {
   page: { width: number; margins: { left: number; right: number } };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const PDFDocument = require('pdfkit') as new (
-  options?: Record<string, unknown>,
-) => PdfDoc;
+function createPdfDocument(options?: Record<string, unknown>): PdfDoc {
+  return new PDFDocument(options) as unknown as PdfDoc;
+}
 
 export interface ViolationPdfData {
   id: number;
@@ -70,7 +70,7 @@ export class ViolationsPdfService {
     const filePath = path.join(this.outputDir, fileName);
 
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 60, size: 'A4' });
+      const doc = createPdfDocument({ margin: 60, size: 'A4' });
       const stream = fs.createWriteStream(filePath);
 
       doc.pipe(stream);

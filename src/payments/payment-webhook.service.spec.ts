@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantsService } from '../tenants/tenants.service';
 import { PaymentWebhookService } from './payment-webhook.service';
@@ -18,8 +19,13 @@ describe('PaymentWebhookService', () => {
   let tenantsService: {
     findBySlug: jest.Mock;
   };
+  let loggerLogSpy: jest.SpyInstance;
+  let loggerDebugSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    loggerLogSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    loggerDebugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+
     queryRunner = {
       connect: jest.fn<Promise<void>, []>().mockResolvedValue(undefined),
       startTransaction: jest
@@ -48,6 +54,11 @@ describe('PaymentWebhookService', () => {
       dataSource as unknown as DataSource,
       tenantsService as unknown as TenantsService,
     );
+  });
+
+  afterEach(() => {
+    loggerLogSpy.mockRestore();
+    loggerDebugSpy.mockRestore();
   });
 
   it('registra evento idempotente y actualiza pago con schema calificado', async () => {

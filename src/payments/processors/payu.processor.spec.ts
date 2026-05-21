@@ -8,7 +8,7 @@ import { ProcessorPaymentInput } from './payment-processor.interface';
 
 describe('PayUProcessor', () => {
   let processor: PayUProcessor;
-  let httpService: jest.Mocked<HttpService>;
+  let httpPost: jest.Mock;
 
   const TEST_API_KEY = 'test_api_key_12345';
   const TEST_MERCHANT_ID = '508029';
@@ -37,8 +37,21 @@ describe('PayUProcessor', () => {
     return cfg[key] ?? def;
   };
 
+  interface PayUTestRequestBody {
+    test?: boolean;
+    transaction?: {
+      type?: string;
+    };
+  }
+
+  function getPostedBody(): PayUTestRequestBody {
+    const [, body] = httpPost.mock.calls[0] as [string, PayUTestRequestBody];
+    return body;
+  }
+
   beforeEach(async () => {
-    const mockHttpService = { post: jest.fn() };
+    httpPost = jest.fn();
+    const mockHttpService = { post: httpPost };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,7 +62,6 @@ describe('PayUProcessor', () => {
     }).compile();
 
     processor = module.get(PayUProcessor);
-    httpService = module.get(HttpService);
     jest.clearAllMocks();
   });
 
@@ -59,7 +71,7 @@ describe('PayUProcessor', () => {
 
   describe('createPayment', () => {
     it('debe enviar la transacción y devolver APPROVED si el estado es APPROVED', async () => {
-      (httpService.post as jest.Mock).mockReturnValueOnce(
+      httpPost.mockReturnValueOnce(
         of({
           data: {
             transactionResponse: {
@@ -78,7 +90,7 @@ describe('PayUProcessor', () => {
     });
 
     it('debe devolver PROCESSING si el estado es PENDING', async () => {
-      (httpService.post as jest.Mock).mockReturnValueOnce(
+      httpPost.mockReturnValueOnce(
         of({
           data: {
             transactionResponse: {
@@ -96,7 +108,7 @@ describe('PayUProcessor', () => {
     });
 
     it('debe devolver FAILED si el estado es DECLINED', async () => {
-      (httpService.post as jest.Mock).mockReturnValueOnce(
+      httpPost.mockReturnValueOnce(
         of({
           data: {
             transactionResponse: {
@@ -116,9 +128,7 @@ describe('PayUProcessor', () => {
     });
 
     it('debe devolver FAILED si PayU no devuelve transactionResponse', async () => {
-      (httpService.post as jest.Mock).mockReturnValueOnce(
-        of({ data: {} }),
-      );
+      httpPost.mockReturnValueOnce(of({ data: {} }));
 
       const result = await processor.createPayment(baseInput);
 
@@ -127,20 +137,24 @@ describe('PayUProcessor', () => {
     });
 
     it('debe incluir test=true cuando NODE_ENV != production', async () => {
-      (httpService.post as jest.Mock).mockReturnValueOnce(
-        of({ data: { transactionResponse: { state: 'APPROVED', transactionId: 'X' } } }),
+      httpPost.mockReturnValueOnce(
+        of({
+          data: {
+            transactionResponse: { state: 'APPROVED', transactionId: 'X' },
+          },
+        }),
       );
 
       await processor.createPayment(baseInput);
 
-      const body = (httpService.post as jest.Mock).mock.calls[0][1];
+      const body = getPostedBody();
       expect(body.test).toBe(true);
     });
   });
 
   describe('refundPayment', () => {
     it('debe enviar REFUND y devolver APPROVED', async () => {
-      (httpService.post as jest.Mock).mockReturnValueOnce(
+      httpPost.mockReturnValueOnce(
         of({
           data: {
             transactionResponse: {
@@ -153,8 +167,8 @@ describe('PayUProcessor', () => {
 
       const result = await processor.refundPayment('TXN_GT_001', 200);
 
-      const body = (httpService.post as jest.Mock).mock.calls[0][1];
-      expect(body.transaction.type).toBe('REFUND');
+      const body = getPostedBody();
+      expect(body.transaction?.type).toBe('REFUND');
       expect(result.success).toBe(true);
       expect(result.status).toBe('APPROVED');
     });

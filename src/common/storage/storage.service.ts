@@ -5,7 +5,12 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { existsSync, promises as fs } from 'fs';
 import { dirname, join, normalize, resolve, sep } from 'path';
@@ -20,7 +25,9 @@ type ResolveReadAccessResult =
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly storageRoot = resolve(process.cwd(), 'storage');
-  private readonly driver = (process.env.STORAGE_DRIVER ?? 'local').toLowerCase();
+  private readonly driver = (
+    process.env.STORAGE_DRIVER ?? 'local'
+  ).toLowerCase();
   private readonly signedUrlTtl = Number(
     process.env.AWS_SIGNED_URL_EXPIRES_SECONDS ?? 300,
   );
@@ -134,12 +141,16 @@ export class StorageService {
       return { kind: 'local', absolutePath };
     }
 
-    const expiresIn = visibility === 'private' ? this.signedUrlTtl : this.publicSignedUrlTtl;
+    const expiresIn =
+      visibility === 'private' ? this.signedUrlTtl : this.publicSignedUrlTtl;
     const signedUrl = await this.getSignedReadUrl(normalizedPath, expiresIn);
     return { kind: 'redirect', url: signedUrl };
   }
 
-  async getSignedReadUrl(storagePath: string, expiresIn: number): Promise<string> {
+  async getSignedReadUrl(
+    storagePath: string,
+    expiresIn: number,
+  ): Promise<string> {
     if (!this.isS3Enabled()) {
       return this.toRoutePath(storagePath);
     }
@@ -154,6 +165,26 @@ export class StorageService {
         Key: normalizedPath,
       }),
       { expiresIn },
+    );
+  }
+
+  async deleteStoredFile(storagePath: string): Promise<void> {
+    const normalizedPath = this.normalizeStoragePath(storagePath);
+
+    if (!this.isS3Enabled()) {
+      const absolutePath = this.resolveLocalAbsolutePath(normalizedPath);
+      if (existsSync(absolutePath)) {
+        await fs.unlink(absolutePath);
+      }
+      return;
+    }
+
+    const client = this.getS3Client();
+    await client.send(
+      new DeleteObjectCommand({
+        Bucket: this.getBucketName(),
+        Key: normalizedPath,
+      }),
     );
   }
 
@@ -238,4 +269,3 @@ export class StorageService {
     return parts.join('/');
   }
 }
-export const storageService = new StorageService();

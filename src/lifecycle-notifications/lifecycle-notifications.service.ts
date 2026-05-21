@@ -4,6 +4,10 @@ import { DataSource } from 'typeorm';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import {
+  LifecycleExternalChannel,
+  LifecycleExternalNotificationAdapter,
+} from './lifecycle-external-notification.adapter';
 
 interface NotificationChannels {
   internal: boolean;
@@ -16,6 +20,11 @@ interface TenantRecord {
   slug: string;
 }
 
+interface UserContact {
+  email: string | null;
+  phone: string | null;
+}
+
 @Injectable()
 export class LifecycleNotificationsService {
   private readonly logger = new Logger(LifecycleNotificationsService.name);
@@ -23,6 +32,7 @@ export class LifecycleNotificationsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
+    private readonly externalNotificationAdapter: LifecycleExternalNotificationAdapter,
   ) {}
 
   /**
@@ -179,9 +189,15 @@ export class LifecycleNotificationsService {
           channels,
         );
       } else if (channels.email) {
-        this.sendExternal('email', owner.owner_email, title, message.trim(), {
-          inspection_id: inspectionId,
-        });
+        await this.sendExternal(
+          'email',
+          owner.owner_email,
+          title,
+          message.trim(),
+          {
+            inspection_id: inspectionId,
+          },
+        );
       }
     }
   }
@@ -456,10 +472,26 @@ export class LifecycleNotificationsService {
       );
     }
     if (channels.email) {
-      this.sendExternal('email', `user:${userId}`, title, message, metadata);
+      const contact = await this.getUserContact(userId);
+      await this.sendExternalIfContactExists(
+        'email',
+        contact.email,
+        userId,
+        title,
+        message,
+        metadata,
+      );
     }
     if (channels.whatsapp) {
-      this.sendExternal('whatsapp', `user:${userId}`, title, message, metadata);
+      const contact = await this.getUserContact(userId);
+      await this.sendExternalIfContactExists(
+        'whatsapp',
+        contact.phone,
+        userId,
+        title,
+        message,
+        metadata,
+      );
     }
   }
 
@@ -483,25 +515,61 @@ export class LifecycleNotificationsService {
       );
     }
     if (channels.email) {
-      this.sendExternal('email', `user:${userId}`, title, message, metadata);
+      const contact = await this.getUserContactForSchema(schemaName, userId);
+      await this.sendExternalIfContactExists(
+        'email',
+        contact.email,
+        userId,
+        title,
+        message,
+        metadata,
+      );
     }
     if (channels.whatsapp) {
-      this.sendExternal('whatsapp', `user:${userId}`, title, message, metadata);
+      const contact = await this.getUserContactForSchema(schemaName, userId);
+      await this.sendExternalIfContactExists(
+        'whatsapp',
+        contact.phone,
+        userId,
+        title,
+        message,
+        metadata,
+      );
     }
   }
 
-  private sendExternal(
-    channel: 'email' | 'whatsapp',
+  private async sendExternalIfContactExists(
+    channel: LifecycleExternalChannel,
+    recipient: string | null,
+    userId: number,
+    title: string,
+    message: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    if (!recipient) {
+      this.logger.warn(
+        `No se envió ${channel}: usuario ${userId} no tiene contacto configurado`,
+      );
+      return;
+    }
+
+    await this.sendExternal(channel, recipient, title, message, metadata);
+  }
+
+  private async sendExternal(
+    channel: LifecycleExternalChannel,
     recipient: string,
     title: string,
     message: string,
     metadata: Record<string, unknown>,
-  ): void {
-    // TODO: conectar con SendGrid (email) o Twilio/WA Business API (whatsapp)
-    this.logger.log(
-      `[${channel.toUpperCase()}] to=${recipient} subject="${title}" ` +
-        `preview="${message.slice(0, 80)}" meta=${JSON.stringify(metadata)}`,
-    );
+  ): Promise<void> {
+    await this.externalNotificationAdapter.send({
+      channel,
+      recipient,
+      title,
+      message,
+      metadata,
+    });
   }
 
   /** Lee notification_channels de tenant_config — HTTP context (sin schema explícito). */
@@ -541,12 +609,11 @@ export class LifecycleNotificationsService {
 
   private async getAdminIdsForSchema(schemaName: string): Promise<number[]> {
     const q = quoteIdent(schemaName);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const rows: { id: number }[] = await this.dataSource
-      .query(
-        `SELECT id FROM ${q}."user" WHERE role = 'ADMIN' AND is_active = true`,
-      )
-      .catch(() => []);
+    const rows = await this.dataSource
+      .query<
+        { id: number }[]
+      >(`SELECT id FROM ${q}."user" WHERE role = 'ADMIN' AND is_active = true`)
+      .catch((): { id: number }[] => []);
     return rows.map((r) => r.id);
   }
 
@@ -587,5 +654,33 @@ export class LifecycleNotificationsService {
     return this.dataSource.query<TenantRecord[]>(
       `SELECT schema_name, slug FROM public.tenant WHERE is_active = true`,
     );
+  }
+
+  private async getUserContact(userId: number): Promise<UserContact> {
+    try {
+      const rows = await this.dataSource.query<UserContact[]>(
+        `SELECT email, phone FROM "user" WHERE id = $1 AND is_active = true`,
+        [userId],
+      );
+      return rows[0] ?? { email: null, phone: null };
+    } catch {
+      return { email: null, phone: null };
+    }
+  }
+
+  private async getUserContactForSchema(
+    schemaName: string,
+    userId: number,
+  ): Promise<UserContact> {
+    const q = quoteIdent(schemaName);
+    try {
+      const rows = await this.dataSource.query<UserContact[]>(
+        `SELECT email, phone FROM ${q}."user" WHERE id = $1 AND is_active = true`,
+        [userId],
+      );
+      return rows[0] ?? { email: null, phone: null };
+    } catch {
+      return { email: null, phone: null };
+    }
   }
 }

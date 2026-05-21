@@ -6,7 +6,6 @@ import { ExpensesService } from './expenses.service';
 import { Expense } from './entities/expense.entity';
 import { ExpenseCategoryEnum } from './enums/expense-category.enum';
 import { CreateExpenseDto, UpdateExpenseDto, ExpenseFiltersDto } from './dto';
-import { TenantConfigService } from '../tenant-config/tenant-config.service';
 
 type MockedExpenseRepository = jest.Mocked<
   Pick<
@@ -30,8 +29,6 @@ const makeMockRepository = (): MockedExpenseRepository => ({
   merge: jest.fn(),
 });
 
-const makeMockTenantConfigService = (): Partial<TenantConfigService> => ({});
-
 describe('ExpensesService', () => {
   let service: ExpensesService;
   let mockRepository: MockedExpenseRepository;
@@ -47,10 +44,6 @@ describe('ExpensesService', () => {
         {
           provide: DataSource,
           useValue: makeDataSource(),
-        },
-        {
-          provide: TenantConfigService,
-          useValue: makeMockTenantConfigService(),
         },
       ],
     }).compile();

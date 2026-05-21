@@ -29,6 +29,11 @@ describe('TenantWebsiteService', () => {
   let service: TenantWebsiteService;
   const mockDataSource = { query: jest.fn() };
 
+  function getQuerySql(callIndex: number): string {
+    const call = mockDataSource.query.mock.calls[callIndex] as unknown[];
+    return String(call[0]);
+  }
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -62,8 +67,7 @@ describe('TenantWebsiteService', () => {
 
       const result = await service.getOrCreate(SCHEMA);
       expect(result.id).toBe(1);
-      const insertSql: string = mockDataSource.query.mock.calls[1][0] as string;
-      expect(insertSql).toContain('INSERT INTO');
+      expect(getQuerySql(1)).toContain('INSERT INTO');
     });
   });
 
@@ -108,8 +112,7 @@ describe('TenantWebsiteService', () => {
       const result = await service.togglePublish(SCHEMA);
       expect(result.is_published).toBe(true);
 
-      const sql: string = mockDataSource.query.mock.calls[1][0] as string;
-      expect(sql).toContain('NOT is_published');
+      expect(getQuerySql(1)).toContain('NOT is_published');
     });
   });
 

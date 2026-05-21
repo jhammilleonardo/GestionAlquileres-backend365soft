@@ -23,8 +23,24 @@ import { LifecycleNotificationsCron } from '../../src/lifecycle-notifications/li
 
 const SLUG = 'e2e-expiry';
 
+interface AuthTokenBody {
+  access_token?: string;
+}
+
+interface IdBody {
+  id?: number;
+}
+
+interface NotificationBody {
+  id: number;
+  event_type: string;
+  is_read?: boolean;
+  read_at?: string | null;
+}
+
 describe('E2E #5 — Contrato por vencer → cron → notificación al admin', () => {
   let app: INestApplication;
+  let httpServer: Parameters<typeof request>[0];
   let dataSource: DataSource;
   let adminToken: string;
   let propertyId: number;
@@ -35,6 +51,7 @@ describe('E2E #5 — Contrato por vencer → cron → notificación al admin', (
 
   beforeAll(async () => {
     app = await createTestApp();
+    httpServer = app.getHttpServer() as Parameters<typeof request>[0];
     dataSource = app.get(DataSource);
     await dropTenantSchema(dataSource, SLUG);
   });
@@ -45,7 +62,7 @@ describe('E2E #5 — Contrato por vencer → cron → notificación al admin', (
   });
 
   it('1. registra empresa + admin', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .post('/auth/register-admin')
       .send({
         slug: SLUG,
@@ -57,14 +74,15 @@ describe('E2E #5 — Contrato por vencer → cron → notificación al admin', (
       })
       .expect(201);
 
-    adminToken = res.body.access_token as string;
+    const body = res.body as AuthTokenBody;
+    adminToken = body.access_token ?? '';
     ({ typeId, subtypeId } = await seedPublicPropertyTypes(dataSource, SLUG));
   });
 
   it('2. crea inquilino, propiedad y contrato que vence en 15 días', async () => {
     const schema = schemaNameFromSlug(SLUG);
 
-    const tenantRes = await request(app.getHttpServer())
+    const tenantRes = await request(httpServer)
       .post(`/auth/${SLUG}/register`)
       .send({
         name: 'Inquilino Expiry',
@@ -74,9 +92,10 @@ describe('E2E #5 — Contrato por vencer → cron → notificación al admin', (
       })
       .expect(201);
 
-    tenantUserId = tenantRes.body.id as number;
+    const tenantBody = tenantRes.body as IdBody;
+    tenantUserId = tenantBody.id ?? 0;
 
-    const propRes = await request(app.getHttpServer())
+    const propRes = await request(httpServer)
       .post(`/${SLUG}/admin/properties`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
@@ -96,7 +115,8 @@ describe('E2E #5 — Contrato por vencer → cron → notificación al admin', (
       })
       .expect(201);
 
-    propertyId = propRes.body.id as number;
+    const propertyBody = propRes.body as IdBody;
+    propertyId = propertyBody.id ?? 0;
 
     // Contrato que vence exactamente en 15 días
     const startDate = new Date(Date.now() - 350 * 24 * 60 * 60 * 1000)
@@ -137,12 +157,12 @@ describe('E2E #5 — Contrato por vencer → cron → notificación al admin', (
   });
 
   it('5. el admin ve la alerta de vencimiento en su centro de notificaciones', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .get(`/${SLUG}/notifications`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
-    const notifications = res.body as { id: number; event_type: string }[];
+    const notifications = res.body as NotificationBody[];
     const found = notifications.find((n) =>
       [
         'contract.expiring.60',
@@ -156,12 +176,13 @@ describe('E2E #5 — Contrato por vencer → cron → notificación al admin', (
   });
 
   it('6. el admin marca la notificación como leída', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .patch(`/${SLUG}/notifications/${notificationId}/read`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
-    expect(res.body.is_read).toBe(true);
-    expect(res.body.read_at).not.toBeNull();
+    const body = res.body as NotificationBody;
+    expect(body.is_read).toBe(true);
+    expect(body.read_at).not.toBeNull();
   });
 });

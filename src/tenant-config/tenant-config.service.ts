@@ -4,6 +4,25 @@ import { DataSource } from 'typeorm';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { quoteIdent } from '../common/utils/sql-identifier';
 
+export interface TenantConfigRow {
+  id: number;
+  country: string;
+  currency: string;
+  language: string;
+  timezone: string;
+  date_format: string;
+  rental_type: string;
+  payment_methods: unknown;
+  notification_channels: unknown;
+  commission_percentage: string | number;
+  grace_days_late_fee: number;
+  late_fee_percentage: string | number;
+  custom_expense_categories?: unknown;
+  setup_completed?: boolean;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
 @Injectable()
 export class TenantConfigService {
   constructor(
@@ -11,8 +30,8 @@ export class TenantConfigService {
     private dataSource: DataSource,
   ) {}
 
-  async getConfig(schemaName: string) {
-    const rows = await this.dataSource.query(
+  async getConfig(schemaName: string): Promise<TenantConfigRow> {
+    const rows = await this.dataSource.query<TenantConfigRow[]>(
       `SELECT * FROM ${quoteIdent(schemaName)}.tenant_config LIMIT 1`,
     );
 
@@ -23,7 +42,10 @@ export class TenantConfigService {
     return rows[0];
   }
 
-  async updateConfig(schemaName: string, dto: UpdateTenantConfigDto) {
+  async updateConfig(
+    schemaName: string,
+    dto: UpdateTenantConfigDto,
+  ): Promise<TenantConfigRow> {
     const config = await this.getConfig(schemaName);
 
     const fields: string[] = [];
@@ -86,7 +108,7 @@ export class TenantConfigService {
     fields.push(`updated_at = now()`);
     values.push(config.id);
 
-    const rows = await this.dataSource.query(
+    const rows = await this.dataSource.query<TenantConfigRow[]>(
       `UPDATE ${quoteIdent(schemaName)}.tenant_config SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
       values,
     );
@@ -94,10 +116,10 @@ export class TenantConfigService {
     return rows[0];
   }
 
-  async markSetupComplete(schemaName: string) {
+  async markSetupComplete(schemaName: string): Promise<TenantConfigRow> {
     const config = await this.getConfig(schemaName);
 
-    const rows = await this.dataSource.query(
+    const rows = await this.dataSource.query<TenantConfigRow[]>(
       `UPDATE ${quoteIdent(schemaName)}.tenant_config SET setup_completed = true, updated_at = now() WHERE id = $1 RETURNING *`,
       [config.id],
     );

@@ -3,10 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ExpensesService } from './expenses.service';
 import { AdminExpensesController } from './expenses.controller';
 import { Expense } from './entities/expense.entity';
-import { TenantConfigModule } from '../tenant-config/tenant-config.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Expense]), TenantConfigModule],
+  imports: [TypeOrmModule.forFeature([Expense])],
   controllers: [AdminExpensesController],
   providers: [ExpensesService],
   exports: [ExpensesService],

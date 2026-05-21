@@ -24,8 +24,32 @@ import {
 
 const SLUG = 'e2e-payments';
 
+interface AuthTokenBody {
+  access_token?: string;
+}
+
+interface IdBody {
+  id?: number;
+}
+
+interface PaymentBody {
+  id?: number;
+  status?: string;
+  approved_at?: string | null;
+}
+
+interface PaymentsListBody {
+  payments?: PaymentBody[];
+}
+
+interface PaymentStatsBody {
+  total_payments?: number;
+  total_amount_approved?: string | number;
+}
+
 describe('E2E #3 — Pago manual → aprobación → split payment', () => {
   let app: INestApplication;
+  let httpServer: Parameters<typeof request>[0];
   let dataSource: DataSource;
   let adminToken: string;
   let propertyId: number;
@@ -38,6 +62,7 @@ describe('E2E #3 — Pago manual → aprobación → split payment', () => {
 
   beforeAll(async () => {
     app = await createTestApp();
+    httpServer = app.getHttpServer() as Parameters<typeof request>[0];
     dataSource = app.get(DataSource);
     await dropTenantSchema(dataSource, SLUG);
   });
@@ -48,7 +73,7 @@ describe('E2E #3 — Pago manual → aprobación → split payment', () => {
   });
 
   it('1. registra empresa + admin', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .post('/auth/register-admin')
       .send({
         slug: SLUG,
@@ -60,14 +85,15 @@ describe('E2E #3 — Pago manual → aprobación → split payment', () => {
       })
       .expect(201);
 
-    adminToken = res.body.access_token as string;
+    const body = res.body as AuthTokenBody;
+    adminToken = body.access_token ?? '';
     ({ typeId, subtypeId } = await seedPublicPropertyTypes(dataSource, SLUG));
   });
 
   it('2. registra inquilino, crea propiedad y asigna propietario', async () => {
     const schema = schemaNameFromSlug(SLUG);
 
-    const tenantRes = await request(app.getHttpServer())
+    const tenantRes = await request(httpServer)
       .post(`/auth/${SLUG}/register`)
       .send({
         name: 'Inquilino Pago',
@@ -77,9 +103,10 @@ describe('E2E #3 — Pago manual → aprobación → split payment', () => {
       })
       .expect(201);
 
-    tenantUserId = tenantRes.body.id as number;
+    const tenantBody = tenantRes.body as IdBody;
+    tenantUserId = tenantBody.id ?? 0;
 
-    const propRes = await request(app.getHttpServer())
+    const propRes = await request(httpServer)
       .post(`/${SLUG}/admin/properties`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
@@ -99,7 +126,8 @@ describe('E2E #3 — Pago manual → aprobación → split payment', () => {
       })
       .expect(201);
 
-    propertyId = propRes.body.id as number;
+    const propertyBody = propRes.body as IdBody;
+    propertyId = propertyBody.id ?? 0;
 
     const ownerRows = await dataSource.query<{ id: number }[]>(
       `INSERT INTO "${schema}".rental_owners
@@ -141,7 +169,7 @@ describe('E2E #3 — Pago manual → aprobación → split payment', () => {
   it('4. el admin registra un pago manual en nombre del inquilino', async () => {
     const today = new Date().toISOString().split('T')[0];
 
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .post(`/${SLUG}/admin/payments`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
@@ -156,34 +184,38 @@ describe('E2E #3 — Pago manual → aprobación → split payment', () => {
       })
       .expect(201);
 
-    paymentId = res.body.id as number;
+    const body = res.body as PaymentBody;
+    paymentId = body.id ?? 0;
     expect(paymentId).toBeDefined();
-    expect(res.body.status).toBe('PENDING');
+    expect(body.status).toBe('PENDING');
   });
 
   it('5. el admin aprueba el pago', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .patch(`/${SLUG}/admin/payments/${paymentId}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ admin_notes: 'Pago verificado en efectivo' })
       .expect(200);
 
-    const approvedPayment = Array.isArray(res.body) ? res.body[0] : res.body;
+    const responseBody = res.body as PaymentBody | PaymentBody[];
+    const approvedPayment = Array.isArray(responseBody)
+      ? responseBody[0]
+      : responseBody;
     expect(approvedPayment.status).toBe('APPROVED');
     expect(approvedPayment.approved_at).not.toBeNull();
   });
 
   it('6. el pago aprobado aparece en el historial del tenant', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .get(`/${SLUG}/admin/payments`)
       .set('Authorization', `Bearer ${adminToken}`)
       .query({ status: 'APPROVED' })
       .expect(200);
 
-    const payments = (res.body.payments ?? res.body) as {
-      id: number;
-      status: string;
-    }[];
+    const responseBody = res.body as PaymentsListBody | PaymentBody[];
+    const payments = Array.isArray(responseBody)
+      ? responseBody
+      : (responseBody.payments ?? []);
     const found = payments.find((p) => p.id === paymentId);
     expect(found).toBeDefined();
     expect(found?.status).toBe('APPROVED');
@@ -216,12 +248,13 @@ describe('E2E #3 — Pago manual → aprobación → split payment', () => {
   });
 
   it('8. las estadísticas de pagos reflejan el pago aprobado', async () => {
-    const res = await request(app.getHttpServer())
+    const res = await request(httpServer)
       .get(`/${SLUG}/admin/payments/stats`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
-    expect(res.body.total_payments).toBeGreaterThanOrEqual(1);
-    expect(Number(res.body.total_amount_approved)).toBeGreaterThanOrEqual(800);
+    const body = res.body as PaymentStatsBody;
+    expect(body.total_payments).toBeGreaterThanOrEqual(1);
+    expect(Number(body.total_amount_approved)).toBeGreaterThanOrEqual(800);
   });
 });

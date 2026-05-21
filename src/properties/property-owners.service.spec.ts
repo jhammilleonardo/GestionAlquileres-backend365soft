@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { PropertyOwnersService } from './property-owners.service';
+import { PropertyOwnershipValidationService } from './property-ownership-validation.service';
 
 describe('PropertyOwnersService', () => {
   let service: PropertyOwnersService;
@@ -29,7 +30,10 @@ describe('PropertyOwnersService', () => {
       query: jest.fn(),
       createQueryRunner: jest.fn().mockReturnValue(queryRunner),
     };
-    service = new PropertyOwnersService(dataSource as unknown as DataSource);
+    service = new PropertyOwnersService(
+      dataSource as unknown as DataSource,
+      new PropertyOwnershipValidationService(),
+    );
   });
 
   it('assigns owners using schema-qualified tenant tables in a transaction', async () => {

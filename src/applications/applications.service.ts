@@ -4,6 +4,7 @@ import { UpdateApplicationStatusDto } from './dto/update-application-status.dto'
 import { ApproveApplicationDto } from './dto/approve-application.dto';
 import { UpdateScreeningDto } from './dto/update-screening.dto';
 import { ApplicationStatus } from './enums/application-status.enum';
+import type { ApplicationApprovalResult } from './application-approval.types';
 import { ApplicationApprovalService } from './application-approval.service';
 import { ApplicationCreationService } from './application-creation.service';
 import {
@@ -11,10 +12,8 @@ import {
   type ApplicationDocumentRef,
 } from './application-documents.service';
 import { ApplicationQueriesService } from './application-queries.service';
-import {
-  ApplicationScreeningService,
-  type ApplicationScreeningResult,
-} from './application-screening.service';
+import { ApplicationScreeningService } from './application-screening.service';
+import type { ApplicationScreeningResult } from './application-screening.types';
 import { ApplicationScreeningFeeService } from './application-screening-fee.service';
 import { ApplicationStatusService } from './application-status.service';
 
@@ -62,7 +61,7 @@ export class ApplicationsService {
     approveDto: ApproveApplicationDto,
     adminId: number,
     tenantSlug: string,
-  ) {
+  ): Promise<ApplicationApprovalResult> {
     return this.applicationApprovalService.approveAndCreateContract(
       id,
       approveDto,
@@ -75,7 +74,7 @@ export class ApplicationsService {
     createApplicationDto: CreateApplicationDto,
     userId: number,
     tenantSlug: string,
-  ) {
+  ): Promise<ApplicationResult> {
     return this.applicationCreationService.create(
       createApplicationDto,
       userId,
@@ -83,15 +82,21 @@ export class ApplicationsService {
     );
   }
 
-  async findAll(tenantSlug: string, status?: ApplicationStatus) {
+  async findAll(
+    tenantSlug: string,
+    status?: ApplicationStatus,
+  ): Promise<ApplicationResult[]> {
     return this.applicationQueriesService.findAll(tenantSlug, status);
   }
 
-  async findOne(id: number, tenantSlug: string) {
+  async findOne(id: number, tenantSlug: string): Promise<ApplicationResult> {
     return this.applicationQueriesService.findOne(id, tenantSlug);
   }
 
-  async findByApplicant(userId: number, tenantSlug: string) {
+  async findByApplicant(
+    userId: number,
+    tenantSlug: string,
+  ): Promise<ApplicationResult[]> {
     return this.applicationQueriesService.findByApplicant(userId, tenantSlug);
   }
 
@@ -99,7 +104,7 @@ export class ApplicationsService {
     id: number,
     updateDto: UpdateApplicationStatusDto,
     tenantSlug: string,
-  ) {
+  ): Promise<ApplicationResult> {
     return this.applicationStatusService.updateStatus(
       id,
       updateDto,

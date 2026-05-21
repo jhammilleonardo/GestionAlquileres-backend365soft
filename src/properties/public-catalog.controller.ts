@@ -9,11 +9,27 @@ import {
   BadRequestException,
   ParseIntPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBody,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Request } from 'express';
 import { PropertiesService } from './properties.service';
 import { FilterCatalogPropertiesDto } from './dto/filter-catalog-properties.dto';
-import { CreatePropertyContactDto } from './dto/create-property-contact.dto';
+import {
+  CreatePropertyContactDto,
+  PropertyContactResponseDto,
+} from './dto/create-property-contact.dto';
+import {
+  CatalogPropertyDetailResponseDto,
+  PaginatedCatalogPropertiesResponseDto,
+} from './dto/catalog-property-response.dto';
 
 /**
  * Controlador público del catálogo de propiedades
@@ -112,6 +128,8 @@ export class PublicCatalogController {
     description: 'Items por página (máximo 100)',
     example: 20,
   })
+  @ApiOkResponse({ type: PaginatedCatalogPropertiesResponseDto })
+  @ApiBadRequestResponse({ description: 'Tenant slug inválido' })
   async findCatalogProperties(
     @Param('slug') slug: string,
     @Query() filters: FilterCatalogPropertiesDto,
@@ -149,6 +167,9 @@ export class PublicCatalogController {
     description: 'ID de la propiedad',
     example: 1,
   })
+  @ApiOkResponse({ type: CatalogPropertyDetailResponseDto })
+  @ApiBadRequestResponse({ description: 'Tenant slug inválido' })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   async findCatalogPropertyDetail(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -192,6 +213,12 @@ export class PublicCatalogController {
     description: 'ID de la propiedad',
     example: 1,
   })
+  @ApiBody({ type: CreatePropertyContactDto })
+  @ApiOkResponse({ type: PropertyContactResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos o tenant slug inválido',
+  })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   async createPropertyContact(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,

@@ -6,15 +6,19 @@ import { UsersService } from '../users/users.service';
 import { ContractsService } from '../contracts/contracts.service';
 import { BlacklistService } from '../blacklist/blacklist.service';
 import { TenantsService } from '../tenants/tenants.service';
+import { StorageService } from '../common/storage/storage.service';
 import { DataSource } from 'typeorm';
 import { ApplicationStatus } from './enums/application-status.enum';
 import { ScreeningFinalStatus } from './enums/screening-final-status.enum';
 import { UpdateScreeningDto } from './dto/update-screening.dto';
+import { ApplicationApprovalContractFactoryService } from './application-approval-contract-factory.service';
+import { ApplicationApprovalSideEffectsService } from './application-approval-side-effects.service';
 import { ApplicationApprovalService } from './application-approval.service';
 import { ApplicationCreationService } from './application-creation.service';
 import { ApplicationDocumentsService } from './application-documents.service';
 import { ApplicationQueriesService } from './application-queries.service';
 import { ApplicationScreeningFeeService } from './application-screening-fee.service';
+import { ApplicationScreeningDecisionService } from './application-screening-decision.service';
 import { ApplicationScreeningService } from './application-screening.service';
 import { ApplicationStatusService } from './application-status.service';
 
@@ -93,11 +97,14 @@ describe('ApplicationsService — screening', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ApplicationsService,
+        ApplicationApprovalContractFactoryService,
+        ApplicationApprovalSideEffectsService,
         ApplicationApprovalService,
         ApplicationCreationService,
         ApplicationDocumentsService,
         ApplicationQueriesService,
         ApplicationScreeningFeeService,
+        ApplicationScreeningDecisionService,
         ApplicationScreeningService,
         ApplicationStatusService,
         { provide: DataSource, useValue: dataSource },
@@ -106,6 +113,14 @@ describe('ApplicationsService — screening', () => {
         { provide: ContractsService, useValue: contractsService },
         { provide: BlacklistService, useValue: {} },
         { provide: TenantsService, useValue: tenantsService },
+        {
+          provide: StorageService,
+          useValue: {
+            persistUploadedFile: jest.fn(),
+            buildStoragePath: jest.fn(),
+            toRoutePath: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -131,6 +146,44 @@ describe('ApplicationsService — screening', () => {
       expect(dataSource.query).not.toHaveBeenCalledWith(
         expect.stringContaining('SET search_path'),
       );
+    });
+  });
+
+  describe('approveAndCreateContract', () => {
+    it('hace rollback si falla la creación del contrato después de marcar la solicitud', async () => {
+      const app = buildApplication();
+      const approvedApp = { ...app, status: ApplicationStatus.APROBADA };
+
+      queryRunner.query
+        .mockResolvedValueOnce([app]) // lock application FOR UPDATE
+        .mockResolvedValueOnce([approvedApp]); // mark application approved
+      contractsService.create.mockRejectedValueOnce(
+        new BadRequestException('El inquilino ya tiene un contrato activo'),
+      );
+
+      await expect(
+        service.approveAndCreateContract(
+          APPLICATION_ID,
+          {
+            monthly_rent: 3000,
+            currency: 'BOB',
+            admin_feedback: 'Aprobación de prueba',
+          },
+          ADMIN_ID,
+          TENANT_SLUG,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(queryRunner.startTransaction).toHaveBeenCalledTimes(1);
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+      expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(queryRunner.release).toHaveBeenCalledTimes(1);
+      expect(
+        notificationsService.createForUserInSchema.mock.calls,
+      ).toHaveLength(0);
+      expect(
+        contractsService.emitContractCreatedSideEffects.mock.calls,
+      ).toHaveLength(0);
     });
   });
 

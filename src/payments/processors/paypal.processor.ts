@@ -13,6 +13,30 @@ import {
 const PAYPAL_FEE_PERCENT = 0.0349;
 const PAYPAL_FEE_FIXED = 0.49;
 
+interface PayPalTokenResponse {
+  access_token: string;
+}
+
+interface PayPalOrderResponse {
+  id: string;
+}
+
+interface PayPalCaptureResponse {
+  status: string;
+  purchase_units?: Array<{
+    payments?: {
+      captures?: Array<{
+        id?: string;
+      }>;
+    };
+  }>;
+}
+
+interface PayPalRefundResponse {
+  id: string;
+  status: string;
+}
+
 /**
  * Procesador PayPal — REST API v2 (Orders API).
  *
@@ -52,7 +76,7 @@ export class PayPalProcessor implements IPaymentProcessor {
     ).toString('base64');
 
     const resp = await firstValueFrom(
-      this.httpService.post(
+      this.httpService.post<PayPalTokenResponse>(
         `${this.baseUrl}/v1/oauth2/token`,
         'grant_type=client_credentials',
         {
@@ -65,7 +89,7 @@ export class PayPalProcessor implements IPaymentProcessor {
       ),
     );
 
-    return resp.data.access_token as string;
+    return resp.data.access_token;
   }
 
   async createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
@@ -76,7 +100,7 @@ export class PayPalProcessor implements IPaymentProcessor {
     const token = await this.getAccessToken();
 
     const resp = await firstValueFrom(
-      this.httpService.post(
+      this.httpService.post<PayPalOrderResponse>(
         `${this.baseUrl}/v2/checkout/orders`,
         {
           intent: 'CAPTURE',
@@ -102,7 +126,7 @@ export class PayPalProcessor implements IPaymentProcessor {
       ),
     );
 
-    const orderId = resp.data.id as string;
+    const orderId = resp.data.id;
     this.logger.log(
       `PayPal Order creado: ${orderId} | tenant: ${input.tenantId}`,
     );
@@ -119,7 +143,7 @@ export class PayPalProcessor implements IPaymentProcessor {
     const token = await this.getAccessToken();
 
     const resp = await firstValueFrom(
-      this.httpService.post(
+      this.httpService.post<PayPalCaptureResponse>(
         `${this.baseUrl}/v2/checkout/orders/${transactionId}/capture`,
         {},
         {
@@ -132,9 +156,8 @@ export class PayPalProcessor implements IPaymentProcessor {
       ),
     );
 
-    const status = resp.data.status as string;
-    const captures: Array<{ id: string }> =
-      resp.data.purchase_units?.[0]?.payments?.captures ?? [];
+    const status = resp.data.status;
+    const captures = resp.data.purchase_units?.[0]?.payments?.captures ?? [];
     const captureId = captures[0]?.id ?? transactionId;
 
     return {
@@ -152,7 +175,7 @@ export class PayPalProcessor implements IPaymentProcessor {
     const token = await this.getAccessToken();
 
     const resp = await firstValueFrom(
-      this.httpService.post(
+      this.httpService.post<PayPalRefundResponse>(
         `${this.baseUrl}/v2/payments/captures/${captureId}/refund`,
         {
           amount: {
@@ -170,11 +193,11 @@ export class PayPalProcessor implements IPaymentProcessor {
       ),
     );
 
-    const refundStatus = resp.data.status as string;
+    const refundStatus = resp.data.status;
 
     return {
       success: refundStatus === 'COMPLETED',
-      transaction_id: resp.data.id as string,
+      transaction_id: resp.data.id,
       processor_fee: 0,
       status: refundStatus === 'COMPLETED' ? 'APPROVED' : 'FAILED',
     };

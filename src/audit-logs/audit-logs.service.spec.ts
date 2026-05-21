@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { Logger } from '@nestjs/common';
 import { AuditLogsService } from './audit-logs.service';
 import { AuditAction } from './enums/audit-action.enum';
 import { QueryAuditLogsDto } from './dto/query-audit-logs.dto';
@@ -15,8 +16,10 @@ function querySql(mock: jest.Mock, callIndex: number): string {
 describe('AuditLogsService', () => {
   let service: AuditLogsService;
   let mockQuery: jest.Mock;
+  let loggerErrorSpy: jest.SpyInstance;
 
   beforeEach(async () => {
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
     mockQuery = jest.fn();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -32,7 +35,10 @@ describe('AuditLogsService', () => {
     service = module.get(AuditLogsService);
   });
 
-  afterEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    loggerErrorSpy.mockRestore();
+    jest.clearAllMocks();
+  });
 
   describe('log()', () => {
     it('debe insertar en audit_logs con los parámetros correctos', async () => {

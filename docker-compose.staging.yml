@@ -1,5 +1,4 @@
 services:
-
   postgres:
     image: postgres:18-alpine
     container_name: gestion-postgres-staging
@@ -16,10 +15,10 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,7 +27,7 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY}:${IMAGE_TAG:-latest}
     container_name: gestion-api-staging
     ports:
-      - "3000:3000"
+      - '3000:3000'
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,7 +41,57 @@ services:
       DB_DATABASE: ${DB_DATABASE}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-7d}
-      SENTRY_DSN: ${SENTRY_DSN:-}
+      FRONTEND_URLS: ${FRONTEND_URLS}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      TLS_TERMINATED_BY_PROXY: ${TLS_TERMINATED_BY_PROXY:-true}
+      HTTPS_ENABLED: ${HTTPS_ENABLED:-false}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      RATE_LIMIT_POLICY_ACK: ${RATE_LIMIT_POLICY_ACK:-true}
+      SECRET_ROTATION_POLICY_ACK: ${SECRET_ROTATION_POLICY_ACK:-true}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_BUCKET_NAME: ${AWS_BUCKET_NAME:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SIGNED_URL_EXPIRES_SECONDS: ${AWS_SIGNED_URL_EXPIRES_SECONDS:-300}
+      AWS_PUBLIC_SIGNED_URL_EXPIRES_SECONDS: ${AWS_PUBLIC_SIGNED_URL_EXPIRES_SECONDS:-3600}
+      ALLOW_LOCAL_STORAGE_IN_PRODUCTION: ${ALLOW_LOCAL_STORAGE_IN_PRODUCTION:-true}
+      MONITORING_PROVIDER: ${MONITORING_PROVIDER:-logger}
+      MONITORING_WEBHOOK_URL: ${MONITORING_WEBHOOK_URL:-}
+      MONITORING_API_KEY: ${MONITORING_API_KEY:-}
+      MONITORING_SERVICE_NAME: ${MONITORING_SERVICE_NAME:-365soft-backend}
+      MONITORING_ENVIRONMENT: ${MONITORING_ENVIRONMENT:-staging}
+      LOG_AGGREGATION_ENABLED: ${LOG_AGGREGATION_ENABLED:-true}
+      LIFECYCLE_NOTIFICATION_PROVIDER: ${LIFECYCLE_NOTIFICATION_PROVIDER:-stub}
+      ALLOW_NOTIFICATION_STUB_IN_PRODUCTION: ${ALLOW_NOTIFICATION_STUB_IN_PRODUCTION:-true}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-}
+      SENDGRID_FROM_NAME: ${SENDGRID_FROM_NAME:-365Soft}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
+      WHATSAPP_CLOUD_TOKEN: ${WHATSAPP_CLOUD_TOKEN:-}
+      WHATSAPP_CLOUD_PHONE_NUMBER_ID: ${WHATSAPP_CLOUD_PHONE_NUMBER_ID:-}
+      WHATSAPP_CLOUD_GRAPH_VERSION: ${WHATSAPP_CLOUD_GRAPH_VERSION:-v19.0}
+      MC4_ENABLED: ${MC4_ENABLED:-false}
+      MC4_AUTH_URL: ${MC4_AUTH_URL:-}
+      MC4_QR_URL: ${MC4_QR_URL:-}
+      MC4_STATUS_URL: ${MC4_STATUS_URL:-}
+      MC4_API_KEY_AUTH: ${MC4_API_KEY_AUTH:-}
+      MC4_API_KEY_SERVICIO: ${MC4_API_KEY_SERVICIO:-}
+      MC4_USERNAME: ${MC4_USERNAME:-}
+      MC4_PASSWORD: ${MC4_PASSWORD:-}
+      MC4_CALLBACK_SECRET: ${MC4_CALLBACK_SECRET:-}
+      STRIPE_ENABLED: ${STRIPE_ENABLED:-false}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PAYPAL_ENABLED: ${PAYPAL_ENABLED:-false}
+      PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID:-}
+      PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET:-}
+      PAYPAL_BASE_URL: ${PAYPAL_BASE_URL:-https://api-m.sandbox.paypal.com}
+      PAYPAL_WEBHOOK_ID: ${PAYPAL_WEBHOOK_ID:-}
+      POSTGRES_BACKUP_ENABLED: ${POSTGRES_BACKUP_ENABLED:-true}
+      PROVISIONING_RUNBOOK_ACK: ${PROVISIONING_RUNBOOK_ACK:-true}
     volumes:
       - uploads_staging:/app/uploads
       - storage_staging:/app/storage
@@ -52,10 +101,10 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "20m"
-        max-file: "5"
+        max-size: '20m'
+        max-file: '5'
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health']
       interval: 30s
       timeout: 10s
       start_period: 60s

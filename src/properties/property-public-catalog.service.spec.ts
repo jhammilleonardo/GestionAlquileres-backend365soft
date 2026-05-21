@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { PropertyPublicCatalogQueryService } from './property-public-catalog-query.service';
 import { PropertyPublicCatalogService } from './property-public-catalog.service';
 
 describe('PropertyPublicCatalogService', () => {
@@ -10,6 +11,7 @@ describe('PropertyPublicCatalogService', () => {
     dataSource = { query: jest.fn() };
     service = new PropertyPublicCatalogService(
       dataSource as unknown as DataSource,
+      new PropertyPublicCatalogQueryService(),
     );
   });
 

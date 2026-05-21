@@ -1,12 +1,9 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
 import { AssignOwnerDto, CreatePropertyDto } from './dto/create-property.dto';
+import { PropertyOwnershipValidationService } from './property-ownership-validation.service';
 
 interface IdRow {
   id: number;
@@ -17,10 +14,6 @@ interface OwnerRelationRow {
   is_primary: boolean;
 }
 
-interface OwnershipTotalRow {
-  total: string | number | null;
-}
-
 type SqlRow = Record<string, unknown>;
 
 @Injectable()
@@ -28,6 +21,7 @@ export class PropertyOwnersService {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly propertyOwnershipValidationService: PropertyOwnershipValidationService,
   ) {}
 
   async attachOwnersDuringCreate(
@@ -96,7 +90,7 @@ export class PropertyOwnersService {
         ],
       )) as SqlRow[];
 
-      await this.assertOwnershipTotalWithinLimit(
+      await this.propertyOwnershipValidationService.assertOwnershipTotalWithinLimit(
         queryRunner,
         propertyId,
         schemaName,
@@ -183,7 +177,9 @@ export class PropertyOwnersService {
     const existingPrimaryCount = (
       createPropertyDto.existing_owners ?? []
     ).filter((owner) => owner.is_primary).length;
-    this.assertAtMostOnePrimary(existingPrimaryCount);
+    this.propertyOwnershipValidationService.assertAtMostOnePrimary(
+      existingPrimaryCount,
+    );
 
     for (let i = 0; i < createPropertyDto.new_owners.length; i++) {
       const ownerDto = createPropertyDto.new_owners[i];
@@ -230,11 +226,13 @@ export class PropertyOwnersService {
     }
 
     const schemaPrefix = this.schemaPrefix(schemaName);
-    this.assertAtMostOnePrimary(
+    this.propertyOwnershipValidationService.assertAtMostOnePrimary(
       createPropertyDto.existing_owners.filter((owner) => owner.is_primary)
         .length,
     );
-    this.assertProvidedOwnershipWithinLimit(createPropertyDto.existing_owners);
+    this.propertyOwnershipValidationService.assertProvidedOwnershipWithinLimit(
+      createPropertyDto.existing_owners,
+    );
 
     for (const assignDto of createPropertyDto.existing_owners) {
       await this.assertRentalOwnerExistsWithRunner(
@@ -252,26 +250,6 @@ export class PropertyOwnersService {
           assignDto.is_primary || false,
           assignDto.ownership_percentage || 0,
         ],
-      );
-    }
-  }
-
-  private assertAtMostOnePrimary(primaryCount: number): void {
-    if (primaryCount > 1) {
-      throw new BadRequestException(
-        'Only one primary owner can be assigned to a property',
-      );
-    }
-  }
-
-  private assertProvidedOwnershipWithinLimit(owners: AssignOwnerDto[]): void {
-    const total = owners.reduce(
-      (sum, owner) => sum + (owner.ownership_percentage ?? 0),
-      0,
-    );
-    if (total > 100) {
-      throw new BadRequestException(
-        'Total ownership percentage cannot exceed 100',
       );
     }
   }
@@ -331,27 +309,6 @@ export class PropertyOwnersService {
       `UPDATE ${schemaPrefix}property_owners SET is_primary = false WHERE property_id = $1`,
       [propertyId],
     );
-  }
-
-  private async assertOwnershipTotalWithinLimit(
-    queryRunner: QueryRunner,
-    propertyId: number,
-    schemaName?: string | null,
-  ): Promise<void> {
-    const schemaPrefix = this.schemaPrefix(schemaName);
-    const rows = (await queryRunner.query(
-      `SELECT COALESCE(SUM(ownership_percentage), 0) AS total
-       FROM ${schemaPrefix}property_owners
-       WHERE property_id = $1`,
-      [propertyId],
-    )) as OwnershipTotalRow[];
-
-    const total = Number(rows[0]?.total ?? 0);
-    if (total > 100) {
-      throw new BadRequestException(
-        'Total ownership percentage cannot exceed 100',
-      );
-    }
   }
 
   private async promoteFallbackPrimaryOwner(

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { of, throwError } from 'rxjs';
@@ -11,9 +12,12 @@ describe('QrProviderService', () => {
   let httpService: {
     post: jest.Mock;
   };
+  let loggerErrorSpy: jest.SpyInstance;
   const envBackup = { ...process.env };
 
   beforeEach(() => {
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
     process.env.MC4_AUTH_URL = 'https://mc4.test/auth';
     process.env.MC4_QR_URL = 'https://mc4.test/qr';
     process.env.MC4_STATUS_URL = 'https://mc4.test/status';
@@ -26,6 +30,10 @@ describe('QrProviderService', () => {
       post: jest.fn(),
     };
     service = new QrProviderService(httpService as unknown as HttpService);
+  });
+
+  afterEach(() => {
+    loggerErrorSpy.mockRestore();
   });
 
   afterAll(() => {

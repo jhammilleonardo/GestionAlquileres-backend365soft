@@ -19,7 +19,11 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiQuery,
-  ApiResponse,
+  ApiBody,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
 } from '@nestjs/swagger';
 import { ExpensesService } from './expenses.service';
 import type { ExpenseSummary } from './expenses.service';
@@ -29,6 +33,11 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Expense } from './entities/expense.entity';
+import {
+  ExpenseResponseDto,
+  ExpenseSummaryResponseDto,
+  PaginatedExpensesResponseDto,
+} from './dto/expense-response.dto';
 
 interface JwtUser {
   userId: number;
@@ -48,7 +57,8 @@ export class AdminExpensesController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Crear un nuevo gasto' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  @ApiResponse({ status: 201, description: 'Gasto creado exitosamente' })
+  @ApiBody({ type: CreateExpenseDto })
+  @ApiCreatedResponse({ type: ExpenseResponseDto })
   async create(
     @Body() createExpenseDto: CreateExpenseDto,
     @CurrentUser() user: JwtUser,
@@ -60,7 +70,7 @@ export class AdminExpensesController {
   @RequirePermission('expenses', 'view')
   @ApiOperation({ summary: 'Listar gastos con filtros opcionales' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  @ApiResponse({ status: 200, description: 'Lista de gastos' })
+  @ApiOkResponse({ type: PaginatedExpensesResponseDto })
   async findAll(
     @Query() filters: ExpenseFiltersDto,
   ): Promise<{ data: Expense[]; total: number }> {
@@ -77,7 +87,7 @@ export class AdminExpensesController {
   @ApiQuery({ name: 'property_id', required: true })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
-  @ApiResponse({ status: 200, description: 'Resumen de gastos' })
+  @ApiOkResponse({ type: ExpenseSummaryResponseDto })
   async getSummary(
     @Query('property_id') propertyId: string,
     @Query('from') from?: string,
@@ -94,8 +104,8 @@ export class AdminExpensesController {
   @ApiOperation({ summary: 'Obtener gasto por ID' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 200, description: 'Gasto encontrado' })
-  @ApiResponse({ status: 404, description: 'Gasto no encontrado' })
+  @ApiOkResponse({ type: ExpenseResponseDto })
+  @ApiNotFoundResponse({ description: 'Gasto no encontrado' })
   async findOne(@Param('id', ParseIntPipe) id: number): Promise<Expense> {
     return this.expensesService.findOne(id);
   }
@@ -105,7 +115,9 @@ export class AdminExpensesController {
   @ApiOperation({ summary: 'Actualizar gasto' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 200, description: 'Gasto actualizado' })
+  @ApiBody({ type: UpdateExpenseDto })
+  @ApiOkResponse({ type: ExpenseResponseDto })
+  @ApiNotFoundResponse({ description: 'Gasto no encontrado' })
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateExpenseDto: UpdateExpenseDto,
@@ -124,8 +136,8 @@ export class AdminExpensesController {
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 204, description: 'Gasto eliminado' })
-  @ApiResponse({ status: 404, description: 'Gasto no encontrado' })
+  @ApiNoContentResponse({ description: 'Gasto eliminado' })
+  @ApiNotFoundResponse({ description: 'Gasto no encontrado' })
   async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     return this.expensesService.remove(id);
   }

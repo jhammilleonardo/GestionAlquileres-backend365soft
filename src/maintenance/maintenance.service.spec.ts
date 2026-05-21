@@ -15,6 +15,7 @@ import { MaintenanceStageService } from './maintenance-stage.service';
 import { MaintenanceStatsService } from './maintenance-stats.service';
 import { MaintenanceUpdateService } from './maintenance-update.service';
 import { MaintenanceVendorsService } from './maintenance-vendors.service';
+import { StorageService } from '../common/storage/storage.service';
 
 const makeDataSource = (queryImpl?: jest.Mock): Partial<DataSource> => ({
   query: queryImpl ?? jest.fn(),
@@ -57,6 +58,14 @@ const makeModule = async (dataSourceQuery: jest.Mock) => {
       {
         provide: NotificationsService,
         useValue: { createForUser: jest.fn(), notifyAdmins: jest.fn() },
+      },
+      {
+        provide: StorageService,
+        useValue: {
+          persistUploadedFile: jest.fn(),
+          buildStoragePath: jest.fn(),
+          toRoutePath: jest.fn(),
+        },
       },
       {
         provide: MaintenanceStatsService,
@@ -348,6 +357,14 @@ describe('MaintenanceService — Stage Pipeline', () => {
             },
           },
           {
+            provide: StorageService,
+            useValue: {
+              persistUploadedFile: jest.fn(),
+              buildStoragePath: jest.fn(),
+              toRoutePath: jest.fn(),
+            },
+          },
+          {
             provide: MaintenanceStatsService,
             useValue: { getAdminStats: jest.fn(), getTenantStats: jest.fn() },
           },
@@ -363,8 +380,9 @@ describe('MaintenanceService — Stage Pipeline', () => {
       }).compile();
 
       const service = module.get<MaintenanceService>(MaintenanceService);
-      const notifService =
-        module.get<NotificationsService>(NotificationsService);
+      const notifService = module.get<{ createForUser: jest.Mock }>(
+        NotificationsService,
+      );
 
       await service.changeStage(1, 'COMPLETED', 99);
       expect(notifService.createForUser).toHaveBeenCalledWith(
@@ -423,10 +441,9 @@ describe('MaintenanceService — Stage Pipeline', () => {
 
       await expect(service.authorizeWork(5, 1)).resolves.toBeUndefined();
 
-      const updateCall = query.mock.calls.find(
-        (c: unknown[]) =>
-          typeof c[0] === 'string' && c[0].includes('owner_authorized'),
-      );
+      const updateCall = (
+        query.mock.calls as Array<[string, ...unknown[]]>
+      ).find(([sql]) => sql.includes('owner_authorized'));
       expect(updateCall).toBeDefined();
     });
 

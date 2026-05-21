@@ -26,7 +26,7 @@ export interface ViolationRow {
   tenant_id: number;
   type: string;
   description: string;
-  status: string;
+  status: ViolationStatusEnum;
   evidence_photos: string[];
   created_at: Date;
   resolved_at: Date | null;

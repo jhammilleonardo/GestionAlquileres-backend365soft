@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { SplitPaymentService } from './split-payment.service';
 import { DataSource } from 'typeorm';
 
@@ -133,6 +133,18 @@ describe('SplitPaymentService — validatePaymentStatus', () => {
 describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
   let service: SplitPaymentService;
   let ds: jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
+  let loggerErrorSpy: jest.SpyInstance;
+  let loggerLogSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    loggerLogSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+  });
+
+  afterEach(() => {
+    loggerErrorSpy.mockRestore();
+    loggerLogSpy.mockRestore();
+  });
 
   const BASE_PARAMS = {
     paymentId: 1,

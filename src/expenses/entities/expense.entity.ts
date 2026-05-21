@@ -8,7 +8,6 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Property } from '../../properties/entities/property.entity';
-import { ExpenseCategoryEnum } from '../enums/expense-category.enum';
 
 @Entity('expenses')
 export class Expense {

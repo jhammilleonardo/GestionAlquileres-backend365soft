@@ -13,9 +13,10 @@ import { PropertyCatalogService } from './property-catalog.service';
 import { PropertyCreationService } from './property-creation.service';
 import { PropertyUpdateService } from './property-update.service';
 import { PropertyPublicCatalogService } from './property-public-catalog.service';
+import { PropertyPublicCatalogQueryService } from './property-public-catalog-query.service';
+import { PropertyOwnershipValidationService } from './property-ownership-validation.service';
 import {
   AdminPropertiesController,
-  PublicPropertiesController,
   TenantPropertiesController,
   OwnerPropertiesPortalController,
 } from './properties.controller';
@@ -28,6 +29,7 @@ import { RentalOwner } from './entities/rental-owner.entity';
 import { PropertyOwner } from './entities/property-owner.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OwnerStatementsModule } from '../owner-statements/owner-statements.module';
+import { StorageModule } from '../common/storage/storage.module';
 
 @Module({
   imports: [
@@ -41,6 +43,7 @@ import { OwnerStatementsModule } from '../owner-statements/owner-statements.modu
     ]),
     NotificationsModule,
     OwnerStatementsModule,
+    StorageModule,
   ],
   providers: [
     PropertiesService,
@@ -56,10 +59,11 @@ import { OwnerStatementsModule } from '../owner-statements/owner-statements.modu
     PropertyCreationService,
     PropertyUpdateService,
     PropertyPublicCatalogService,
+    PropertyPublicCatalogQueryService,
+    PropertyOwnershipValidationService,
   ],
   controllers: [
     AdminPropertiesController,
-    PublicPropertiesController,
     TenantPropertiesController,
     OwnerPropertiesPortalController,
     PublicCatalogController,

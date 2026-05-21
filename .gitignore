@@ -63,13 +63,9 @@ CLAUDE.md
 claude.md
 *.claude
 
-/docs/
-!docs/adr/**
-
 # Uploads directory (PDFs, images, etc.)
 /uploads/
 
 /test-payments.sh
 /update_db_password.sh
 /storage/
-

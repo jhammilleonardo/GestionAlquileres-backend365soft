@@ -3,12 +3,18 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
 import { FilterCatalogPropertiesDto } from './dto/filter-catalog-properties.dto';
+import { PropertyPublicCatalogQueryService } from './property-public-catalog-query.service';
+import {
+  PublicCatalogAddress,
+  PublicCatalogOwner,
+  PublicCatalogProperty,
+  PublicCatalogPropertyDetail,
+  PublicCatalogResult,
+} from './property-public-catalog.types';
 
 interface CountRow {
   count: string;
 }
-
-type SqlRow = Record<string, unknown>;
 
 @Injectable()
 export class PropertyPublicCatalogService {
@@ -17,61 +23,19 @@ export class PropertyPublicCatalogService {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly propertyPublicCatalogQueryService: PropertyPublicCatalogQueryService,
   ) {}
 
   async findCatalogProperties(
     filters: FilterCatalogPropertiesDto,
     tenantSlug: string,
-  ) {
+  ): Promise<PublicCatalogResult> {
     const schemaName = await this.getTenantSchemaName(tenantSlug);
     const schemaPrefix = this.schemaPrefix(schemaName);
 
-    let whereSql = 'WHERE p.status = $1';
-    const params: unknown[] = [filters.status || 'DISPONIBLE'];
-    let paramIndex = 2;
-
-    if (filters.type) {
-      whereSql += ` AND LOWER(pt.code) = LOWER($${paramIndex++})`;
-      params.push(filters.type);
-    }
-
-    if (filters.min_price !== undefined) {
-      whereSql += ` AND p.monthly_rent >= $${paramIndex++}`;
-      params.push(filters.min_price);
-    }
-
-    if (filters.max_price !== undefined) {
-      whereSql += ` AND p.monthly_rent <= $${paramIndex++}`;
-      params.push(filters.max_price);
-    }
-
-    if (filters.bedrooms !== undefined) {
-      whereSql += ` AND p.bedrooms >= $${paramIndex++}`;
-      params.push(filters.bedrooms);
-    }
-
-    if (filters.city) {
-      whereSql += ` AND LOWER(pa.city) ILIKE LOWER($${paramIndex++})`;
-      params.push(`%${filters.city}%`);
-    }
-
-    if (filters.country) {
-      whereSql += ` AND LOWER(pa.country) = LOWER($${paramIndex++})`;
-      params.push(filters.country);
-    }
-
-    if (filters.search) {
-      whereSql += ` AND (
-        LOWER(p.title) ILIKE LOWER($${paramIndex++}) OR
-        LOWER(p.description) ILIKE LOWER($${paramIndex++})
-      )`;
-      params.push(`%${filters.search}%`, `%${filters.search}%`);
-    }
-
-    if (filters.rental_type && filters.rental_type !== 'any') {
-      whereSql += ` AND LOWER(p.rental_type) = LOWER($${paramIndex++})`;
-      params.push(filters.rental_type);
-    }
+    const whereClause =
+      this.propertyPublicCatalogQueryService.buildWhereClause(filters);
+    const params = [...whereClause.params];
 
     const countSql = `
       SELECT COUNT(DISTINCT p.id) as count
@@ -79,19 +43,22 @@ export class PropertyPublicCatalogService {
       LEFT JOIN ${schemaPrefix}property_types pt ON p.property_type_id = pt.id
       LEFT JOIN ${schemaPrefix}property_subtypes pst ON p.property_subtype_id = pst.id
       LEFT JOIN ${schemaPrefix}property_addresses pa ON p.id = pa.property_id
-      ${whereSql}
+      ${whereClause.whereSql}
     `;
 
     const countResult = await this.dataSource.query<CountRow[]>(
       countSql,
-      params.slice(0, paramIndex - 1),
+      whereClause.params,
     );
     const total = Number(countResult[0].count);
 
-    const orderBy = this.resolveCatalogOrder(filters.sort);
+    const orderBy = this.propertyPublicCatalogQueryService.resolveCatalogOrder(
+      filters.sort,
+    );
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 20, 100);
     const offset = (page - 1) * limit;
+    let paramIndex = whereClause.nextParamIndex;
 
     const sql = `
       SELECT DISTINCT ON (p.id)
@@ -118,14 +85,17 @@ export class PropertyPublicCatalogService {
         ORDER BY pa_first.id ASC
         LIMIT 1
       ) first_address ON true
-      ${whereSql}
+      ${whereClause.whereSql}
       ORDER BY p.id, ${orderBy}
       LIMIT $${paramIndex++} OFFSET $${paramIndex++}
     `;
 
     params.push(limit, offset);
 
-    const items = await this.dataSource.query<SqlRow[]>(sql, params);
+    const items = await this.dataSource.query<PublicCatalogProperty[]>(
+      sql,
+      params,
+    );
 
     return {
       data: items,
@@ -140,11 +110,11 @@ export class PropertyPublicCatalogService {
     id: number,
     tenantSlug: string,
     userIP?: string,
-  ) {
+  ): Promise<PublicCatalogPropertyDetail> {
     const schemaName = await this.getTenantSchemaName(tenantSlug);
     const schemaPrefix = this.schemaPrefix(schemaName);
 
-    const properties = await this.dataSource.query<SqlRow[]>(
+    const properties = await this.dataSource.query<PublicCatalogProperty[]>(
       `SELECT p.*,
         pt.name as property_type_name, pt.code as property_type_code,
         pst.name as property_subtype_name, pst.code as property_subtype_code
@@ -169,12 +139,12 @@ export class PropertyPublicCatalogService {
       );
     });
 
-    const addresses = await this.dataSource.query<SqlRow[]>(
+    const addresses = await this.dataSource.query<PublicCatalogAddress[]>(
       `SELECT * FROM ${schemaPrefix}property_addresses WHERE property_id = $1 ORDER BY id`,
       [id],
     );
 
-    const owners = await this.dataSource.query<SqlRow[]>(
+    const owners = await this.dataSource.query<PublicCatalogOwner[]>(
       `SELECT ro.id, ro.name, ro.company_name, ro.primary_email as email,
         ro.phone_number as phone, po.is_primary
        FROM ${schemaPrefix}property_owners po
@@ -226,14 +196,6 @@ export class PropertyPublicCatalogService {
         error instanceof Error ? error.stack : undefined,
       );
     }
-  }
-
-  private resolveCatalogOrder(sort?: string): string {
-    if (sort === 'price_asc') return 'p.monthly_rent ASC';
-    if (sort === 'price_desc') return 'p.monthly_rent DESC';
-    if (sort === 'newest') return 'p.created_at DESC';
-    if (sort === 'available') return 'p.last_viewed_at DESC NULLS LAST';
-    return 'p.created_at DESC';
   }
 
   private async getTenantSchemaName(tenantSlug: string): Promise<string> {

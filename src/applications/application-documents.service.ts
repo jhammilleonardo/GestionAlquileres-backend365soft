@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
-import { storageService } from '../common/storage/storage.service';
+import { StorageService } from '../common/storage/storage.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { ApplicationQueriesService } from './application-queries.service';
 
@@ -19,6 +19,7 @@ export class ApplicationDocumentsService {
     private readonly dataSource: DataSource,
     private readonly applicationQueriesService: ApplicationQueriesService,
     private readonly tenantsService: TenantsService,
+    private readonly storageService: StorageService,
   ) {}
 
   async uploadDocuments(
@@ -33,9 +34,9 @@ export class ApplicationDocumentsService {
 
     const newDocs: ApplicationDocumentRef[] = [];
     for (const [index, file] of files.entries()) {
-      const storagePath = await storageService.persistUploadedFile(
+      const storagePath = await this.storageService.persistUploadedFile(
         file,
-        storageService.buildStoragePath(
+        this.storageService.buildStoragePath(
           'applications',
           tenantSlug,
           String(id),
@@ -46,7 +47,7 @@ export class ApplicationDocumentsService {
 
       newDocs.push({
         type: types[index] || 'otros',
-        url: storageService.toRoutePath(storagePath),
+        url: this.storageService.toRoutePath(storagePath),
         name: file.originalname,
       });
     }

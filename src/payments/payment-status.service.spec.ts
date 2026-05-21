@@ -4,6 +4,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { SplitPaymentService } from '../split-payment/split-payment.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PaymentStatus } from './enums';
+import { PaymentApprovalService } from './payment-approval.service';
+import { PaymentStatusNotificationService } from './payment-status-notification.service';
 import {
   isValidPaymentStatusTransition,
   PaymentStatusService,
@@ -33,6 +35,8 @@ describe('PaymentStatusService', () => {
   let auditLogsService: {
     log: jest.Mock<Promise<void>, unknown[]>;
   };
+  let paymentStatusNotificationService: PaymentStatusNotificationService;
+  let paymentApprovalService: PaymentApprovalService;
 
   beforeEach(() => {
     queryRunner = {
@@ -71,12 +75,20 @@ describe('PaymentStatusService', () => {
     auditLogsService = {
       log: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
     };
+    paymentStatusNotificationService = new PaymentStatusNotificationService(
+      notificationsService as unknown as NotificationsService,
+    );
+    paymentApprovalService = new PaymentApprovalService(
+      dataSource as unknown as DataSource,
+      splitPaymentService as unknown as SplitPaymentService,
+      auditLogsService as unknown as AuditLogsService,
+      paymentStatusNotificationService,
+    );
 
     service = new PaymentStatusService(
       dataSource as unknown as DataSource,
-      notificationsService as unknown as NotificationsService,
-      splitPaymentService as unknown as SplitPaymentService,
-      auditLogsService as unknown as AuditLogsService,
+      paymentApprovalService,
+      paymentStatusNotificationService,
     );
   });
 

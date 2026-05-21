@@ -53,7 +53,9 @@ describe('PayPalProcessor', () => {
     it('debe crear una Order de PayPal y devolver status PROCESSING', async () => {
       httpPost
         .mockReturnValueOnce(of(TOKEN_RESP))
-        .mockReturnValueOnce(of({ data: { id: 'ORDER_123', status: 'CREATED' } }));
+        .mockReturnValueOnce(
+          of({ data: { id: 'ORDER_123', status: 'CREATED' } }),
+        );
 
       const result = await processor.createPayment(baseInput);
 
@@ -68,7 +70,10 @@ describe('PayPalProcessor', () => {
         .mockReturnValueOnce(of(TOKEN_RESP))
         .mockReturnValueOnce(of({ data: { id: 'ORDER_X' } }));
 
-      const result = await processor.createPayment({ ...baseInput, amount: 1000 });
+      const result = await processor.createPayment({
+        ...baseInput,
+        amount: 1000,
+      });
 
       // 1000 * 0.0349 + 0.49 = 34.9 + 0.49 = 35.39
       expect(result.processor_fee).toBe(35.39);
@@ -77,18 +82,16 @@ describe('PayPalProcessor', () => {
 
   describe('confirmPayment', () => {
     it('debe capturar la Order y devolver APPROVED si COMPLETED', async () => {
-      httpPost
-        .mockReturnValueOnce(of(TOKEN_RESP))
-        .mockReturnValueOnce(
-          of({
-            data: {
-              status: 'COMPLETED',
-              purchase_units: [
-                { payments: { captures: [{ id: 'CAPTURE_456' }] } },
-              ],
-            },
-          }),
-        );
+      httpPost.mockReturnValueOnce(of(TOKEN_RESP)).mockReturnValueOnce(
+        of({
+          data: {
+            status: 'COMPLETED',
+            purchase_units: [
+              { payments: { captures: [{ id: 'CAPTURE_456' }] } },
+            ],
+          },
+        }),
+      );
 
       const result = await processor.confirmPayment('ORDER_123');
 

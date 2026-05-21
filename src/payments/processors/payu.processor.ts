@@ -16,6 +16,24 @@ const PAYU_STATE_EXPIRED = '5';
 const PAYU_STATE_DECLINED = '6';
 const PAYU_STATE_PENDING = '7';
 
+interface PayUTransactionResponse {
+  state?: string;
+  transactionId?: string;
+  responseMessage?: string;
+}
+
+interface PayUSubmitTransactionResponse {
+  transactionResponse?: PayUTransactionResponse;
+}
+
+interface PayUReportResponse {
+  result?: {
+    payload?: {
+      state?: string;
+    };
+  };
+}
+
 /**
  * Procesador PayU — REST API v4 (Guatemala y Honduras).
  *
@@ -62,6 +80,17 @@ export class PayUProcessor implements IPaymentProcessor {
     return createHash('md5').update(raw).digest('hex');
   }
 
+  private metadataString(
+    metadata: Record<string, unknown> | undefined,
+    key: string,
+    fallback: string,
+  ): string {
+    const value = metadata?.[key];
+    return typeof value === 'string' && value.trim().length > 0
+      ? value.trim()
+      : fallback;
+  }
+
   async createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
     const referenceCode =
       input.reference_number ?? `365S-${input.contractId}-${Date.now()}`;
@@ -71,7 +100,7 @@ export class PayUProcessor implements IPaymentProcessor {
     const isTest = this.config.get<string>('NODE_ENV') !== 'production';
 
     const resp = await firstValueFrom(
-      this.httpService.post(
+      this.httpService.post<PayUSubmitTransactionResponse>(
         this.baseUrl,
         {
           language: 'es',
@@ -89,10 +118,26 @@ export class PayUProcessor implements IPaymentProcessor {
               },
             },
             type: 'AUTHORIZATION_AND_CAPTURE',
-            paymentMethod: String(input.metadata?.paymentMethod ?? 'CARD'),
-            paymentCountry: String(input.metadata?.country ?? 'GT'),
-            ipAddress: String(input.metadata?.ipAddress ?? '127.0.0.1'),
-            userAgent: String(input.metadata?.userAgent ?? '365Soft/1.0'),
+            paymentMethod: this.metadataString(
+              input.metadata,
+              'paymentMethod',
+              'CARD',
+            ),
+            paymentCountry: this.metadataString(
+              input.metadata,
+              'country',
+              'GT',
+            ),
+            ipAddress: this.metadataString(
+              input.metadata,
+              'ipAddress',
+              '127.0.0.1',
+            ),
+            userAgent: this.metadataString(
+              input.metadata,
+              'userAgent',
+              '365Soft/1.0',
+            ),
           },
           test: isTest,
         },
@@ -106,10 +151,7 @@ export class PayUProcessor implements IPaymentProcessor {
       ),
     );
 
-    const txnResponse = resp.data?.transactionResponse as Record<
-      string,
-      string
-    >;
+    const txnResponse = resp.data.transactionResponse;
 
     if (!txnResponse) {
       return {
@@ -157,7 +199,7 @@ export class PayUProcessor implements IPaymentProcessor {
     const isTest = this.config.get<string>('NODE_ENV') !== 'production';
 
     const resp = await firstValueFrom(
-      this.httpService.post(
+      this.httpService.post<PayUReportResponse>(
         reportsUrl,
         {
           language: 'es',
@@ -176,7 +218,7 @@ export class PayUProcessor implements IPaymentProcessor {
       ),
     );
 
-    const state = (resp.data?.result?.payload?.state as string) ?? '';
+    const state = resp.data.result?.payload?.state ?? '';
 
     return {
       success: state === 'APPROVED',
@@ -198,7 +240,7 @@ export class PayUProcessor implements IPaymentProcessor {
     const isTest = this.config.get<string>('NODE_ENV') !== 'production';
 
     const resp = await firstValueFrom(
-      this.httpService.post(
+      this.httpService.post<PayUSubmitTransactionResponse>(
         this.baseUrl,
         {
           language: 'es',
@@ -221,10 +263,7 @@ export class PayUProcessor implements IPaymentProcessor {
       ),
     );
 
-    const txnResponse = resp.data?.transactionResponse as Record<
-      string,
-      string
-    >;
+    const txnResponse = resp.data.transactionResponse;
     const state = txnResponse?.state ?? '';
 
     return {
@@ -244,10 +283,9 @@ export class PayUProcessor implements IPaymentProcessor {
    * Procesa la notificación IPN de PayU (application/x-www-form-urlencoded).
    * Verifica la firma antes de actualizar el estado del pago.
    */
-  async handleWebhook(
-    payload: unknown,
-    _signature?: string,
-  ): Promise<WebhookResult> {
+  handleWebhook(payload: unknown, signature?: string): Promise<WebhookResult> {
+    void signature;
+
     const body = payload as Record<string, string>;
     const statePol = body.state_pol ?? '';
     const transactionId = body.transaction_id ?? body.reference_pol ?? '';
@@ -257,7 +295,7 @@ export class PayUProcessor implements IPaymentProcessor {
       this.logger.warn(
         `PayU IPN: firma inválida para referencia ${body.reference_pol}`,
       );
-      return { status: 'FAILED', raw_event: payload };
+      return Promise.resolve({ status: 'FAILED', raw_event: payload });
     }
 
     this.logger.log(
@@ -265,36 +303,36 @@ export class PayUProcessor implements IPaymentProcessor {
     );
 
     if (statePol === PAYU_STATE_APPROVED) {
-      return {
+      return Promise.resolve({
         event_id: eventId,
         transaction_id: transactionId,
         status: 'APPROVED',
         raw_event: payload,
-      };
+      });
     }
     if (statePol === PAYU_STATE_DECLINED || statePol === PAYU_STATE_EXPIRED) {
-      return {
+      return Promise.resolve({
         event_id: eventId,
         transaction_id: transactionId,
         status: 'FAILED',
         raw_event: payload,
-      };
+      });
     }
     if (statePol === PAYU_STATE_PENDING) {
-      return {
+      return Promise.resolve({
         event_id: eventId,
         transaction_id: transactionId,
         status: 'APPROVED',
         raw_event: payload,
-      };
+      });
     }
 
-    return {
+    return Promise.resolve({
       event_id: eventId,
       transaction_id: transactionId,
       status: 'APPROVED',
       raw_event: payload,
-    };
+    });
   }
 
   /**

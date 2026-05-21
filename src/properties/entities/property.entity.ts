@@ -11,7 +11,6 @@ import {
 import { PropertyType } from './property-type.entity';
 import { PropertySubtype } from './property-subtype.entity';
 import { PropertyAddress } from './property-address.entity';
-import { RentalOwner } from './rental-owner.entity';
 import { decimalTransformer } from '../../common/utils/decimal.transformer';
 import { RentalType } from '../../units/enums/rental-type.enum';
 

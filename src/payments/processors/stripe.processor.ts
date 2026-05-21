@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-// Stripe v22 usa export = (CommonJS), se importa con import = require
-import StripeLib = require('stripe');
+import Stripe from 'stripe';
 import {
   IPaymentProcessor,
   ProcessorPaymentInput,
@@ -12,12 +11,13 @@ import {
 /** Tarifa Stripe: 2.9% + $0.30 para tarjetas nacionales USA */
 const STRIPE_FEE_PERCENT = 0.029;
 const STRIPE_FEE_FIXED = 0.3;
+type StripeClient = InstanceType<typeof Stripe>;
 
 @Injectable()
 export class StripeProcessor implements IPaymentProcessor {
   readonly processorName = 'stripe';
 
-  private _stripe: StripeLib.Stripe | null = null;
+  private _stripe: StripeClient | null = null;
   private readonly secretKey: string;
   private readonly webhookSecret: string;
   private readonly logger = new Logger(StripeProcessor.name);
@@ -28,14 +28,14 @@ export class StripeProcessor implements IPaymentProcessor {
   }
 
   /** Instancia Stripe de forma diferida — evita error al arrancar sin STRIPE_SECRET_KEY */
-  private get stripe(): StripeLib.Stripe {
+  private get stripe(): StripeClient {
     if (!this._stripe) {
       if (!this.secretKey) {
         throw new Error(
           'Stripe no está configurado. Agrega STRIPE_SECRET_KEY al .env para habilitarlo.',
         );
       }
-      this._stripe = new StripeLib(this.secretKey);
+      this._stripe = new Stripe(this.secretKey);
     }
     return this._stripe;
   }
@@ -106,10 +106,7 @@ export class StripeProcessor implements IPaymentProcessor {
    * @param payload  Buffer con el cuerpo raw del request (antes de parsear JSON)
    * @param signature Cabecera Stripe-Signature
    */
-  async handleWebhook(
-    payload: unknown,
-    signature?: string,
-  ): Promise<WebhookResult> {
+  handleWebhook(payload: unknown, signature?: string): Promise<WebhookResult> {
     let event: ReturnType<typeof this.stripe.webhooks.constructEvent>;
 
     try {
@@ -123,7 +120,9 @@ export class StripeProcessor implements IPaymentProcessor {
       this.logger.error(
         `Stripe webhook: verificación de firma fallida — ${msg}`,
       );
-      throw new BadRequestException('Stripe webhook: firma inválida');
+      return Promise.reject(
+        new BadRequestException('Stripe webhook: firma inválida'),
+      );
     }
 
     this.logger.log(`Stripe webhook recibido: ${event.type}`);
@@ -131,21 +130,21 @@ export class StripeProcessor implements IPaymentProcessor {
     switch (event.type) {
       case 'payment_intent.succeeded': {
         const pi = event.data.object as { id: string };
-        return {
+        return Promise.resolve({
           event_id: event.id,
           transaction_id: pi.id,
           status: 'APPROVED',
           raw_event: event,
-        };
+        });
       }
       case 'payment_intent.payment_failed': {
         const pi = event.data.object as { id: string };
-        return {
+        return Promise.resolve({
           event_id: event.id,
           transaction_id: pi.id,
           status: 'FAILED',
           raw_event: event,
-        };
+        });
       }
       case 'charge.refunded': {
         const charge = event.data.object as {
@@ -153,16 +152,20 @@ export class StripeProcessor implements IPaymentProcessor {
           payment_intent: string | null;
         };
         const txnId = charge.payment_intent ?? charge.id;
-        return {
+        return Promise.resolve({
           event_id: event.id,
           transaction_id: txnId,
           status: 'APPROVED',
           raw_event: event,
-        };
+        });
       }
       default:
         this.logger.debug(`Stripe webhook: evento no manejado — ${event.type}`);
-        return { event_id: event.id, status: 'APPROVED', raw_event: event };
+        return Promise.resolve({
+          event_id: event.id,
+          status: 'APPROVED',
+          raw_event: event,
+        });
     }
   }
 }

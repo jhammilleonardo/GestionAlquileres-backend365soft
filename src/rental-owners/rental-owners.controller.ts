@@ -10,11 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  Res,
-  Query,
-  BadRequestException,
 } from '@nestjs/common';
-import type { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +21,7 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
-  ApiQuery,
+  ApiBody,
 } from '@nestjs/swagger';
 import { RentalOwnersService } from './rental-owners.service';
 import { OwnerStatementsService } from '../owner-statements/owner-statements.service';
@@ -35,6 +31,12 @@ import { AssignOwnerPropertyDto } from './dto/assign-owner-property.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import {
+  RentalOwnerAccountResponseDto,
+  RentalOwnerMessageResponseDto,
+  RentalOwnerResponseDto,
+  RentalOwnerSummaryResponseDto,
+} from './dto/rental-owner-response.dto';
 
 @ApiTags('Rental Owners')
 @ApiBearerAuth()
@@ -59,8 +61,10 @@ export class RentalOwnersController {
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiOkResponse({
     description: 'Lista de propietarios con resumen financiero',
+    type: RentalOwnerSummaryResponseDto,
+    isArray: true,
   })
-  async findAll(@Param('slug') _slug: string) {
+  async findAll() {
     return this.rentalOwnersService.findAll();
   }
 
@@ -73,6 +77,7 @@ export class RentalOwnersController {
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({
     description: 'Datos completos del propietario incluyendo banco',
+    type: RentalOwnerResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Propietario no encontrado' })
   async findOne(
@@ -92,7 +97,8 @@ export class RentalOwnersController {
       'Crea un nuevo propietario. Los datos bancarios (bank_details) son opcionales y pueden completarse después.',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiCreatedResponse({ description: 'Propietario creado exitosamente' })
+  @ApiBody({ type: CreateRentalOwnerDto })
+  @ApiCreatedResponse({ type: RentalOwnerResponseDto })
   @ApiConflictResponse({ description: 'El email ya está registrado' })
   async create(
     @Param('slug') _slug: string,
@@ -113,7 +119,8 @@ export class RentalOwnersController {
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Propietario actualizado' })
+  @ApiBody({ type: UpdateRentalOwnerDto })
+  @ApiOkResponse({ type: RentalOwnerResponseDto })
   @ApiNotFoundResponse({ description: 'Propietario no encontrado' })
   @ApiConflictResponse({
     description: 'El email ya está en uso por otro propietario',
@@ -140,7 +147,7 @@ export class RentalOwnersController {
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Propietario desactivado' })
+  @ApiOkResponse({ type: RentalOwnerMessageResponseDto })
   @ApiNotFoundResponse({ description: 'Propietario no encontrado' })
   @ApiBadRequestResponse({ description: 'Tiene propiedades activas asignadas' })
   async deactivate(
@@ -161,7 +168,7 @@ export class RentalOwnersController {
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Lista de propiedades del propietario' })
+  @ApiOkResponse({ type: Object, isArray: true })
   @ApiNotFoundResponse({ description: 'Propietario no encontrado' })
   async getProperties(
     @Param('slug') _slug: string,
@@ -178,6 +185,8 @@ export class RentalOwnersController {
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number, description: 'ID del propietario' })
+  @ApiBody({ type: AssignOwnerPropertyDto })
+  @ApiOkResponse({ type: Object })
   async assignProperty(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -200,6 +209,7 @@ export class RentalOwnersController {
     type: Number,
     description: 'ID de la propiedad a remover',
   })
+  @ApiOkResponse({ type: RentalOwnerMessageResponseDto })
   async removeProperty(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -225,6 +235,8 @@ export class RentalOwnersController {
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({
     description: 'Historial de pagos agrupado por período y propiedad',
+    type: Object,
+    isArray: true,
   })
   @ApiNotFoundResponse({ description: 'Propietario no encontrado' })
   async getStatements(
@@ -242,6 +254,7 @@ export class RentalOwnersController {
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: Object, isArray: true })
   async getContracts(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -256,7 +269,7 @@ export class RentalOwnersController {
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Devuelve email y contraseña temporal' })
+  @ApiOkResponse({ type: RentalOwnerAccountResponseDto })
   async createAccount(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,

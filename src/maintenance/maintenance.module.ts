@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { MaintenanceService } from './maintenance.service';
 import { MaintenanceCreationService } from './maintenance-creation.service';
 import { MaintenanceLookupService } from './maintenance-lookup.service';
+import { MaintenanceMessageNotificationsService } from './maintenance-message-notifications.service';
 import { MaintenanceMessagesService } from './maintenance-messages.service';
 import { MaintenanceStageService } from './maintenance-stage.service';
 import { MaintenanceStatsService } from './maintenance-stats.service';
@@ -19,6 +20,7 @@ import { MaintenanceAttachment } from './entities/maintenance-attachment.entity'
 import { MaintenanceStageHistory } from './entities/maintenance-stage-history.entity';
 import { Contract } from '../contracts/entities/contract.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { StorageModule } from '../common/storage/storage.module';
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       Contract,
     ]),
     NotificationsModule,
+    StorageModule,
   ],
   controllers: [
     AdminMaintenanceController,
@@ -40,6 +43,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     MaintenanceService,
     MaintenanceCreationService,
     MaintenanceLookupService,
+    MaintenanceMessageNotificationsService,
     MaintenanceMessagesService,
     MaintenanceStageService,
     MaintenanceStatsService,

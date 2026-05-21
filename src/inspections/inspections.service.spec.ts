@@ -2,12 +2,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { InspectionsService } from './inspections.service';
+import { InspectionPhotosService } from './inspection-photos.service';
+import { InspectionPdfService } from './inspection-pdf.service';
 import {
   InspectionArea,
   InspectionType,
   ItemCondition,
 } from './dto/create-inspection.dto';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
+import { StorageService } from '../common/storage/storage.service';
 
 const mockDataSource: {
   query: jest.Mock<Promise<unknown>, [string, unknown[]?]>;
@@ -58,7 +61,17 @@ describe('InspectionsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InspectionsService,
+        InspectionPhotosService,
+        InspectionPdfService,
         { provide: getDataSourceToken(), useValue: mockDataSource },
+        {
+          provide: StorageService,
+          useValue: {
+            persistUploadedFile: jest.fn(),
+            buildStoragePath: jest.fn(),
+            toRoutePath: jest.fn(),
+          },
+        },
         {
           provide: LifecycleNotificationsService,
           useValue: mockLifecycleNotificationsService,

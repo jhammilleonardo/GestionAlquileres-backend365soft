@@ -145,11 +145,11 @@ export class OwnerStatementPdfService {
           resolve(filePath);
         });
 
-        doc.on('error', (err) => {
+        doc.on('error', (err: Error) => {
           reject(new Error(`Error al generar PDF: ${err.message}`));
         });
 
-        stream.on('error', (err) => {
+        stream.on('error', (err: Error) => {
           reject(new Error(`Error al escribir archivo: ${err.message}`));
         });
 
@@ -159,8 +159,8 @@ export class OwnerStatementPdfService {
         this.renderPdfContent(doc, statementData, language);
 
         doc.end();
-      } catch (error) {
-        reject(error);
+      } catch (error: unknown) {
+        reject(toError(error));
       }
     });
   }
@@ -236,7 +236,7 @@ export class OwnerStatementPdfService {
     doc.moveDown(0.3);
 
     // Financial table
-    this.renderFinancialTable(doc, data, texts, language);
+    this.renderFinancialTable(doc, data, texts);
 
     doc.moveDown(1);
 
@@ -286,7 +286,6 @@ export class OwnerStatementPdfService {
     doc: InstanceType<typeof PDFDocument>,
     data: OwnerStatementData,
     texts: I18nTexts,
-    _language: 'es' | 'en',
   ): void {
     const tableTop = doc.y;
     const rowHeight = 25;
@@ -386,10 +385,7 @@ export class OwnerStatementPdfService {
       .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
-  async getPdfPath(
-    statementId: number,
-    ownerName: string,
-  ): Promise<string | null> {
+  getPdfPath(statementId: number, ownerName: string): string | null {
     const fileName = `liquidacion_${statementId}_${ownerName.replace(/\s+/g, '_')}.pdf`;
     const filePath = path.join(this.uploadDir, fileName);
 
@@ -400,11 +396,17 @@ export class OwnerStatementPdfService {
     return null;
   }
 
-  async deletePdf(statementId: number, ownerName: string): Promise<void> {
-    const filePath = await this.getPdfPath(statementId, ownerName);
+  deletePdf(statementId: number, ownerName: string): Promise<void> {
+    const filePath = this.getPdfPath(statementId, ownerName);
     if (filePath && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       this.logger.log(`PDF eliminado: ${filePath}`);
     }
+
+    return Promise.resolve();
   }
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }

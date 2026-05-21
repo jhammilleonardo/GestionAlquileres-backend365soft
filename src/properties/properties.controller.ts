@@ -23,6 +23,11 @@ import {
   ApiParam,
   ApiQuery,
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PropertiesService } from './properties.service';
@@ -36,7 +41,18 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { multerConfig } from '../common/utils/multer.config';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
-import { storageService } from '../common/storage/storage.service';
+import { StorageService } from '../common/storage/storage.service';
+import {
+  PaginatedPropertiesResponseDto,
+  PropertyDetailResponseDto,
+  PropertyImageDeleteDto,
+  PropertyMutationMessageResponseDto,
+  PropertyStatsResponseDto,
+} from './dto/property-response.dto';
+import {
+  CatalogPropertyDetailResponseDto,
+  PaginatedCatalogPropertiesResponseDto,
+} from './dto/catalog-property-response.dto';
 
 // Admin Controller - Gestion completa de propiedades
 @ApiTags('Properties - Admin')
@@ -45,7 +61,10 @@ import { storageService } from '../common/storage/storage.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN', 'EMPLEADO')
 export class AdminPropertiesController {
-  constructor(private readonly propertiesService: PropertiesService) {}
+  constructor(
+    private readonly propertiesService: PropertiesService,
+    private readonly storageService: StorageService,
+  ) {}
 
   // =============================================
   // Stats / Dashboard
@@ -54,6 +73,7 @@ export class AdminPropertiesController {
   @Get('properties/stats')
   @ApiOperation({ summary: 'Obtener estadisticas de propiedades' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiOkResponse({ type: PropertyStatsResponseDto })
   async getStats(@Param('slug') slug: string) {
     return this.propertiesService.getStats(slug);
   }
@@ -65,6 +85,8 @@ export class AdminPropertiesController {
   @Post('properties')
   @ApiOperation({ summary: 'Crear una nueva propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiBody({ type: CreatePropertyDto })
+  @ApiOkResponse({ type: PropertyDetailResponseDto })
   async create(
     @Param('slug') slug: string,
     @Body() createPropertyDto: CreatePropertyDto,
@@ -75,6 +97,17 @@ export class AdminPropertiesController {
   @Get('properties')
   @ApiOperation({ summary: 'Obtener todas las propiedades' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'property_type_id', required: false, type: Number })
+  @ApiQuery({ name: 'property_subtype_id', required: false, type: Number })
+  @ApiQuery({ name: 'city', required: false })
+  @ApiQuery({ name: 'country', required: false })
+  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'min_rent', required: false, type: Number })
+  @ApiQuery({ name: 'max_rent', required: false, type: Number })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiOkResponse({ type: PaginatedPropertiesResponseDto })
   async findAll(
     @Param('slug') slug: string,
     @Query() filters: FilterPropertiesDto,
@@ -86,6 +119,8 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Obtener una propiedad por ID' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: PropertyDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   async findOne(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -97,6 +132,9 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Actualizar una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: UpdatePropertyDto })
+  @ApiOkResponse({ type: PropertyDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   async update(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -109,6 +147,8 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Eliminar una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: PropertyMutationMessageResponseDto })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   async remove(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -124,6 +164,9 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Actualizar detalles de una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: UpdatePropertyDetailsDto })
+  @ApiOkResponse({ type: PropertyDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   async updateDetails(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -140,6 +183,18 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Subir imagen de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiOkResponse({ type: PropertyDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   @UseInterceptors(FileInterceptor('file', multerConfig))
   async uploadImage(
     @Param('slug') slug: string,
@@ -152,9 +207,9 @@ export class AdminPropertiesController {
 
     const property = await this.propertiesService.findOne(id, slug);
     const images = Array.isArray(property.images) ? [...property.images] : [];
-    const imageStoragePath = await storageService.persistUploadedFile(
+    const imageStoragePath = await this.storageService.persistUploadedFile(
       file,
-      storageService.buildStoragePath(
+      this.storageService.buildStoragePath(
         'properties',
         slug,
         String(id),
@@ -172,6 +227,9 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Eliminar imagen de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: PropertyImageDeleteDto })
+  @ApiOkResponse({ type: PropertyDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   async removeImage(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -196,6 +254,9 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Asignar propietario a una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: AssignOwnerDto })
+  @ApiOkResponse({ type: PropertyDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Propiedad o propietario no encontrado' })
   async assignOwner(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -209,6 +270,8 @@ export class AdminPropertiesController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   @ApiParam({ name: 'ownerRelationId', type: Number })
+  @ApiOkResponse({ type: PropertyDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Relación de propietario no encontrada' })
   async removeOwner(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -228,6 +291,7 @@ export class AdminPropertiesController {
   @Get('property-types')
   @ApiOperation({ summary: 'Obtener tipos de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiOkResponse({ type: Object, isArray: true })
   async getPropertyTypes(@Param('slug') slug: string) {
     return this.propertiesService.getPropertyTypes(slug);
   }
@@ -236,6 +300,7 @@ export class AdminPropertiesController {
   @ApiOperation({ summary: 'Obtener subtipos de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiQuery({ name: 'typeId', required: false, type: Number })
+  @ApiOkResponse({ type: Object, isArray: true })
   async getPropertySubtypes(
     @Param('slug') slug: string,
     @Query('typeId') typeId?: number,
@@ -256,6 +321,7 @@ export class PublicPropertiesController {
   @Get('properties')
   @ApiOperation({ summary: 'Obtener propiedades disponibles (publico)' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiOkResponse({ type: PaginatedCatalogPropertiesResponseDto })
   async findAvailable(
     @Param('slug') slug: string,
     @Query() filters: FilterPropertiesDto,
@@ -267,6 +333,8 @@ export class PublicPropertiesController {
   @ApiOperation({ summary: 'Obtener detalle de propiedad (publico)' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: CatalogPropertyDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   async findOne(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -286,6 +354,7 @@ export class TenantPropertiesController {
   @Get('properties')
   @ApiOperation({ summary: 'Obtener propiedades del inquilino' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiOkResponse({ type: Object, isArray: true })
   async findAll(
     @Param('slug') slug: string,
     @Query() filters: FilterPropertiesDto,
@@ -298,6 +367,8 @@ export class TenantPropertiesController {
   @ApiOperation({ summary: 'Obtener una propiedad del inquilino' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: PropertyDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Propiedad no encontrada' })
   async findOne(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
@@ -344,6 +415,10 @@ export class OwnerPropertiesPortalController {
     enum: ['es', 'en'],
     required: false,
     description: 'Idioma del PDF',
+  })
+  @ApiOkResponse({ description: 'Archivo PDF de liquidación' })
+  @ApiForbiddenResponse({
+    description: 'Liquidación no pertenece al propietario',
   })
   async downloadStatementPdfFromProperty(
     @Param('slug') _slug: string,

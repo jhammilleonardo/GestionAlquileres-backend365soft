@@ -9,3 +9,4 @@ export * from './payment-filters.dto';
 export * from './create-refund.dto';
 export * from './approve-payment.dto';
 export * from './reject-payment.dto';
+export * from './payment-response.dto';

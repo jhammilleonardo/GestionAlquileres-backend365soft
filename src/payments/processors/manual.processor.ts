@@ -20,40 +20,45 @@ import {
 export class ManualPaymentProcessor implements IPaymentProcessor {
   readonly processorName = 'manual';
 
-  async createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
-    return {
+  createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
+    return Promise.resolve({
       success: true,
       transaction_id: `MAN-${input.tenantId}-${Date.now()}`,
       processor_fee: 0,
       status: 'PENDING',
-    };
+    });
   }
 
-  async confirmPayment(_transactionId: string): Promise<ProcessorResult> {
-    return {
+  confirmPayment(transactionId: string): Promise<ProcessorResult> {
+    void transactionId;
+
+    return Promise.resolve({
       success: true,
       processor_fee: 0,
       status: 'APPROVED',
-    };
+    });
   }
 
-  async refundPayment(
-    _transactionId: string,
-    _amount: number,
+  refundPayment(
+    transactionId: string,
+    amount: number,
   ): Promise<ProcessorResult> {
-    return {
+    void transactionId;
+    void amount;
+
+    return Promise.resolve({
       success: true,
       processor_fee: 0,
       status: 'APPROVED',
-    };
+    });
   }
 
-  async handleWebhook(payload: unknown): Promise<WebhookResult> {
+  handleWebhook(payload: unknown): Promise<WebhookResult> {
     // El procesador manual no recibe webhooks externos.
     // Esta implementación existe para cumplir el contrato de la interfaz.
-    return {
+    return Promise.resolve({
       status: 'APPROVED',
       raw_event: payload,
-    };
+    });
   }
 }

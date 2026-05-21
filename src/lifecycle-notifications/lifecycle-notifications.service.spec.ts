@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { Logger } from '@nestjs/common';
 import { LifecycleNotificationsService } from './lifecycle-notifications.service';
+import { LifecycleExternalNotificationAdapter } from './lifecycle-external-notification.adapter';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 
@@ -12,11 +14,17 @@ const mockNotificationsService = {
   createForUser: jest.fn(),
   notifyAdmins: jest.fn(),
 };
+const mockExternalNotificationAdapter = {
+  send: jest.fn(),
+};
 
 describe('LifecycleNotificationsService', () => {
   let service: LifecycleNotificationsService;
+  let loggerErrorSpy: jest.SpyInstance;
 
   beforeEach(async () => {
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LifecycleNotificationsService,
@@ -28,6 +36,10 @@ describe('LifecycleNotificationsService', () => {
           provide: NotificationsService,
           useValue: mockNotificationsService,
         },
+        {
+          provide: LifecycleExternalNotificationAdapter,
+          useValue: mockExternalNotificationAdapter,
+        },
       ],
     }).compile();
 
@@ -37,6 +49,7 @@ describe('LifecycleNotificationsService', () => {
   });
 
   afterEach(() => {
+    loggerErrorSpy.mockRestore();
     jest.resetAllMocks();
   });
 
@@ -307,17 +320,17 @@ describe('LifecycleNotificationsService', () => {
 
       await service.checkExpiringContracts();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const tenantNotifCall = mockDataSource.query.mock.calls.find(
-        (call: unknown[]) => {
-          const sql = call[0];
-          return (
-            typeof sql === 'string' &&
-            sql.includes('INSERT INTO') &&
-            sql.includes('notifications')
-          );
-        },
-      );
+      const queryCalls = mockDataSource.query.mock.calls as Array<
+        [unknown, ...unknown[]]
+      >;
+      const tenantNotifCall = queryCalls.find((call: unknown[]) => {
+        const sql = call[0];
+        return (
+          typeof sql === 'string' &&
+          sql.includes('INSERT INTO') &&
+          sql.includes('notifications')
+        );
+      });
       expect(tenantNotifCall).toBeDefined();
     });
 

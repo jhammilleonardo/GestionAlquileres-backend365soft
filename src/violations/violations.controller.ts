@@ -8,6 +8,8 @@ import {
   Query,
   ParseIntPipe,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
   Res,
   HttpCode,
   HttpStatus,
@@ -15,7 +17,9 @@ import {
   HttpException,
   Logger,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
+import { violationMulterConfig } from '../common/utils/multer.config';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -105,6 +109,38 @@ export class ViolationsController {
   async notifyTenant(@Param('id', ParseIntPipe) id: number) {
     await this.violationsService.notifyTenant(id);
     return { message: 'Notificación enviada al inquilino correctamente.' };
+  }
+
+  @Post(':id/upload')
+  @RequirePermission('violations', 'edit')
+  @ApiOperation({ summary: 'Subir fotos de evidencia (máx. 5, 10MB c/u)' })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['files'],
+      properties: {
+        files: {
+          type: 'array',
+          maxItems: 5,
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({ description: 'URLs de las fotos almacenadas' })
+  @UseInterceptors(FilesInterceptor('files', 5, violationMulterConfig))
+  async uploadEvidence(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFiles() files: Express.Multer.File[],
+  ): Promise<{ evidence_photos: string[] }> {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se enviaron archivos');
+    }
+    const evidence_photos = await this.violationsService.addEvidencePhotos(id, files, slug);
+    return { evidence_photos };
   }
 
   @Get(':id/pdf')

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { StorageService } from '../common/storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import {
@@ -47,7 +48,39 @@ export class ViolationsService {
     private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
     private readonly violationsPdfService: ViolationsPdfService,
+    private readonly storageService: StorageService,
   ) {}
+
+  /**
+   * Sube fotos de evidencia a una violación existente y las anexa a evidence_photos.
+   */
+  async addEvidencePhotos(
+    id: number,
+    files: Express.Multer.File[],
+    slug: string,
+  ): Promise<string[]> {
+    const violation = await this.findOne(id);
+    const newUrls: string[] = [];
+
+    for (const file of files) {
+      const targetPath = this.storageService.buildStoragePath(
+        'violations',
+        slug,
+        String(id),
+        file.filename,
+      );
+      await this.storageService.persistUploadedFile(file, targetPath, 'private');
+      newUrls.push(this.storageService.toRoutePath(targetPath));
+    }
+
+    const merged = [...(violation.evidence_photos ?? []), ...newUrls];
+    await this.dataSource.query(
+      `UPDATE violations SET evidence_photos = $1::jsonb WHERE id = $2`,
+      [JSON.stringify(merged), id],
+    );
+
+    return merged;
+  }
 
   async create(dto: CreateViolationDto, userId: number): Promise<ViolationRow> {
     const rows = await this.dataSource.query<ViolationRow[]>(

@@ -105,18 +105,33 @@ export class ReportKpisResponseDto {
   @ApiProperty({ example: '87.50%' })
   occupancyRate: string;
 
+  @ApiProperty({ example: 0.875 })
+  occupancyRateValue: number;
+
   @ApiProperty({ example: 40 })
   totalUnits: number;
 
   @ApiProperty({ example: 35 })
   occupiedUnits: number;
 
+  @ApiProperty({ example: 5 })
+  availableUnits: number;
+
   @ApiProperty({ example: 105000 })
   monthlyIncome: number;
+
+  @ApiProperty({ example: 98000 })
+  monthlyIncomePrevious: number;
 
   @ApiProperty({ example: 6 })
   pendingPaymentsCount: number;
 
+  @ApiProperty({ example: 2 })
+  delinquentCount: number;
+
   @ApiProperty({ example: 3 })
   activeMaintenanceCount: number;
+
+  @ApiProperty({ example: 4 })
+  expiringContracts: number;
 }

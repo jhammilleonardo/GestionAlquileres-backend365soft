@@ -65,7 +65,7 @@ export class VendorsService {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     return this.dataSource.query(
-      `SELECT * FROM vendors ${where} ORDER BY v.average_rating DESC NULLS LAST, v.name ASC`,
+      `SELECT v.* FROM vendors v ${where} ORDER BY v.average_rating DESC NULLS LAST, v.name ASC`,
       params,
     );
   }

@@ -60,11 +60,16 @@ describe('ReportsExportService', () => {
   it('exports KPI data to Excel as metric/value rows', async () => {
     const kpis: ReportKpis = {
       occupancyRate: '80.00%',
+      occupancyRateValue: 0.8,
       totalUnits: 10,
       occupiedUnits: 8,
+      availableUnits: 2,
       monthlyIncome: 10000,
+      monthlyIncomePrevious: 9000,
       pendingPaymentsCount: 2,
+      delinquentCount: 1,
       activeMaintenanceCount: 1,
+      expiringContracts: 0,
     };
 
     const buffer = await service.toExcel(kpis, 'KPIs');
@@ -83,11 +88,16 @@ describe('ReportsExportService', () => {
     const rows: ReportTable = [{ property_name: 'Casa Centro', income: 1000 }];
     const kpis: ReportKpis = {
       occupancyRate: '100.00%',
+      occupancyRateValue: 1,
       totalUnits: 1,
       occupiedUnits: 1,
+      availableUnits: 0,
       monthlyIncome: 1000,
+      monthlyIncomePrevious: 800,
       pendingPaymentsCount: 0,
+      delinquentCount: 0,
       activeMaintenanceCount: 0,
+      expiringContracts: 0,
     };
 
     const tablePdf = await service.toPdf(rows, 'Rent_Roll');

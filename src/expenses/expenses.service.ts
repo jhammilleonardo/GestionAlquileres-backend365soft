@@ -296,6 +296,65 @@ export class ExpensesService {
   }
 
   /**
+   * Balance mensual (ingresos aprobados vs gastos) de los últimos 6 meses.
+   * Opcionalmente filtrado por propiedad. Usado por el gráfico de contabilidad.
+   */
+  async getMonthlyBalance(
+    propertyId?: number,
+  ): Promise<Array<{ month: string; income: number; expenses: number }>> {
+    const params: Array<number | string> = [];
+    let incomeFilter = '';
+    let expenseFilter = '';
+    if (propertyId) {
+      params.push(propertyId);
+      incomeFilter = `AND property_id = $${params.length}`;
+      expenseFilter = `AND property_id = $${params.length}`;
+    }
+
+    const rows = await this.dataSource.query<
+      Array<{ month: string; income: string; expenses: string }>
+    >(
+      `
+      WITH months AS (
+        SELECT to_char(date_trunc('month', CURRENT_DATE) - (gs || ' month')::interval, 'YYYY-MM') AS month
+        FROM generate_series(0, 5) AS gs
+      ),
+      inc AS (
+        SELECT to_char(date_trunc('month', payment_date), 'YYYY-MM') AS month, SUM(amount) AS total
+        FROM payments
+        WHERE status::text = 'APPROVED' ${incomeFilter}
+        GROUP BY 1
+      ),
+      exp AS (
+        SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month, SUM(amount) AS total
+        FROM expenses
+        WHERE 1 = 1 ${expenseFilter}
+        GROUP BY 1
+      )
+      SELECT m.month,
+             COALESCE(inc.total, 0) AS income,
+             COALESCE(exp.total, 0) AS expenses
+      FROM months m
+      LEFT JOIN inc ON inc.month = m.month
+      LEFT JOIN exp ON exp.month = m.month
+      ORDER BY m.month ASC
+      `,
+      params,
+    );
+
+    return rows.map((r) => ({
+      month: r.month,
+      income: this.toNumber(r.income),
+      expenses: this.toNumber(r.expenses),
+    }));
+  }
+
+  private toNumber(value: string | number | null | undefined): number {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  /**
    * Obtener resumen de gastos para múltiples propiedades
    */
   async getBulkSummary(

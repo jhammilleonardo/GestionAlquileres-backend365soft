@@ -9,6 +9,7 @@ import { TenantEmployeesProvisioningService } from './tenant-employees-provision
 import { TenantExpensesProvisioningService } from './tenant-expenses-provisioning.service';
 import { TenantInspectionsProvisioningService } from './tenant-inspections-provisioning.service';
 import { TenantMaintenanceProvisioningService } from './tenant-maintenance-provisioning.service';
+import { TenantMessagesProvisioningService } from './tenant-messages-provisioning.service';
 import { TenantNotificationsProvisioningService } from './tenant-notifications-provisioning.service';
 import { TenantPaymentsProvisioningService } from './tenant-payments-provisioning.service';
 import { TenantPropertiesProvisioningService } from './tenant-properties-provisioning.service';
@@ -27,6 +28,7 @@ export class TenantProvisioningService {
     private readonly tenantExpensesProvisioningService: TenantExpensesProvisioningService,
     private readonly tenantInspectionsProvisioningService: TenantInspectionsProvisioningService,
     private readonly tenantMaintenanceProvisioningService: TenantMaintenanceProvisioningService,
+    private readonly tenantMessagesProvisioningService: TenantMessagesProvisioningService,
     private readonly tenantNotificationsProvisioningService: TenantNotificationsProvisioningService,
     private readonly tenantApplicationsProvisioningService: TenantApplicationsProvisioningService,
     private readonly tenantUnitsProvisioningService: TenantUnitsProvisioningService,
@@ -151,6 +153,10 @@ export class TenantProvisioningService {
           this.tenantInspectionsProvisioningService.ensureInspections(
             schemaName,
           ),
+      ],
+      [
+        'ensureMessages',
+        () => this.tenantMessagesProvisioningService.ensureMessages(schemaName),
       ],
       [
         'upgradeExpenses',
@@ -318,6 +324,9 @@ export class TenantProvisioningService {
         tenant.schema_name,
       );
       await this.tenantExpensesProvisioningService.ensureExpenses(
+        tenant.schema_name,
+      );
+      await this.tenantMessagesProvisioningService.ensureMessages(
         tenant.schema_name,
       );
       await this.tenantAuditComplianceProvisioningService.ensureAuditLogs(

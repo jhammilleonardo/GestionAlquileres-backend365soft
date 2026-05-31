@@ -55,11 +55,16 @@ export type ProfitAndLossRow = ReportRow & {
 
 export interface ReportKpis {
   occupancyRate: string;
+  occupancyRateValue: number;
   totalUnits: number;
   occupiedUnits: number;
+  availableUnits: number;
   monthlyIncome: number;
+  monthlyIncomePrevious: number;
   pendingPaymentsCount: number;
+  delinquentCount: number;
   activeMaintenanceCount: number;
+  expiringContracts: number;
 }
 
 export type ReportData = ReportTable | ReportKpis;

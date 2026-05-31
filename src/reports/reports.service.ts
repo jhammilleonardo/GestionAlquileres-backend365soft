@@ -325,10 +325,38 @@ export class ReportsService {
       maintenancePropertyFilter = `AND p.id = $${maintenanceParams.length}`;
     }
 
-    const [[incomeResult], [pendingPaymentResult], [maintenanceResult]] =
-      await Promise.all([
-        this.dataSource.query<SumQueryResult[]>(
-          `
+    // Contratos por vencer (próximos 30 días) y morosos comparten el filtro de propiedad
+    const expiringParams: ReportQueryParam[] = [
+      INACTIVE_PROPERTY_STATUS,
+      ContractStatus.FINALIZADO,
+      ContractStatus.CANCELADO,
+    ];
+    let expiringPropertyFilter = '';
+    if (filters.property_id) {
+      expiringParams.push(filters.property_id);
+      expiringPropertyFilter = `AND p.id = $${expiringParams.length}`;
+    }
+
+    const delinquentParams: ReportQueryParam[] = [
+      PaymentStatus.APPROVED,
+      INACTIVE_PROPERTY_STATUS,
+    ];
+    let delinquentPropertyFilter = '';
+    if (filters.property_id) {
+      delinquentParams.push(filters.property_id);
+      delinquentPropertyFilter = `AND p.id = $${delinquentParams.length}`;
+    }
+
+    const [
+      [incomeResult],
+      [previousIncomeResult],
+      [pendingPaymentResult],
+      [maintenanceResult],
+      [expiringResult],
+      [delinquentResult],
+    ] = await Promise.all([
+      this.dataSource.query<SumQueryResult[]>(
+        `
             SELECT COALESCE(SUM(pay.amount), 0) AS total
             FROM payments pay
             JOIN properties p ON p.id = pay.property_id
@@ -337,10 +365,23 @@ export class ReportsService {
               AND DATE_TRUNC('month', pay.payment_date) = DATE_TRUNC('month', CURRENT_DATE)
             ${incomePropertyFilter}
           `,
-          incomeParams,
-        ),
-        this.dataSource.query<CountQueryResult[]>(
-          `
+        incomeParams,
+      ),
+      this.dataSource.query<SumQueryResult[]>(
+        `
+            SELECT COALESCE(SUM(pay.amount), 0) AS total
+            FROM payments pay
+            JOIN properties p ON p.id = pay.property_id
+            WHERE pay.status::text = $1
+              AND p.status <> $2
+              AND DATE_TRUNC('month', pay.payment_date)
+                  = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+            ${incomePropertyFilter}
+          `,
+        incomeParams,
+      ),
+      this.dataSource.query<CountQueryResult[]>(
+        `
             SELECT COUNT(*) AS count
             FROM payments pay
             JOIN properties p ON p.id = pay.property_id
@@ -348,10 +389,10 @@ export class ReportsService {
               AND p.status <> $2
             ${pendingPaymentPropertyFilter}
           `,
-          pendingPaymentParams,
-        ),
-        this.dataSource.query<CountQueryResult[]>(
-          `
+        pendingPaymentParams,
+      ),
+      this.dataSource.query<CountQueryResult[]>(
+        `
             SELECT COUNT(*) AS count
             FROM maintenance_requests mr
             JOIN properties p ON p.id = mr.property_id
@@ -359,17 +400,49 @@ export class ReportsService {
               AND p.status <> $2
             ${maintenancePropertyFilter}
           `,
-          maintenanceParams,
-        ),
-      ]);
+        maintenanceParams,
+      ),
+      this.dataSource.query<CountQueryResult[]>(
+        `
+            SELECT COUNT(*) AS count
+            FROM contracts c
+            JOIN properties p ON p.id = c.property_id
+            WHERE p.status <> $1
+              AND c.status::text NOT IN ($2, $3)
+              AND c.end_date >= CURRENT_DATE
+              AND c.end_date <= CURRENT_DATE + INTERVAL '30 days'
+            ${expiringPropertyFilter}
+          `,
+        expiringParams,
+      ),
+      this.dataSource.query<CountQueryResult[]>(
+        `
+            SELECT COUNT(DISTINCT pay.tenant_id) AS count
+            FROM payments pay
+            JOIN properties p ON p.id = pay.property_id
+            WHERE pay.status::text <> $1
+              AND p.status <> $2
+              AND pay.due_date IS NOT NULL
+              AND pay.due_date < CURRENT_DATE
+            ${delinquentPropertyFilter}
+          `,
+        delinquentParams,
+      ),
+    ]);
 
     return {
       occupancyRate: `${occupancyRate.toFixed(2)}%`,
+      occupancyRateValue:
+        totalUnits > 0 ? occupiedUnits / totalUnits : 0,
       totalUnits,
       occupiedUnits,
+      availableUnits: Math.max(totalUnits - occupiedUnits, 0),
       monthlyIncome: this.toNumber(incomeResult?.total),
+      monthlyIncomePrevious: this.toNumber(previousIncomeResult?.total),
       pendingPaymentsCount: this.toNumber(pendingPaymentResult?.count),
+      delinquentCount: this.toNumber(delinquentResult?.count),
       activeMaintenanceCount: this.toNumber(maintenanceResult?.count),
+      expiringContracts: this.toNumber(expiringResult?.count),
     };
   }
 

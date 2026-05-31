@@ -143,9 +143,13 @@ export class ReportsExportService {
       ['occupancyRate', data.occupancyRate],
       ['totalUnits', data.totalUnits],
       ['occupiedUnits', data.occupiedUnits],
+      ['availableUnits', data.availableUnits],
       ['monthlyIncome', data.monthlyIncome],
+      ['monthlyIncomePrevious', data.monthlyIncomePrevious],
       ['pendingPaymentsCount', data.pendingPaymentsCount],
+      ['delinquentCount', data.delinquentCount],
       ['activeMaintenanceCount', data.activeMaintenanceCount],
+      ['expiringContracts', data.expiringContracts],
     ];
   }
 

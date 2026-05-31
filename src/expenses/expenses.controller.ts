@@ -99,6 +99,19 @@ export class AdminExpensesController {
     return this.expensesService.getSummary(+propertyId, from, to);
   }
 
+  @Get('monthly-balance')
+  @RequirePermission('expenses', 'view')
+  @ApiOperation({
+    summary: 'Balance mensual (ingresos vs gastos) de los últimos 6 meses',
+  })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiQuery({ name: 'property_id', required: false })
+  async getMonthlyBalance(
+    @Query('property_id') propertyId?: string,
+  ): Promise<Array<{ month: string; income: number; expenses: number }>> {
+    return this.expensesService.getMonthlyBalance(propertyId ? +propertyId : undefined);
+  }
+
   @Get(':id')
   @RequirePermission('expenses', 'view')
   @ApiOperation({ summary: 'Obtener gasto por ID' })

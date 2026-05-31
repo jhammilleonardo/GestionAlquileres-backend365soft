@@ -4,6 +4,7 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { ViolationsService } from './violations.service';
 import { ViolationsPdfService } from './violations-pdf.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StorageService } from '../common/storage/storage.service';
 import { ViolationTypeEnum } from './enums/violation-type.enum';
 import { ViolationStatusEnum } from './enums/violation-status.enum';
 import {
@@ -56,6 +57,14 @@ describe('ViolationsService', () => {
         { provide: getDataSourceToken(), useValue: dataSource },
         { provide: NotificationsService, useValue: notificationsService },
         { provide: ViolationsPdfService, useValue: pdfService },
+        {
+          provide: StorageService,
+          useValue: {
+            buildStoragePath: (...s: string[]) => s.join('/'),
+            persistUploadedFile: jest.fn().mockResolvedValue('path'),
+            toRoutePath: (p: string) => `/${p}`,
+          },
+        },
       ],
     }).compile();
 

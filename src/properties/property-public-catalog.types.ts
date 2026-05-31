@@ -48,9 +48,23 @@ export interface PublicCatalogProperty {
   first_address?: PublicCatalogAddress | null;
 }
 
+export interface PublicCatalogUnit {
+  id: number;
+  unit_number: string;
+  rental_type: string | null;
+  status: string | null;
+  price_per_night: number | null;
+  cleaning_fee: number | null;
+  min_nights: number | null;
+  max_nights: number | null;
+  checkin_time: string | null;
+  checkout_time: string | null;
+}
+
 export interface PublicCatalogPropertyDetail extends PublicCatalogProperty {
   addresses: PublicCatalogAddress[];
   owners: PublicCatalogOwner[];
+  units: PublicCatalogUnit[];
 }
 
 export interface PublicCatalogResult {

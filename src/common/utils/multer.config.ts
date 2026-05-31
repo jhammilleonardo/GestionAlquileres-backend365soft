@@ -137,6 +137,39 @@ export const maintenanceMulterConfig = {
 };
 
 // ──────────────────────────────────────────────────────────────
+// Fotos de evidencia de violaciones (imágenes + PDF, máx 10 MB)
+// Almacenadas en: storage/violations/{slug}/{violationId}/
+// ──────────────────────────────────────────────────────────────
+export const violationFileStorage = diskStorage({
+  destination: (req: Request, file: Express.Multer.File, cb) => {
+    const tenantSlug = getTenantSlug(req);
+    const violationId = getRouteParam(req, 'id') ?? 'temp';
+
+    const uploadPath = path.join(
+      process.cwd(),
+      'storage',
+      'violations',
+      tenantSlug,
+      violationId,
+    );
+    ensureDirExists(uploadPath);
+
+    cb(null, uploadPath);
+  },
+  filename: (req: Request, file: Express.Multer.File, cb) => {
+    cb(null, generateSecureFilename(file.originalname));
+  },
+});
+
+export const violationMulterConfig = {
+  storage: violationFileStorage,
+  fileFilter: maintenanceFileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max
+  },
+};
+
+// ──────────────────────────────────────────────────────────────
 // Comprobantes de pago (imágenes + PDF, máx 10 MB)
 // ──────────────────────────────────────────────────────────────
 

@@ -193,6 +193,29 @@ export class StorageController {
   }
 
   // ──────────────────────────────────────────────────────────────
+  // Privado: fotos de evidencia de violaciones
+  // ──────────────────────────────────────────────────────────────
+  @Get('violations/:slug/:violationId/:filename')
+  @UseGuards(JwtAuthGuard)
+  serveViolationFile(
+    @Param('slug') slug: string,
+    @Param('violationId') violationId: string,
+    @Param('filename') filename: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    this.assertTenantOwnership(req, slug);
+    this.assertSafeSegment(violationId);
+    this.assertSafeFilename(filename);
+
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath('violations', slug, violationId, filename),
+      'private',
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────
   // Privado: documentos de contratos
   // ──────────────────────────────────────────────────────────────
   @Get('contracts/:slug/:contractId/:filename')

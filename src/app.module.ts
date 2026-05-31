@@ -31,6 +31,7 @@ import { InspectionsModule } from './inspections/inspections.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { OwnerPortalModule } from './owner-portal/owner-portal.module';
 import { ViolationsModule } from './violations/violations.module';
+import { MessagesModule } from './messages/messages.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { LifecycleNotificationsModule } from './lifecycle-notifications/lifecycle-notifications.module';
@@ -115,6 +116,7 @@ import { ProductionReadinessService } from './common/production/production-readi
     ExpensesModule,
     OwnerPortalModule,
     ViolationsModule,
+    MessagesModule,
     ReservationsModule,
     VendorsModule,
     LifecycleNotificationsModule,

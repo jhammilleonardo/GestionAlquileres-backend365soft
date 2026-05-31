@@ -13,6 +13,7 @@ import { TenantPaymentsProvisioningService } from './tenant-payments-provisionin
 import { TenantExpensesProvisioningService } from './tenant-expenses-provisioning.service';
 import { TenantInspectionsProvisioningService } from './tenant-inspections-provisioning.service';
 import { TenantMaintenanceProvisioningService } from './tenant-maintenance-provisioning.service';
+import { TenantMessagesProvisioningService } from './tenant-messages-provisioning.service';
 import { TenantNotificationsProvisioningService } from './tenant-notifications-provisioning.service';
 import { TenantApplicationsProvisioningService } from './tenant-applications-provisioning.service';
 import { TenantUnitsProvisioningService } from './tenant-units-provisioning.service';
@@ -37,6 +38,7 @@ import { TenantProvisioningService } from './tenant-provisioning.service';
     TenantExpensesProvisioningService,
     TenantInspectionsProvisioningService,
     TenantMaintenanceProvisioningService,
+    TenantMessagesProvisioningService,
     TenantNotificationsProvisioningService,
     TenantApplicationsProvisioningService,
     TenantUnitsProvisioningService,

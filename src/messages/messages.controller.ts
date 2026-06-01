@@ -5,9 +5,15 @@ import {
   Body,
   Param,
   ParseIntPipe,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MessagesService } from './messages.service';
@@ -55,8 +61,17 @@ export class MessagesController {
   getThread(
     @CurrentUser() user: JwtUser,
     @Param('userId', ParseIntPipe) otherId: number,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
   ) {
-    return this.messagesService.getThread(user.userId, otherId);
+    const parsedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const parsedBefore = before ? Number(before) : undefined;
+    return this.messagesService.getThread(
+      user.userId,
+      otherId,
+      parsedLimit,
+      parsedBefore,
+    );
   }
 
   @Post()
@@ -67,7 +82,9 @@ export class MessagesController {
   }
 
   @Post('broadcast')
-  @ApiOperation({ summary: 'Enviar un mensaje a todos los inquilinos y propietarios' })
+  @ApiOperation({
+    summary: 'Enviar un mensaje a todos los inquilinos y propietarios',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   broadcast(@CurrentUser() user: JwtUser, @Body() dto: BroadcastMessageDto) {
     return this.messagesService.broadcast(user.userId, dto.body);

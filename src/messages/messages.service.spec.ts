@@ -4,10 +4,10 @@ import { MessagesService } from './messages.service';
 
 describe('MessagesService', () => {
   let service: MessagesService;
-  let dataSource: { query: jest.Mock };
+  let dataSource: { query: jest.Mock<Promise<unknown>, [string, unknown[]?]> };
 
   beforeEach(async () => {
-    dataSource = { query: jest.fn() };
+    dataSource = { query: jest.fn<Promise<unknown>, [string, unknown[]?]>() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessagesService,
@@ -39,7 +39,9 @@ describe('MessagesService', () => {
 
     expect(result).toEqual(messages);
     expect(dataSource.query).toHaveBeenCalledTimes(2);
-    expect(dataSource.query.mock.calls[1][0]).toContain('UPDATE internal_messages SET is_read');
+    expect(dataSource.query.mock.calls[1][0]).toContain(
+      'UPDATE internal_messages SET is_read',
+    );
     expect(dataSource.query.mock.calls[1][1]).toEqual([1, 2]);
   });
 
@@ -66,13 +68,19 @@ describe('MessagesService', () => {
   });
 
   it('getRecipients de un ADMIN devuelve inquilinos y propietarios', async () => {
-    dataSource.query.mockResolvedValueOnce([{ id: 2, name: 'Ana', role: 'INQUILINO' }]);
+    dataSource.query.mockResolvedValueOnce([
+      { id: 2, name: 'Ana', role: 'INQUILINO' },
+    ]);
     await service.getRecipients('ADMIN');
-    expect(dataSource.query.mock.calls[0][1]).toEqual([['INQUILINO', 'PROPIETARIO']]);
+    expect(dataSource.query.mock.calls[0][1]).toEqual([
+      ['INQUILINO', 'PROPIETARIO'],
+    ]);
   });
 
   it('getRecipients de un INQUILINO devuelve admins y empleados', async () => {
-    dataSource.query.mockResolvedValueOnce([{ id: 1, name: 'Admin', role: 'ADMIN' }]);
+    dataSource.query.mockResolvedValueOnce([
+      { id: 1, name: 'Admin', role: 'ADMIN' },
+    ]);
     await service.getRecipients('INQUILINO');
     expect(dataSource.query.mock.calls[0][1]).toEqual([['ADMIN', 'EMPLEADO']]);
   });

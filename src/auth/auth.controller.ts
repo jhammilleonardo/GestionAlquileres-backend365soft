@@ -25,6 +25,7 @@ import { AuthRequestUser, AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterAdminDto } from './dto/register-admin.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import {
@@ -71,6 +72,31 @@ export class AuthController {
   @ApiTooManyRequestsResponse({ description: 'Cuenta temporalmente bloqueada' })
   async loginAdmin(@Body() loginDto: LoginDto) {
     return this.authService.loginAdmin(loginDto.email, loginDto.password);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 3600000 } })
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Solicitar recuperacion de contrasena',
+    description:
+      'Devuelve siempre una respuesta generica para evitar enumeracion de usuarios.',
+  })
+  @ApiBody({ type: ForgotPasswordDto })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        message:
+          'Si el correo existe, se enviaran instrucciones de recuperacion.',
+      },
+    },
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Demasiadas solicitudes de recuperacion',
+  })
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.requestPasswordReset(dto.email);
   }
 
   @Public()

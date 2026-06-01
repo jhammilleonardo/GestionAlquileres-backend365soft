@@ -139,7 +139,11 @@ export class ViolationsController {
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron archivos');
     }
-    const evidence_photos = await this.violationsService.addEvidencePhotos(id, files, slug);
+    const evidence_photos = await this.violationsService.addEvidencePhotos(
+      id,
+      files,
+      slug,
+    );
     return { evidence_photos };
   }
 

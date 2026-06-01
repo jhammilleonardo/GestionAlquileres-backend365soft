@@ -10,6 +10,7 @@ import {
   PublicCatalogProperty,
   PublicCatalogPropertyDetail,
   PublicCatalogResult,
+  PublicCatalogUnit,
 } from './property-public-catalog.types';
 
 interface CountRow {
@@ -154,7 +155,7 @@ export class PropertyPublicCatalogService {
     );
 
     // Unidades con su configuración de alquiler (incl. corto plazo) para el catálogo público
-    const units = await this.dataSource.query(
+    const units = await this.dataSource.query<PublicCatalogUnit[]>(
       `SELECT id, unit_number, rental_type, status,
               price_per_night, cleaning_fee, min_nights, max_nights,
               checkin_time, checkout_time

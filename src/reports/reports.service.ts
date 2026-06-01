@@ -432,8 +432,7 @@ export class ReportsService {
 
     return {
       occupancyRate: `${occupancyRate.toFixed(2)}%`,
-      occupancyRateValue:
-        totalUnits > 0 ? occupiedUnits / totalUnits : 0,
+      occupancyRateValue: totalUnits > 0 ? occupiedUnits / totalUnits : 0,
       totalUnits,
       occupiedUnits,
       availableUnits: Math.max(totalUnits - occupiedUnits, 0),

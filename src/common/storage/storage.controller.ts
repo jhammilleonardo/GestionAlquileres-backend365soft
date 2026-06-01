@@ -210,7 +210,12 @@ export class StorageController {
 
     return this.sendFile(
       res,
-      this.storageService.buildStoragePath('violations', slug, violationId, filename),
+      this.storageService.buildStoragePath(
+        'violations',
+        slug,
+        violationId,
+        filename,
+      ),
       'private',
     );
   }

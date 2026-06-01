@@ -12,6 +12,7 @@ import { TenantMaintenanceProvisioningService } from './tenant-maintenance-provi
 import { TenantNotificationsProvisioningService } from './tenant-notifications-provisioning.service';
 import { TenantPaymentsProvisioningService } from './tenant-payments-provisioning.service';
 import { TenantPropertiesProvisioningService } from './tenant-properties-provisioning.service';
+import { TenantMessagesProvisioningService } from './tenant-messages-provisioning.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantSchemaService } from './tenant-schema.service';
 import {
@@ -30,6 +31,7 @@ describe('TenantProvisioningService', () => {
   let tenantExpensesProvisioningService: Record<string, jest.Mock>;
   let tenantInspectionsProvisioningService: Record<string, jest.Mock>;
   let tenantMaintenanceProvisioningService: Record<string, jest.Mock>;
+  let tenantMessagesProvisioningService: Record<string, jest.Mock>;
   let tenantNotificationsProvisioningService: Record<string, jest.Mock>;
   let tenantApplicationsProvisioningService: Record<string, jest.Mock>;
   let tenantUnitsProvisioningService: Record<string, jest.Mock>;
@@ -65,6 +67,7 @@ describe('TenantProvisioningService', () => {
       'ensureVendors',
       'ensureVendorFields',
     ]);
+    tenantMessagesProvisioningService = mockService(['ensureMessages']);
     tenantNotificationsProvisioningService = mockService([
       'ensureNotifications',
       'ensureLifecycleNotificationLog',
@@ -119,6 +122,7 @@ describe('TenantProvisioningService', () => {
       tenantExpensesProvisioningService as unknown as TenantExpensesProvisioningService,
       tenantInspectionsProvisioningService as unknown as TenantInspectionsProvisioningService,
       tenantMaintenanceProvisioningService as unknown as TenantMaintenanceProvisioningService,
+      tenantMessagesProvisioningService as unknown as TenantMessagesProvisioningService,
       tenantNotificationsProvisioningService as unknown as TenantNotificationsProvisioningService,
       tenantApplicationsProvisioningService as unknown as TenantApplicationsProvisioningService,
       tenantUnitsProvisioningService as unknown as TenantUnitsProvisioningService,

@@ -109,7 +109,9 @@ export class AdminExpensesController {
   async getMonthlyBalance(
     @Query('property_id') propertyId?: string,
   ): Promise<Array<{ month: string; income: number; expenses: number }>> {
-    return this.expensesService.getMonthlyBalance(propertyId ? +propertyId : undefined);
+    return this.expensesService.getMonthlyBalance(
+      propertyId ? +propertyId : undefined,
+    );
   }
 
   @Get(':id')

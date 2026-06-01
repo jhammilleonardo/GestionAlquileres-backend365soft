@@ -201,6 +201,15 @@ export class AuthService {
     };
   }
 
+  requestPasswordReset(email: string): { message: string } {
+    this.logger.log(`Password reset requested for ${email}`);
+
+    return {
+      message:
+        'Si el correo existe, se enviaran instrucciones de recuperacion.',
+    };
+  }
+
   /**
    * Autentica a un propietario (role = PROPIETARIO) en el contexto del tenant.
    * Resuelve el rental_owner_id desde rental_owners.primary_email para incluirlo en el JWT.

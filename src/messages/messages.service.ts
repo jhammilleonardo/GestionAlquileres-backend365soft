@@ -66,13 +66,34 @@ export class MessagesService {
   }
 
   /** Conversación completa con otro usuario; marca como leídos los recibidos. */
-  async getThread(userId: number, otherId: number): Promise<MessageRow[]> {
+  async getThread(
+    userId: number,
+    otherId: number,
+    limit = 50,
+    before?: number,
+  ): Promise<MessageRow[]> {
+    // Paginación por cursor: se devuelven los `limit` mensajes más recientes
+    // anteriores a `before` (id), y luego se ordenan ascendente para mostrarlos.
+    const params: number[] = [userId, otherId];
+    let cursorClause = '';
+    if (before) {
+      params.push(before);
+      cursorClause = `AND id < $${params.length}`;
+    }
+    params.push(limit);
+    const limitParam = `$${params.length}`;
+
     const messages = await this.dataSource.query<MessageRow[]>(
-      `SELECT * FROM internal_messages
-       WHERE (sender_id = $1 AND recipient_id = $2)
-          OR (sender_id = $2 AND recipient_id = $1)
-       ORDER BY created_at ASC`,
-      [userId, otherId],
+      `SELECT * FROM (
+         SELECT * FROM internal_messages
+         WHERE ((sender_id = $1 AND recipient_id = $2)
+             OR (sender_id = $2 AND recipient_id = $1))
+           ${cursorClause}
+         ORDER BY created_at DESC, id DESC
+         LIMIT ${limitParam}
+       ) sub
+       ORDER BY created_at ASC, id ASC`,
+      params,
     );
 
     await this.dataSource.query(
@@ -84,7 +105,11 @@ export class MessagesService {
     return messages;
   }
 
-  async send(senderId: number, recipientId: number, body: string): Promise<MessageRow> {
+  async send(
+    senderId: number,
+    recipientId: number,
+    body: string,
+  ): Promise<MessageRow> {
     const [row] = await this.dataSource.query<MessageRow[]>(
       `INSERT INTO internal_messages (sender_id, recipient_id, body)
        VALUES ($1, $2, $3) RETURNING *`,

@@ -69,7 +69,11 @@ export class ViolationsService {
         String(id),
         file.filename,
       );
-      await this.storageService.persistUploadedFile(file, targetPath, 'private');
+      await this.storageService.persistUploadedFile(
+        file,
+        targetPath,
+        'private',
+      );
       newUrls.push(this.storageService.toRoutePath(targetPath));
     }
 

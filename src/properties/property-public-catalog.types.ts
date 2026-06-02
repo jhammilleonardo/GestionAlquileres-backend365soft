@@ -29,6 +29,7 @@ export interface PublicCatalogProperty {
   longitude?: string | number | null;
   monthly_rent?: string | number | null;
   currency?: string | null;
+  rental_type?: string | null;
   bedrooms?: number | null;
   bathrooms?: number | null;
   square_meters?: string | number | null;

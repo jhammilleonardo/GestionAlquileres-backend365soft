@@ -53,6 +53,42 @@ export type ProfitAndLossRow = ReportRow & {
   net_result: string | number;
 };
 
+export type MaintenanceReportRow = ReportRow & {
+  property_id: number;
+  property_name: string;
+  open_requests: string | number;
+  urgent_requests: string | number;
+  completed_requests: string | number;
+  avg_resolution_days: string | number;
+  estimated_cost: string | number;
+};
+
+export type OwnerStatementReportRow = ReportRow & {
+  owner_id: number;
+  owner_name: string;
+  property_id: number;
+  property_name: string;
+  gross_income: string | number;
+  commission: string | number;
+  deductions: string | number;
+  net_transfer: string | number;
+  status: string;
+};
+
+export type CashFlowReportRow = ReportRow & {
+  movement: string;
+  inflow: string | number;
+  outflow: string | number;
+  net: string | number;
+};
+
+export type BudgetVsActualReportRow = ReportRow & {
+  line: string;
+  budget: string | number;
+  actual: string | number;
+  variance: string | number;
+};
+
 export interface ReportKpis {
   occupancyRate: string;
   occupancyRateValue: number;

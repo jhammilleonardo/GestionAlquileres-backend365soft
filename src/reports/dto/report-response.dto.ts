@@ -101,6 +101,86 @@ export class ProfitAndLossReportRowDto {
   net_result: string | number;
 }
 
+export class MaintenanceReportRowDto {
+  @ApiProperty({ example: 8 })
+  property_id: number;
+
+  @ApiProperty({ example: 'Departamento Centro' })
+  property_name: string;
+
+  @ApiProperty({ example: 5 })
+  open_requests: string | number;
+
+  @ApiProperty({ example: 2 })
+  urgent_requests: string | number;
+
+  @ApiProperty({ example: 12 })
+  completed_requests: string | number;
+
+  @ApiProperty({ example: 3.5 })
+  avg_resolution_days: string | number;
+
+  @ApiProperty({ example: 1200 })
+  estimated_cost: string | number;
+}
+
+export class OwnerStatementReportRowDto {
+  @ApiProperty({ example: 3 })
+  owner_id: number;
+
+  @ApiProperty({ example: 'Maria Perez' })
+  owner_name: string;
+
+  @ApiProperty({ example: 8 })
+  property_id: number;
+
+  @ApiProperty({ example: 'Departamento Centro' })
+  property_name: string;
+
+  @ApiProperty({ example: 3000 })
+  gross_income: string | number;
+
+  @ApiProperty({ example: 300 })
+  commission: string | number;
+
+  @ApiProperty({ example: 450 })
+  deductions: string | number;
+
+  @ApiProperty({ example: 2250 })
+  net_transfer: string | number;
+
+  @ApiProperty({ example: 'pending' })
+  status: string;
+}
+
+export class CashFlowReportRowDto {
+  @ApiProperty({ example: '2026-05' })
+  movement: string;
+
+  @ApiProperty({ example: 12000 })
+  inflow: string | number;
+
+  @ApiProperty({ example: 7200 })
+  outflow: string | number;
+
+  @ApiProperty({ example: 4800 })
+  net: string | number;
+}
+
+export class BudgetVsActualReportRowDto {
+  @ApiProperty({ example: 'Ingresos' })
+  line: string;
+
+  @ApiProperty({ example: 10000 })
+  budget: string | number;
+
+  @ApiProperty({ example: 12000 })
+  actual: string | number;
+
+  @ApiProperty({ example: 2000 })
+  variance: string | number;
+}
+
 export class ReportKpisResponseDto {
   @ApiProperty({ example: '87.50%' })
   occupancyRate: string;

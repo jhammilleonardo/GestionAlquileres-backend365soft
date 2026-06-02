@@ -50,8 +50,15 @@ export class PropertyPublicCatalogQueryService {
     }
 
     if (filters.rental_type && filters.rental_type !== 'any') {
-      whereSql += ` AND LOWER(p.rental_type) = LOWER($${paramIndex++})`;
-      params.push(filters.rental_type);
+      const rentalType = filters.rental_type.toUpperCase();
+      if (rentalType === 'SHORT_TERM' || rentalType === 'SHORT') {
+        whereSql += ` AND p.rental_type IN ('SHORT_TERM', 'BOTH')`;
+      } else if (rentalType === 'LONG_TERM' || rentalType === 'LONG') {
+        whereSql += ` AND p.rental_type IN ('LONG_TERM', 'BOTH')`;
+      } else {
+        whereSql += ` AND LOWER(p.rental_type) = LOWER($${paramIndex++})`;
+        params.push(filters.rental_type);
+      }
     }
 
     return { whereSql, params, nextParamIndex: paramIndex };

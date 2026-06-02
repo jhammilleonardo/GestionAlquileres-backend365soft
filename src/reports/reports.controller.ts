@@ -18,6 +18,10 @@ import { ReportFilterDto, ReportFormat } from './dto/report-filter.dto';
 import { ReportData } from './reports.types';
 import {
   DelinquencyReportRowDto,
+  BudgetVsActualReportRowDto,
+  CashFlowReportRowDto,
+  MaintenanceReportRowDto,
+  OwnerStatementReportRowDto,
   ProfitAndLossReportRowDto,
   RentRollReportRowDto,
   ReportKpisResponseDto,
@@ -116,6 +120,92 @@ export class ReportsController {
   async getPnL(@Query() filters: ReportFilterDto, @Res() res: Response) {
     const data = await this.reportsService.getPnL(filters);
     return this.handleExport(res, data, 'PnL', filters.format);
+  }
+
+  @Get('maintenance')
+  @ApiOperation({ summary: 'Maintenance Operations Report' })
+  @ApiProduces(
+    'application/json',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/pdf',
+  )
+  @ApiQuery({ type: ReportFilterDto })
+  @ApiOkResponse({
+    type: MaintenanceReportRowDto,
+    isArray: true,
+    description:
+      'JSON por defecto. Si format=excel o format=pdf retorna archivo binario.',
+  })
+  @RequirePermission('reports', 'view')
+  async getMaintenance(
+    @Query() filters: ReportFilterDto,
+    @Res() res: Response,
+  ) {
+    const data = await this.reportsService.getMaintenance(filters);
+    return this.handleExport(res, data, 'Maintenance', filters.format);
+  }
+
+  @Get('owners')
+  @ApiOperation({ summary: 'Owner Statements Report' })
+  @ApiProduces(
+    'application/json',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/pdf',
+  )
+  @ApiQuery({ type: ReportFilterDto })
+  @ApiOkResponse({
+    type: OwnerStatementReportRowDto,
+    isArray: true,
+    description:
+      'JSON por defecto. Si format=excel o format=pdf retorna archivo binario.',
+  })
+  @RequirePermission('reports', 'view')
+  async getOwners(@Query() filters: ReportFilterDto, @Res() res: Response) {
+    const data = await this.reportsService.getOwnerStatements(filters);
+    return this.handleExport(res, data, 'Owner_Statements', filters.format);
+  }
+
+  @Get('cash-flow')
+  @ApiOperation({ summary: 'Cash Flow Report' })
+  @ApiProduces(
+    'application/json',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/pdf',
+  )
+  @ApiQuery({ type: ReportFilterDto })
+  @ApiOkResponse({
+    type: CashFlowReportRowDto,
+    isArray: true,
+    description:
+      'JSON por defecto. Si format=excel o format=pdf retorna archivo binario.',
+  })
+  @RequirePermission('reports', 'view')
+  async getCashFlow(@Query() filters: ReportFilterDto, @Res() res: Response) {
+    const data = await this.reportsService.getCashFlow(filters);
+    return this.handleExport(res, data, 'Cash_Flow', filters.format);
+  }
+
+  @Get('budget-vs-actual')
+  @ApiOperation({ summary: 'Budget vs Actual Report' })
+  @ApiProduces(
+    'application/json',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/pdf',
+  )
+  @ApiQuery({ type: ReportFilterDto })
+  @ApiOkResponse({
+    type: BudgetVsActualReportRowDto,
+    isArray: true,
+    description:
+      'JSON por defecto. Si format=excel o format=pdf retorna archivo binario.',
+  })
+  @RequirePermission('reports', 'view')
+  async getBudgetVsActual(
+    @Query() filters: ReportFilterDto,
+    @Res() res: Response,
+  ) {
+    const data = await this.reportsService.getBudgetVsActual(filters);
+    return this.handleExport(res, data, 'Budget_vs_Actual', filters.format);
   }
 
   @Get('kpis')

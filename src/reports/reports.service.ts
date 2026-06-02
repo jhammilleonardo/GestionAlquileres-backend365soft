@@ -9,6 +9,10 @@ import { ReportFilterDto } from './dto/report-filter.dto';
 import {
   CountQueryResult,
   DelinquencyRow,
+  BudgetVsActualReportRow,
+  CashFlowReportRow,
+  MaintenanceReportRow,
+  OwnerStatementReportRow,
   ProfitAndLossRow,
   RentRollRow,
   ReportKpis,
@@ -245,6 +249,265 @@ export class ReportsService {
     `;
 
     return this.dataSource.query<ProfitAndLossRow[]>(query, params);
+  }
+
+  async getMaintenance(
+    filters: ReportFilterDto,
+  ): Promise<MaintenanceReportRow[]> {
+    const params: ReportQueryParam[] = [INACTIVE_PROPERTY_STATUS];
+    let propertyFilter = '';
+    let expensePropertyFilter = '';
+
+    if (filters.property_id) {
+      params.push(filters.property_id);
+      propertyFilter = `AND p.id = $${params.length}`;
+      expensePropertyFilter = `AND exp.property_id = $${params.length}`;
+    }
+
+    let maintenanceDateFilter = '';
+    let expenseDateFilter = '';
+    if (filters.from) {
+      params.push(filters.from);
+      maintenanceDateFilter += ` AND mr.created_at::date >= $${params.length}`;
+      expenseDateFilter += ` AND exp.date >= $${params.length}`;
+    }
+
+    if (filters.to) {
+      params.push(filters.to);
+      maintenanceDateFilter += ` AND mr.created_at::date <= $${params.length}`;
+      expenseDateFilter += ` AND exp.date <= $${params.length}`;
+    }
+
+    const query = `
+      WITH maintenance_costs AS (
+        SELECT exp.property_id, SUM(exp.amount) AS estimated_cost
+        FROM expenses exp
+        WHERE LOWER(exp.category) IN ('maintenance', 'mantenimiento')
+          ${expensePropertyFilter}
+          ${expenseDateFilter}
+        GROUP BY exp.property_id
+      )
+      SELECT
+        p.id AS property_id,
+        p.title AS property_name,
+        COUNT(mr.id) FILTER (
+          WHERE mr.current_stage <> 'COMPLETED' AND mr.status <> 'COMPLETED'
+        ) AS open_requests,
+        COUNT(mr.id) FILTER (
+          WHERE mr.priority = 'HIGH' AND mr.current_stage <> 'COMPLETED'
+        ) AS urgent_requests,
+        COUNT(mr.id) FILTER (
+          WHERE mr.current_stage = 'COMPLETED' OR mr.status = 'COMPLETED'
+        ) AS completed_requests,
+        COALESCE(AVG(
+          CASE
+            WHEN mr.completed_at IS NOT NULL
+            THEN EXTRACT(EPOCH FROM (mr.completed_at - mr.created_at)) / 86400
+            ELSE NULL
+          END
+        ), 0) AS avg_resolution_days,
+        COALESCE(mc.estimated_cost, 0) AS estimated_cost
+      FROM properties p
+      LEFT JOIN maintenance_requests mr
+        ON mr.property_id = p.id
+       ${maintenanceDateFilter}
+      LEFT JOIN maintenance_costs mc ON mc.property_id = p.id
+      WHERE p.status <> $1
+      ${propertyFilter}
+      GROUP BY p.id, p.title, mc.estimated_cost
+      ORDER BY open_requests DESC, urgent_requests DESC, p.title
+    `;
+
+    return this.dataSource.query<MaintenanceReportRow[]>(query, params);
+  }
+
+  async getOwnerStatements(
+    filters: ReportFilterDto,
+  ): Promise<OwnerStatementReportRow[]> {
+    const params: ReportQueryParam[] = [INACTIVE_PROPERTY_STATUS];
+    let propertyFilter = '';
+    let periodFilter = '';
+
+    if (filters.property_id) {
+      params.push(filters.property_id);
+      propertyFilter = `AND p.id = $${params.length}`;
+    }
+
+    if (filters.from) {
+      params.push(filters.from);
+      periodFilter += ` AND MAKE_DATE(os.period_year, os.period_month, 1) >= DATE_TRUNC('month', $${params.length}::date)::date`;
+    }
+
+    if (filters.to) {
+      params.push(filters.to);
+      periodFilter += ` AND MAKE_DATE(os.period_year, os.period_month, 1) <= DATE_TRUNC('month', $${params.length}::date)::date`;
+    }
+
+    if (filters.status) {
+      params.push(filters.status);
+      periodFilter += ` AND os.status = $${params.length}`;
+    }
+
+    const query = `
+      SELECT
+        ro.id AS owner_id,
+        ro.name AS owner_name,
+        p.id AS property_id,
+        p.title AS property_name,
+        COALESCE(SUM(os.gross_rent), 0) AS gross_income,
+        COALESCE(SUM(os.management_commission), 0) AS commission,
+        COALESCE(SUM(os.maintenance_deduction), 0) AS deductions,
+        COALESCE(SUM(os.net_amount), 0) AS net_transfer,
+        CASE
+          WHEN COUNT(*) FILTER (WHERE os.status = 'pending') > 0 THEN 'pending'
+          ELSE 'transferred'
+        END AS status
+      FROM owner_statements os
+      JOIN rental_owners ro ON ro.id = os.rental_owner_id
+      JOIN properties p ON p.id = os.property_id
+      WHERE p.status <> $1
+      ${propertyFilter}
+      ${periodFilter}
+      GROUP BY ro.id, ro.name, p.id, p.title
+      ORDER BY net_transfer DESC, p.title
+    `;
+
+    return this.dataSource.query<OwnerStatementReportRow[]>(query, params);
+  }
+
+  async getCashFlow(filters: ReportFilterDto): Promise<CashFlowReportRow[]> {
+    const params: ReportQueryParam[] = [PaymentStatus.APPROVED];
+    let paymentFilter = '';
+    let expenseFilter = '';
+    let ownerFilter = '';
+
+    if (filters.property_id) {
+      params.push(filters.property_id);
+      paymentFilter += ` AND pay.property_id = $${params.length}`;
+      expenseFilter += ` AND exp.property_id = $${params.length}`;
+      ownerFilter += ` AND os.property_id = $${params.length}`;
+    }
+
+    if (filters.from) {
+      params.push(filters.from);
+      paymentFilter += ` AND pay.payment_date >= $${params.length}`;
+      expenseFilter += ` AND exp.date >= $${params.length}`;
+      ownerFilter += ` AND MAKE_DATE(os.period_year, os.period_month, 1) >= DATE_TRUNC('month', $${params.length}::date)::date`;
+    }
+
+    if (filters.to) {
+      params.push(filters.to);
+      paymentFilter += ` AND pay.payment_date <= $${params.length}`;
+      expenseFilter += ` AND exp.date <= $${params.length}`;
+      ownerFilter += ` AND MAKE_DATE(os.period_year, os.period_month, 1) <= DATE_TRUNC('month', $${params.length}::date)::date`;
+    }
+
+    const query = `
+      WITH inflows AS (
+        SELECT DATE_TRUNC('month', pay.payment_date)::date AS month, SUM(pay.amount) AS amount
+        FROM payments pay
+        WHERE pay.status::text = $1
+          ${paymentFilter}
+        GROUP BY month
+      ),
+      expense_outflows AS (
+        SELECT DATE_TRUNC('month', exp.date)::date AS month, SUM(exp.amount) AS amount
+        FROM expenses exp
+        WHERE 1 = 1
+          ${expenseFilter}
+        GROUP BY month
+      ),
+      owner_outflows AS (
+        SELECT MAKE_DATE(os.period_year, os.period_month, 1) AS month, SUM(os.net_amount) AS amount
+        FROM owner_statements os
+        WHERE 1 = 1
+          ${ownerFilter}
+        GROUP BY month
+      ),
+      months AS (
+        SELECT month FROM inflows
+        UNION
+        SELECT month FROM expense_outflows
+        UNION
+        SELECT month FROM owner_outflows
+      )
+      SELECT
+        TO_CHAR(m.month, 'YYYY-MM') AS movement,
+        COALESCE(i.amount, 0) AS inflow,
+        (COALESCE(e.amount, 0) + COALESCE(o.amount, 0)) AS outflow,
+        (COALESCE(i.amount, 0) - COALESCE(e.amount, 0) - COALESCE(o.amount, 0)) AS net
+      FROM months m
+      LEFT JOIN inflows i ON i.month = m.month
+      LEFT JOIN expense_outflows e ON e.month = m.month
+      LEFT JOIN owner_outflows o ON o.month = m.month
+      ORDER BY m.month DESC
+      LIMIT 12
+    `;
+
+    return this.dataSource.query<CashFlowReportRow[]>(query, params);
+  }
+
+  async getBudgetVsActual(
+    filters: ReportFilterDto,
+  ): Promise<BudgetVsActualReportRow[]> {
+    const pnl = await this.getPnL(filters);
+    const income = pnl.reduce((sum, row) => sum + this.toNumber(row.income), 0);
+    const expenses = pnl.reduce(
+      (sum, row) => sum + this.toNumber(row.expenses),
+      0,
+    );
+    const net = income - expenses;
+
+    const previousFilters: ReportFilterDto = { ...filters };
+    delete previousFilters.from;
+    delete previousFilters.to;
+    const previousPnl = await this.getPreviousMonthPnL(previousFilters);
+    const previousIncome = previousPnl.reduce(
+      (sum, row) => sum + this.toNumber(row.income),
+      0,
+    );
+    const previousExpenses = previousPnl.reduce(
+      (sum, row) => sum + this.toNumber(row.expenses),
+      0,
+    );
+    const budgetIncome = previousIncome > 0 ? previousIncome : income;
+    const budgetExpenses = previousExpenses > 0 ? previousExpenses : expenses;
+    const budgetNet = budgetIncome - budgetExpenses;
+
+    return [
+      {
+        line: 'Ingresos',
+        budget: budgetIncome,
+        actual: income,
+        variance: income - budgetIncome,
+      },
+      {
+        line: 'Gastos',
+        budget: budgetExpenses,
+        actual: expenses,
+        variance: budgetExpenses - expenses,
+      },
+      {
+        line: 'Resultado neto',
+        budget: budgetNet,
+        actual: net,
+        variance: net - budgetNet,
+      },
+    ];
+  }
+
+  private getPreviousMonthPnL(
+    filters: ReportFilterDto,
+  ): Promise<ProfitAndLossRow[]> {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    return this.getPnL({
+      ...filters,
+      from: firstDay.toISOString().slice(0, 10),
+      to: lastDay.toISOString().slice(0, 10),
+    });
   }
 
   async getKpis(filters: ReportFilterDto): Promise<ReportKpis> {

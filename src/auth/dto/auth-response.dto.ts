@@ -58,6 +58,29 @@ export class LoginResponseDto {
   user: AuthUserDto;
 }
 
+export class AdminMfaRequiredResponseDto {
+  @ApiProperty({ example: true })
+  mfa_required: true;
+
+  @ApiProperty({
+    example: '7f3e9b0b1e6e4a0f9b4a2c1d',
+    description: 'Identificador temporal usado para verificar el codigo MFA.',
+  })
+  challenge_id: string;
+
+  @ApiProperty({
+    example: 'ad***@empresa.com',
+    description: 'Correo enmascarado al que se envio el codigo.',
+  })
+  email_masked: string;
+
+  @ApiProperty({
+    example: 600,
+    description: 'Tiempo de vida del codigo en segundos.',
+  })
+  expires_in_seconds: number;
+}
+
 export class AuthMeResponseDto {
   @ApiProperty({ example: 7 })
   userId: number;

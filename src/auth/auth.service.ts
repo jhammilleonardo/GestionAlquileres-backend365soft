@@ -12,6 +12,8 @@ import { TenantCountry } from '../tenants/dto/create-tenant.dto';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import axios from 'axios';
+import { createHash, randomBytes, randomInt } from 'crypto';
 import { BCRYPT_SALT_ROUNDS } from '../common/constants/security.constants';
 import { generateSlug } from '../common/utils/slug-generator';
 import { quoteIdent } from '../common/utils/sql-identifier';
@@ -31,12 +33,37 @@ interface User {
   updated_at: Date;
 }
 
+interface PasswordResetRecord {
+  id: number;
+  tenant_schema: string;
+  user_id: number;
+  expires_at: Date;
+  used_at: Date | null;
+}
+
+interface PasswordResetUser {
+  user: User;
+  tenant: Tenant;
+}
+
+interface AdminMfaChallengeRecord {
+  id: number;
+  email: string;
+  tenant_slug: string;
+  tenant_schema: string;
+  user_id: number;
+  code_hash: string;
+  attempts: number;
+}
+
 export interface AuthRequestUser {
   userId: number;
   email: string;
   role: string;
   tenantSlug: string;
   rentalOwnerId?: number | null;
+  mfaVerified?: boolean;
+  mfaAt?: number | null;
 }
 
 export interface ContractSummary {
@@ -58,6 +85,15 @@ export interface LoginResponse {
     contract: ContractSummary | null;
   };
 }
+
+export interface AdminMfaRequiredResponse {
+  mfa_required: true;
+  challenge_id: string;
+  email_masked: string;
+  expires_in_seconds: number;
+}
+
+export type AdminLoginResponse = LoginResponse | AdminMfaRequiredResponse;
 
 @Injectable()
 export class AuthService {
@@ -127,7 +163,10 @@ export class AuthService {
     return user;
   }
 
-  async loginAdmin(email: string, password: string): Promise<LoginResponse> {
+  async loginAdmin(
+    email: string,
+    password: string,
+  ): Promise<AdminLoginResponse> {
     const adminLoginScope = 'admin';
     await this.authSecurityService.assertLoginAllowed(
       email,
@@ -182,14 +221,18 @@ export class AuthService {
       throw new UnauthorizedException('Access denied. Admin only.');
     }
 
+    if (this.isAdminEmailMfaEnabled()) {
+      return this.createAdminMfaChallenge(user, tenant);
+    }
+
+    const loginResponse = await this.login(user, tenant.slug);
+
     await this.authSecurityService.recordSuccess({
       email,
       tenantSlug: adminLoginScope,
       context: AuthLoginContext.ADMIN,
       userId: user.id,
     });
-
-    const loginResponse = await this.login(user, tenant.slug);
 
     // Agregar tenant_slug al usuario en la respuesta
     return {
@@ -201,13 +244,163 @@ export class AuthService {
     };
   }
 
-  requestPasswordReset(email: string): { message: string } {
-    this.logger.log(`Password reset requested for ${email}`);
+  async verifyAdminMfa(
+    challengeId: string,
+    code: string,
+  ): Promise<LoginResponse> {
+    await this.ensureAdminMfaTable();
 
-    return {
+    const records = await this.dataSource.query<AdminMfaChallengeRecord[]>(
+      `SELECT id, email, tenant_slug, tenant_schema, user_id, code_hash, attempts
+       FROM public.admin_mfa_challenges
+       WHERE challenge_id = $1
+         AND used_at IS NULL
+         AND expires_at > NOW()
+       LIMIT 1`,
+      [challengeId.trim()],
+    );
+
+    const record = records[0];
+    if (!record) {
+      throw new UnauthorizedException('Codigo de verificacion invalido');
+    }
+
+    if (record.attempts >= 5) {
+      throw new UnauthorizedException('Codigo de verificacion invalido');
+    }
+
+    const codeHash = this.hashMfaCode(code.trim());
+    if (record.code_hash !== codeHash) {
+      await this.dataSource.query(
+        `UPDATE public.admin_mfa_challenges
+         SET attempts = attempts + 1
+         WHERE id = $1`,
+        [record.id],
+      );
+      throw new UnauthorizedException('Codigo de verificacion invalido');
+    }
+
+    const users = await this.dataSource.query<User[]>(
+      `SELECT *
+       FROM ${quoteIdent(record.tenant_schema)}."user"
+       WHERE id = $1
+         AND LOWER(email) = LOWER($2)
+         AND role = 'ADMIN'
+         AND is_active = true
+       LIMIT 1`,
+      [record.user_id, record.email],
+    );
+
+    const user = users[0];
+    if (!user) {
+      throw new UnauthorizedException('Codigo de verificacion invalido');
+    }
+
+    await this.dataSource.query(
+      `UPDATE public.admin_mfa_challenges
+       SET used_at = NOW()
+       WHERE id = $1`,
+      [record.id],
+    );
+
+    await this.authSecurityService.recordSuccess({
+      email: user.email,
+      tenantSlug: 'admin',
+      context: AuthLoginContext.ADMIN,
+      userId: user.id,
+    });
+
+    return this.login(user, record.tenant_slug, { mfaVerified: true });
+  }
+
+  async requestPasswordReset(email: string): Promise<{ message: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const genericResponse = {
       message:
         'Si el correo existe, se enviaran instrucciones de recuperacion.',
     };
+
+    await this.ensurePasswordResetTable();
+
+    const result = await this.findUserForPasswordReset(normalizedEmail);
+    if (!result) {
+      this.logger.log(
+        `Password reset requested for unknown email ${this.maskEmail(
+          normalizedEmail,
+        )}`,
+      );
+      return genericResponse;
+    }
+
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = this.hashPasswordResetToken(rawToken);
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 30);
+
+    await this.dataSource.query(
+      `INSERT INTO public.password_reset_tokens
+        (email, tenant_slug, tenant_schema, user_id, token_hash, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      [
+        normalizedEmail,
+        result.tenant.slug,
+        result.tenant.schema_name,
+        result.user.id,
+        tokenHash,
+        expiresAt,
+      ],
+    );
+
+    await this.sendPasswordResetEmail({
+      email: normalizedEmail,
+      name: result.user.name,
+      tenantSlug: result.tenant.slug,
+      resetUrl: this.buildPasswordResetUrl(rawToken),
+      expiresAt,
+    });
+
+    return genericResponse;
+  }
+
+  async resetPassword(
+    token: string,
+    password: string,
+  ): Promise<{ message: string }> {
+    await this.ensurePasswordResetTable();
+
+    const tokenHash = this.hashPasswordResetToken(token.trim());
+    const records = await this.dataSource.query<PasswordResetRecord[]>(
+      `SELECT id, tenant_schema, user_id, expires_at, used_at
+       FROM public.password_reset_tokens
+       WHERE token_hash = $1
+         AND used_at IS NULL
+         AND expires_at > NOW()
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [tokenHash],
+    );
+
+    const record = records[0];
+    if (!record) {
+      throw new BadRequestException('Token de recuperacion invalido o vencido');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `UPDATE ${quoteIdent(record.tenant_schema)}."user"
+         SET password = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [hashedPassword, record.user_id],
+      );
+      await manager.query(
+        `UPDATE public.password_reset_tokens
+         SET used_at = NOW()
+         WHERE id = $1`,
+        [record.id],
+      );
+    });
+
+    return { message: 'Contrasena actualizada correctamente.' };
   }
 
   /**
@@ -319,12 +512,19 @@ export class AuthService {
     };
   }
 
-  async login(user: User, tenantSlug: string): Promise<LoginResponse> {
+  async login(
+    user: User,
+    tenantSlug: string,
+    options: { mfaVerified?: boolean } = {},
+  ): Promise<LoginResponse> {
     const payload = {
       email: user.email,
       sub: user.id,
       role: user.role,
       tenantSlug: tenantSlug,
+      ...(options.mfaVerified
+        ? { mfaVerified: true, mfaAt: Math.floor(Date.now() / 1000) }
+        : {}),
     };
 
     const access_token = this.jwtService.sign(payload);
@@ -697,6 +897,295 @@ export class AuthService {
     }
 
     return false;
+  }
+
+  private async findUserForPasswordReset(
+    email: string,
+  ): Promise<PasswordResetUser | null> {
+    const tenants = await this.dataSource.query<Tenant[]>(
+      'SELECT * FROM public.tenant WHERE is_active = true ORDER BY id ASC',
+    );
+
+    for (const tenant of tenants) {
+      try {
+        const users = await this.dataSource.query<User[]>(
+          `SELECT *
+           FROM ${quoteIdent(tenant.schema_name)}."user"
+           WHERE LOWER(email) = LOWER($1)
+             AND is_active = true
+           LIMIT 1`,
+          [email],
+        );
+
+        if (users[0]) {
+          return { user: users[0], tenant };
+        }
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo consultar usuario en schema ${tenant.schema_name}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    return null;
+  }
+
+  private async ensurePasswordResetTable(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS public.password_reset_tokens (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        tenant_slug VARCHAR(120) NOT NULL,
+        tenant_schema VARCHAR(120) NOT NULL,
+        user_id INTEGER NOT NULL,
+        token_hash VARCHAR(128) NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token_hash
+      ON public.password_reset_tokens(token_hash)
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_email_created
+      ON public.password_reset_tokens(email, created_at DESC)
+    `);
+  }
+
+  private isAdminEmailMfaEnabled(): boolean {
+    const configured = process.env.ADMIN_EMAIL_MFA_ENABLED?.trim();
+    if (configured) {
+      return ['true', '1', 'yes', 'on'].includes(configured.toLowerCase());
+    }
+
+    return ['production', 'staging'].includes(
+      (process.env.NODE_ENV ?? '').toLowerCase(),
+    );
+  }
+
+  private async createAdminMfaChallenge(
+    user: User,
+    tenant: Tenant,
+  ): Promise<AdminMfaRequiredResponse> {
+    await this.ensureAdminMfaTable();
+
+    const code = randomInt(100000, 1000000).toString();
+    const challengeId = randomBytes(24).toString('hex');
+    const expiresInSeconds = Number(
+      process.env.ADMIN_EMAIL_MFA_EXPIRES_SECONDS ?? 600,
+    );
+    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+
+    await this.dataSource.query(
+      `INSERT INTO public.admin_mfa_challenges
+        (challenge_id, email, tenant_slug, tenant_schema, user_id, code_hash, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        challengeId,
+        user.email,
+        tenant.slug,
+        tenant.schema_name,
+        user.id,
+        this.hashMfaCode(code),
+        expiresAt,
+      ],
+    );
+
+    await this.sendAdminMfaEmail({
+      email: user.email,
+      name: user.name,
+      tenantSlug: tenant.slug,
+      code,
+      expiresAt,
+    });
+
+    return {
+      mfa_required: true,
+      challenge_id: challengeId,
+      email_masked: this.maskEmail(user.email),
+      expires_in_seconds: expiresInSeconds,
+    };
+  }
+
+  private async ensureAdminMfaTable(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS public.admin_mfa_challenges (
+        id SERIAL PRIMARY KEY,
+        challenge_id VARCHAR(120) NOT NULL UNIQUE,
+        email VARCHAR(255) NOT NULL,
+        tenant_slug VARCHAR(120) NOT NULL,
+        tenant_schema VARCHAR(120) NOT NULL,
+        user_id INTEGER NOT NULL,
+        code_hash VARCHAR(128) NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_admin_mfa_challenges_challenge_id
+      ON public.admin_mfa_challenges(challenge_id)
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_admin_mfa_challenges_email_created
+      ON public.admin_mfa_challenges(email, created_at DESC)
+    `);
+  }
+
+  private hashMfaCode(code: string): string {
+    return createHash('sha256').update(code).digest('hex');
+  }
+
+  private async sendAdminMfaEmail(params: {
+    email: string;
+    name: string;
+    tenantSlug: string;
+    code: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    const subject = 'Codigo de verificacion de 365Soft';
+    const message = [
+      `Hola ${params.name},`,
+      '',
+      'Usa este codigo para completar tu inicio de sesion como administrador:',
+      params.code,
+      '',
+      `El codigo vence a las ${params.expiresAt.toISOString()}.`,
+      'Si no intentaste iniciar sesion, cambia tu contrasena y revisa la seguridad de tu cuenta.',
+    ].join('\n');
+
+    if (
+      process.env.LIFECYCLE_NOTIFICATION_PROVIDER !== 'sendgrid' ||
+      !process.env.SENDGRID_API_KEY ||
+      !process.env.SENDGRID_FROM_EMAIL
+    ) {
+      this.logger.log(
+        `[ADMIN_MFA:stub] to=${this.maskEmail(params.email)} tenant=${
+          params.tenantSlug
+        } code=${params.code}`,
+      );
+      return;
+    }
+
+    try {
+      await axios.post(
+        'https://api.sendgrid.com/v3/mail/send',
+        {
+          personalizations: [{ to: [{ email: params.email }] }],
+          from: {
+            email: process.env.SENDGRID_FROM_EMAIL,
+            name: process.env.SENDGRID_FROM_NAME ?? '365Soft',
+          },
+          subject,
+          content: [{ type: 'text/plain', value: message }],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.SENDGRID_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: Number(process.env.NOTIFICATION_TIMEOUT_MS ?? 7000),
+        },
+      );
+    } catch (error) {
+      this.logger.error(
+        `No se pudo enviar codigo MFA a ${this.maskEmail(params.email)}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private hashPasswordResetToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private buildPasswordResetUrl(token: string): string {
+    const explicitBase = process.env.PASSWORD_RESET_FRONTEND_URL?.trim();
+    const frontendBase =
+      explicitBase ||
+      (process.env.FRONTEND_URLS ?? 'http://localhost:4200')
+        .split(',')
+        .map((url) => url.trim())
+        .find(Boolean) ||
+      'http://localhost:4200';
+
+    return `${frontendBase.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(
+      token,
+    )}`;
+  }
+
+  private async sendPasswordResetEmail(params: {
+    email: string;
+    name: string;
+    tenantSlug: string;
+    resetUrl: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    const subject = 'Restablece tu contrasena de 365Soft';
+    const message = [
+      `Hola ${params.name},`,
+      '',
+      'Recibimos una solicitud para restablecer tu contrasena.',
+      `Usa este enlace antes de ${params.expiresAt.toISOString()}:`,
+      params.resetUrl,
+      '',
+      'Si no solicitaste este cambio, puedes ignorar este mensaje.',
+    ].join('\n');
+
+    if (
+      process.env.LIFECYCLE_NOTIFICATION_PROVIDER !== 'sendgrid' ||
+      !process.env.SENDGRID_API_KEY ||
+      !process.env.SENDGRID_FROM_EMAIL
+    ) {
+      this.logger.log(
+        `[PASSWORD_RESET:stub] to=${this.maskEmail(
+          params.email,
+        )} tenant=${params.tenantSlug} url=${params.resetUrl}`,
+      );
+      return;
+    }
+
+    try {
+      await axios.post(
+        'https://api.sendgrid.com/v3/mail/send',
+        {
+          personalizations: [{ to: [{ email: params.email }] }],
+          from: {
+            email: process.env.SENDGRID_FROM_EMAIL,
+            name: process.env.SENDGRID_FROM_NAME ?? '365Soft',
+          },
+          subject,
+          content: [{ type: 'text/plain', value: message }],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.SENDGRID_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: Number(process.env.NOTIFICATION_TIMEOUT_MS ?? 7000),
+        },
+      );
+    } catch (error) {
+      this.logger.error(
+        `No se pudo enviar correo de recuperacion a ${this.maskEmail(
+          params.email,
+        )}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private maskEmail(email: string): string {
+    const [name, domain] = email.split('@');
+    if (!name || !domain) {
+      return '***';
+    }
+    return `${name.slice(0, 2)}***@${domain}`;
   }
 
   private isNotFoundError(error: unknown): boolean {

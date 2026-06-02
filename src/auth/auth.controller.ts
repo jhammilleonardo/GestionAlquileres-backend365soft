@@ -26,9 +26,12 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterAdminDto } from './dto/register-admin.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyAdminMfaDto } from './dto/verify-admin-mfa.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import {
+  AdminMfaRequiredResponseDto,
   AuthMeResponseDto,
   LoginResponseDto,
   RegisteredUserResponseDto,
@@ -62,16 +65,36 @@ export class AuthController {
   @ApiOperation({
     summary: 'Login de administrador',
     description:
-      'Busca el administrador por email entre tenants activos y devuelve JWT con tenant_slug.',
+      'Busca el administrador por email entre tenants activos. Si MFA esta activo, devuelve un desafio sin JWT; el token se emite despues de verificar el codigo.',
   })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: LoginResponseDto })
+  @ApiOkResponse({ type: AdminMfaRequiredResponseDto })
   @ApiUnauthorizedResponse({
     description: 'Credenciales inválidas o usuario inactivo',
   })
   @ApiTooManyRequestsResponse({ description: 'Cuenta temporalmente bloqueada' })
   async loginAdmin(@Body() loginDto: LoginDto) {
     return this.authService.loginAdmin(loginDto.email, loginDto.password);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 600000 } })
+  @Post('login-admin/mfa')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verificar codigo MFA de administrador',
+    description:
+      'Valida el codigo enviado por correo y recien entonces emite el JWT del administrador.',
+  })
+  @ApiBody({ type: VerifyAdminMfaDto })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Codigo inválido, vencido o desafio agotado',
+  })
+  @ApiTooManyRequestsResponse({ description: 'Demasiados intentos MFA' })
+  async verifyAdminMfa(@Body() dto: VerifyAdminMfaDto) {
+    return this.authService.verifyAdminMfa(dto.challenge_id, dto.code);
   }
 
   @Public()
@@ -95,8 +118,32 @@ export class AuthController {
   @ApiTooManyRequestsResponse({
     description: 'Demasiadas solicitudes de recuperacion',
   })
-  forgotPassword(@Body() dto: ForgotPasswordDto) {
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 3600000 } })
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Restablecer contrasena con token',
+    description:
+      'Valida el token de recuperacion, actualiza la contrasena y marca el token como usado.',
+  })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        message: 'Contrasena actualizada correctamente.',
+      },
+    },
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Demasiados intentos de restablecimiento',
+  })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.password);
   }
 
   @Public()

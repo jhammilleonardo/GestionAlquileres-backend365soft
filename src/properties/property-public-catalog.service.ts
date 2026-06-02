@@ -66,7 +66,7 @@ export class PropertyPublicCatalogService {
         p.id, p.title, p.description,
         p.property_type_id, p.property_subtype_id,
         p.status, p.latitude, p.longitude,
-        p.monthly_rent, p.currency,
+        p.monthly_rent, p.currency, p.rental_type,
         p.bedrooms, p.bathrooms, p.square_meters, p.parking_spaces,
         p.is_furnished, p.images, p.amenities, p.included_items,
         p.view_count, p.last_viewed_at,

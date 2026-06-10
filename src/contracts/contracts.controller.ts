@@ -32,6 +32,7 @@ import { ContractsService, ContractResult } from './contracts.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { RenewContractDto } from './dto/renew-contract.dto';
+import { SignContractDto } from './dto/sign-contract.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -328,6 +329,7 @@ export class TenantContractsController {
   @ApiOperation({ summary: 'Firmar contrato como inquilino' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: SignContractDto })
   @ApiOkResponse({ type: ContractResponseDto })
   @ApiBadRequestResponse({ description: 'Contrato no está en estado firmable' })
   @ApiForbiddenResponse({ description: 'Contrato pertenece a otro inquilino' })
@@ -335,11 +337,17 @@ export class TenantContractsController {
   async sign(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SignContractDto,
     @Req() req: TenantRequest,
   ): Promise<ContractResult> {
     const currentUserId = req.user?.userId || 0;
     const ip = req.ip || '0.0.0.0';
-    return this.contractsService.signContract(id, currentUserId, ip, slug);
+    const userAgent = req.headers['user-agent'] ?? '';
+    return this.contractsService.signContract(id, currentUserId, ip, slug, {
+      signatureImage: dto.signatureImage,
+      signatureMethod: dto.signatureMethod,
+      userAgent,
+    });
   }
 
   @Get(':id/pdf')

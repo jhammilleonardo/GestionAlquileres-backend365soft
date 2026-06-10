@@ -34,16 +34,19 @@ export class PropertyPublicCatalogService {
     const schemaName = await this.getTenantSchemaName(tenantSlug);
     const schemaPrefix = this.schemaPrefix(schemaName);
 
-    const whereClause =
-      this.propertyPublicCatalogQueryService.buildWhereClause(filters);
+    const whereClause = this.propertyPublicCatalogQueryService.buildWhereClause(
+      filters,
+      schemaPrefix,
+    );
     const params = [...whereClause.params];
+    const unitMetricsSql = this.buildUnitMetricsLateralSql(schemaPrefix);
 
     const countSql = `
       SELECT COUNT(DISTINCT p.id) as count
       FROM ${schemaPrefix}properties p
       LEFT JOIN ${schemaPrefix}property_types pt ON p.property_type_id = pt.id
       LEFT JOIN ${schemaPrefix}property_subtypes pst ON p.property_subtype_id = pst.id
-      LEFT JOIN ${schemaPrefix}property_addresses pa ON p.id = pa.property_id
+      ${unitMetricsSql}
       ${whereClause.whereSql}
     `;
 
@@ -55,6 +58,7 @@ export class PropertyPublicCatalogService {
 
     const orderBy = this.propertyPublicCatalogQueryService.resolveCatalogOrder(
       filters.sort,
+      filters.rental_type,
     );
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 20, 100);
@@ -62,7 +66,7 @@ export class PropertyPublicCatalogService {
     let paramIndex = whereClause.nextParamIndex;
 
     const sql = `
-      SELECT DISTINCT ON (p.id)
+      SELECT
         p.id, p.title, p.description,
         p.property_type_id, p.property_subtype_id,
         p.status, p.latitude, p.longitude,
@@ -73,11 +77,16 @@ export class PropertyPublicCatalogService {
         p.created_at, p.updated_at,
         pt.name as property_type_name, pt.code as property_type_code,
         pst.name as property_subtype_name, pst.code as property_subtype_code,
+        unit_metrics.total_units,
+        unit_metrics.available_units,
+        unit_metrics.available_short_term_units,
+        unit_metrics.available_long_term_units,
+        unit_metrics.min_price_per_night,
         row_to_json(first_address) AS first_address
       FROM ${schemaPrefix}properties p
       LEFT JOIN ${schemaPrefix}property_types pt ON p.property_type_id = pt.id
       LEFT JOIN ${schemaPrefix}property_subtypes pst ON p.property_subtype_id = pst.id
-      LEFT JOIN ${schemaPrefix}property_addresses pa ON p.id = pa.property_id
+      ${unitMetricsSql}
       LEFT JOIN LATERAL (
         SELECT *
         FROM ${schemaPrefix}property_addresses pa_first
@@ -87,7 +96,7 @@ export class PropertyPublicCatalogService {
         LIMIT 1
       ) first_address ON true
       ${whereClause.whereSql}
-      ORDER BY p.id, ${orderBy}
+      ORDER BY ${orderBy}, p.id ASC
       LIMIT $${paramIndex++} OFFSET $${paramIndex++}
     `;
 
@@ -226,5 +235,30 @@ export class PropertyPublicCatalogService {
 
   private schemaPrefix(schemaName?: string | null): string {
     return schemaName ? `${quoteIdent(schemaName)}.` : '';
+  }
+
+  private buildUnitMetricsLateralSql(schemaPrefix: string): string {
+    return `
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*)::int AS total_units,
+          COUNT(*) FILTER (WHERE u.status = 'available')::int AS available_units,
+          COUNT(*) FILTER (
+            WHERE u.status = 'available'
+              AND u.rental_type IN ('SHORT_TERM', 'BOTH')
+          )::int AS available_short_term_units,
+          COUNT(*) FILTER (
+            WHERE u.status = 'available'
+              AND u.rental_type IN ('LONG_TERM', 'BOTH')
+          )::int AS available_long_term_units,
+          MIN(u.price_per_night) FILTER (
+            WHERE u.status = 'available'
+              AND u.rental_type IN ('SHORT_TERM', 'BOTH')
+              AND u.price_per_night IS NOT NULL
+          ) AS min_price_per_night
+        FROM ${schemaPrefix}units u
+        WHERE u.property_id = p.id
+      ) unit_metrics ON true
+    `;
   }
 }

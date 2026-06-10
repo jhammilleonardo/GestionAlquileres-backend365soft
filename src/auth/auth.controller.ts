@@ -208,6 +208,30 @@ export class AuthController {
     return this.authService.loginOwner(loginDto.email, loginDto.password, slug);
   }
 
+  @Public()
+  @Throttle({ default: { limit: 15, ttl: 120000 } }) // 15 intentos cada 2 minutos
+  @Post(':slug/vendor/login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login de proveedor externo',
+    description:
+      'Requiere usuario con rol VENDOR vinculado a un proveedor activo.',
+  })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiBody({ type: LoginDto })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Credenciales inválidas o proveedor no vinculado',
+  })
+  @ApiTooManyRequestsResponse({ description: 'Cuenta temporalmente bloqueada' })
+  async loginVendor(@Param('slug') slug: string, @Body() loginDto: LoginDto) {
+    return this.authService.loginVendor(
+      loginDto.email,
+      loginDto.password,
+      slug,
+    );
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @ApiBearerAuth()

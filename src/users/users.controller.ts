@@ -22,8 +22,9 @@ import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
 import type { TenantContext } from '../common/middleware/tenant-context.middleware';
 
 interface FindTenantsFilters {
-  status?: 'approved' | 'pending';
+  status?: 'approved' | 'pending' | 'active' | 'past' | 'none';
   hasActiveContract?: boolean;
+  search?: string;
 }
 
 @ApiTags('Users')
@@ -60,9 +61,8 @@ export class UsersController {
   @ApiQuery({
     name: 'status',
     required: false,
-    enum: ['approved', 'pending', 'all'],
-    description:
-      'Filtrar por estado de solicitud (approved = con solicitud aprobada)',
+    enum: ['approved', 'pending', 'active', 'past', 'none', 'all'],
+    description: 'Filtrar por estado de solicitud o contrato',
   })
   @ApiQuery({
     name: 'hasActiveContract',
@@ -71,9 +71,18 @@ export class UsersController {
     description: 'Filtrar por si tiene contrato activo',
   })
   async findTenants(
-    @Query('status') status?: 'approved' | 'pending' | 'all',
+    @CurrentTenant() tenant: TenantContext | undefined,
+    @Query('status')
+    status?: 'approved' | 'pending' | 'active' | 'past' | 'none' | 'all',
     @Query('hasActiveContract') hasActiveContract?: string,
+    @Query('search') search?: string,
   ) {
+    if (!tenant) {
+      throw new InternalServerErrorException(
+        'Tenant no encontrado en el request',
+      );
+    }
+
     const filters: FindTenantsFilters = {};
 
     if (status && status !== 'all') {
@@ -84,14 +93,30 @@ export class UsersController {
       filters.hasActiveContract = hasActiveContract === 'true';
     }
 
-    return await this.usersService.findTenants(filters);
+    if (search) {
+      filters.search = search;
+    }
+
+    return await this.usersService.findTenants(tenant.schema_name, filters);
   }
 
   @Get('tenants/:id')
   @Roles('ADMIN', 'SUPERADMIN')
   @ApiOperation({ summary: 'Obtener un inquilino por ID' })
-  async findTenantById(@Param('id') id: string) {
-    const tenant = await this.usersService.findTenantById(Number(id));
+  async findTenantById(
+    @CurrentTenant() currentTenant: TenantContext | undefined,
+    @Param('id') id: string,
+  ) {
+    if (!currentTenant) {
+      throw new InternalServerErrorException(
+        'Tenant no encontrado en el request',
+      );
+    }
+
+    const tenant = await this.usersService.findTenantById(
+      currentTenant.schema_name,
+      Number(id),
+    );
 
     if (!tenant) {
       throw new NotFoundException('Inquilino no encontrado');

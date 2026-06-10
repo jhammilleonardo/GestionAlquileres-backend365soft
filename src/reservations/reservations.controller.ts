@@ -23,6 +23,7 @@ import {
   ApiConflictResponse,
   ApiNotFoundResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto, BlockDatesDto } from './dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -48,6 +49,8 @@ interface JwtUser {
 export class PublicAvailabilityController {
   constructor(private readonly reservationsService: ReservationsService) {}
 
+  // Consulta pública de solo lectura y alto tráfico: límite ampliado a 600/min.
+  @Throttle({ default: { limit: 600, ttl: 60000 } })
   @Get()
   @ApiOperation({ summary: 'Disponibilidad mensual de una propiedad' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })

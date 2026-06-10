@@ -46,6 +46,11 @@ export interface PublicCatalogProperty {
   property_type_code?: string | null;
   property_subtype_name?: string | null;
   property_subtype_code?: string | null;
+  total_units?: string | number | null;
+  available_units?: string | number | null;
+  available_short_term_units?: string | number | null;
+  available_long_term_units?: string | number | null;
+  min_price_per_night?: string | number | null;
   first_address?: PublicCatalogAddress | null;
 }
 

@@ -66,6 +66,11 @@ export class MaintenanceLookupService {
       params.push(filters.assigned_to);
     }
 
+    if (filters?.vendor_id) {
+      query += ` AND mr.vendor_id = $${paramIndex++}`;
+      params.push(filters.vendor_id);
+    }
+
     query += ` ORDER BY mr.updated_at DESC`;
 
     return this.dataSource.query<MaintenanceRequestRow[]>(query, params);
@@ -90,11 +95,28 @@ export class MaintenanceLookupService {
     const requests = await this.dataSource.query<MaintenanceRequestRow[]>(
       `SELECT
         mr.*,
-        json_build_object('id', p.id, 'title', p.title) as property,
+        json_build_object(
+          'id', p.id,
+          'title', p.title,
+          'latitude', p.latitude,
+          'longitude', p.longitude,
+          'address', addr.street_address,
+          'city', addr.city,
+          'state', addr.state,
+          'zip_code', addr.zip_code,
+          'country', addr.country
+        ) as property,
         json_build_object('id', c.id, 'contract_number', c.contract_number) as contract,
         json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'phone', u.phone) as tenant
       FROM maintenance_requests mr
       LEFT JOIN properties p ON p.id = mr.property_id
+      LEFT JOIN LATERAL (
+        SELECT street_address, city, state, zip_code, country
+        FROM property_addresses pa
+        WHERE pa.property_id = p.id
+        ORDER BY pa.id ASC
+        LIMIT 1
+      ) addr ON true
       LEFT JOIN contracts c ON c.id = mr.contract_id
       LEFT JOIN "user" u ON u.id = mr.tenant_id
       WHERE mr.id = $1`,
@@ -132,6 +154,8 @@ export class MaintenanceLookupService {
     return this.dataSource.query<MaintenanceMessageRow[]>(
       `SELECT
         mm.*,
+        u.name AS sender_name,
+        u.role AS sender_role,
         COALESCE(
           json_agg(
             json_build_object(
@@ -146,8 +170,9 @@ export class MaintenanceLookupService {
         ) as attachments
       FROM maintenance_messages mm
       LEFT JOIN maintenance_attachments ma ON ma.message_id = mm.id
+      LEFT JOIN "user" u ON u.id = mm.user_id
       WHERE mm.maintenance_request_id = $1
-      GROUP BY mm.id
+      GROUP BY mm.id, u.name, u.role
       ORDER BY mm.created_at ASC`,
       [requestId],
     );

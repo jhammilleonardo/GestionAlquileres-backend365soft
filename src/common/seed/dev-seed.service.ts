@@ -12,7 +12,8 @@ const BCRYPT_SALT_ROUNDS = 12;
  * Seed automático del entorno de desarrollo.
  *
  * Solo se ejecuta cuando NODE_ENV = 'development'.
- * Es completamente idempotente: si el tenant demo ya existe, no hace nada.
+ * Es completamente idempotente: si el tenant demo ya existe, completa los datos
+ * faltantes sin duplicar registros principales.
  *
  * Credenciales del admin:    admin@365soft.com / Admin365!
  * Credenciales empleado:     empleado@365soft.com / Empleado365!
@@ -48,7 +49,10 @@ export class DevSeedService implements OnModuleInit {
     );
 
     if (existing.length > 0) {
-      this.logger.log('Dev seed: tenant "demo" ya existe, nada que hacer.');
+      this.logger.log(
+        'Dev seed: tenant "demo" ya existe, verificando datos faltantes...',
+      );
+      await this.seedMissingDemoData('tenant_demo');
       return;
     }
 
@@ -74,7 +78,9 @@ export class DevSeedService implements OnModuleInit {
 
     await this.seedUsers(schema);
     await this.seedRentalOwners(schema);
+    await this.seedOwnerUsers(schema);
     await this.seedProperties(schema);
+    await this.seedUnitsForPublicCatalog(schema);
     await this.seedContracts(schema);
     await this.seedPayments(schema);
     await this.seedMaintenanceRequests(schema);
@@ -94,6 +100,57 @@ export class DevSeedService implements OnModuleInit {
       '  → Inquilino 2:   carlos.mamani@gmail.com / Inquilino365!',
     );
     this.logger.log('  → Inquilino 3:   ana.flores@gmail.com / Inquilino365!');
+    this.logger.log(
+      '  → Propietario:   jorge.villanueva@gmail.com / Propietario365!',
+    );
+  }
+
+  private async seedMissingDemoData(schema: string) {
+    await this.ensureDemoConfig(schema);
+
+    const users = await this.countRows(schema, '"user"');
+    if (users <= 1) await this.seedUsers(schema);
+
+    const owners = await this.countRows(schema, 'rental_owners');
+    if (owners === 0) await this.seedRentalOwners(schema);
+    await this.seedOwnerUsers(schema);
+
+    const properties = await this.countRows(schema, 'properties');
+    if (properties === 0) await this.seedProperties(schema);
+
+    const units = await this.countRows(schema, 'units');
+    if (units === 0) await this.seedUnitsForPublicCatalog(schema);
+
+    const contracts = await this.countRows(schema, 'contracts');
+    if (contracts === 0) await this.seedContracts(schema);
+
+    const payments = await this.countRows(schema, 'payments');
+    if (payments === 0) await this.seedPayments(schema);
+
+    const maintenance = await this.countRows(schema, 'maintenance_requests');
+    if (maintenance === 0) await this.seedMaintenanceRequests(schema);
+
+    const applications = await this.countRows(schema, 'rental_applications');
+    if (applications === 0) await this.seedApplications(schema);
+
+    this.logger.log('  ✔ Dev seed: datos faltantes verificados');
+  }
+
+  private async ensureDemoConfig(schema: string) {
+    await this.dataSource.query(
+      `UPDATE ${quoteIdent(schema)}.tenant_config
+       SET rental_type = 'BOTH', setup_completed = true
+       WHERE rental_type IS DISTINCT FROM 'BOTH'
+          OR setup_completed IS DISTINCT FROM true`,
+    );
+  }
+
+  private async countRows(schema: string, table: string): Promise<number> {
+    const rows: Array<{ count: string | number }> = await this.dataSource.query(
+      `SELECT COUNT(*) AS count FROM ${quoteIdent(schema)}.${table}`,
+    );
+
+    return Number(rows[0]?.count ?? 0);
   }
 
   // ─── USUARIOS ─────────────────────────────────────────────────────────────
@@ -270,6 +327,35 @@ export class DevSeedService implements OnModuleInit {
     }
 
     this.logger.log('  ✔ Propietarios semilla creados');
+  }
+
+  private async seedOwnerUsers(schema: string) {
+    const ownerRows: Array<{
+      primary_email: string;
+      name: string;
+      phone_number: string | null;
+    }> = await this.dataSource.query(
+      `SELECT primary_email, name, phone_number
+       FROM ${quoteIdent(schema)}.rental_owners
+       WHERE is_active = true
+       ORDER BY id`,
+    );
+
+    if (ownerRows.length === 0) return;
+
+    const password = await bcrypt.hash('Propietario365!', BCRYPT_SALT_ROUNDS);
+
+    for (const owner of ownerRows) {
+      await this.dataSource.query(
+        `INSERT INTO ${quoteIdent(schema)}."user"
+           (email, password, name, phone, role, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'PROPIETARIO', true, NOW(), NOW())
+         ON CONFLICT (email) DO NOTHING`,
+        [owner.primary_email, password, owner.name, owner.phone_number],
+      );
+    }
+
+    this.logger.log('  ✔ Usuarios propietarios semilla verificados');
   }
 
   // ─── PROPIEDADES ───────────────────────────────────────────────────────────
@@ -459,6 +545,37 @@ export class DevSeedService implements OnModuleInit {
         },
         owner_idx: 1,
       },
+      {
+        title: 'Suite Turística Equipetrol',
+        description:
+          'Suite amoblada para estadías cortas con cocina equipada, WiFi, limpieza y ubicación céntrica. Ideal para huéspedes de negocios.',
+        type_id: residential.id,
+        subtype_id: sub('CONDO_TOWNHOME'),
+        status: 'DISPONIBLE',
+        monthly_rent: null,
+        square_meters: 42,
+        bedrooms: 1,
+        bathrooms: 1,
+        parking_spaces: 1,
+        year_built: 2022,
+        is_furnished: true,
+        amenities: JSON.stringify([
+          'WiFi',
+          'Limpieza',
+          'Cocina equipada',
+          'Parqueo',
+        ]),
+        security_deposit: 1200.0,
+        rental_type: 'SHORT_TERM',
+        address: {
+          street: 'Av. San Martín #456, Piso 8',
+          city: 'Santa Cruz',
+          state: 'Santa Cruz',
+          zip: '0000',
+          country: 'BO',
+        },
+        owner_idx: 0,
+      },
     ];
 
     for (let i = 0; i < properties.length; i++) {
@@ -518,7 +635,94 @@ export class DevSeedService implements OnModuleInit {
       }
     }
 
-    this.logger.log('  ✔ Propiedades semilla creadas (5 propiedades)');
+    this.logger.log('  ✔ Propiedades semilla creadas (6 propiedades)');
+  }
+
+  private async seedUnitsForPublicCatalog(schema: string) {
+    const properties: Array<{
+      id: number;
+      title: string;
+      rental_type: string | null;
+      monthly_rent: string | number | null;
+      bedrooms: number | null;
+      bathrooms: number | null;
+      square_meters: string | number | null;
+      security_deposit_amount: string | number | null;
+    }> = await this.dataSource.query(
+      `SELECT id, title, rental_type, monthly_rent, bedrooms, bathrooms,
+              square_meters, security_deposit_amount
+       FROM ${quoteIdent(schema)}.properties
+       ORDER BY id`,
+    );
+
+    for (const property of properties) {
+      const rentalType = property.rental_type ?? 'LONG_TERM';
+      const supportsLong = rentalType === 'LONG_TERM' || rentalType === 'BOTH';
+      const supportsShort =
+        rentalType === 'SHORT_TERM' || rentalType === 'BOTH';
+      const baseMonthlyRent = Number(property.monthly_rent ?? 0);
+      const baseDeposit = Number(property.security_deposit_amount ?? 0);
+
+      if (supportsLong) {
+        await this.dataSource.query(
+          `INSERT INTO ${quoteIdent(schema)}.units
+             (property_id, unit_number, floor, bedrooms, bathrooms, square_meters,
+              status, rental_type, price_per_month, deposit_amount, features,
+              created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,'available',$7,$8,$9,$10,NOW(),NOW())
+           ON CONFLICT (property_id, unit_number) DO NOTHING`,
+          [
+            property.id,
+            rentalType === 'BOTH' ? 'Largo Plazo' : 'Principal',
+            1,
+            property.bedrooms ?? 1,
+            property.bathrooms ?? 1,
+            property.square_meters,
+            rentalType === 'BOTH' ? 'BOTH' : 'LONG_TERM',
+            baseMonthlyRent || 2500,
+            baseDeposit || (baseMonthlyRent || 2500) * 2,
+            JSON.stringify({ seed: true, channel: 'public_catalog' }),
+          ],
+        );
+      }
+
+      if (supportsShort) {
+        await this.dataSource.query(
+          `INSERT INTO ${quoteIdent(schema)}.units
+             (property_id, unit_number, floor, bedrooms, bathrooms, square_meters,
+              status, rental_type, price_per_month, price_per_night, deposit_amount,
+              min_nights, max_nights, checkin_time, checkout_time, cleaning_fee,
+              features, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,'available',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW())
+           ON CONFLICT (property_id, unit_number) DO NOTHING`,
+          [
+            property.id,
+            rentalType === 'BOTH' ? 'Corto Plazo' : 'Suite 1',
+            2,
+            property.bedrooms ?? 1,
+            property.bathrooms ?? 1,
+            property.square_meters,
+            rentalType === 'BOTH' ? 'BOTH' : 'SHORT_TERM',
+            baseMonthlyRent || null,
+            rentalType === 'BOTH' ? 280 : 320,
+            baseDeposit || 1000,
+            1,
+            30,
+            '14:00',
+            '11:00',
+            rentalType === 'BOTH' ? 80 : 100,
+            JSON.stringify({
+              seed: true,
+              channel: 'public_catalog',
+              has_wifi: true,
+              furnished: true,
+            }),
+          ],
+        );
+      }
+    }
+
+    this.logger.log('  ✔ Unidades semilla creadas para catálogo público');
   }
 
   // ─── CONTRATOS ─────────────────────────────────────────────────────────────

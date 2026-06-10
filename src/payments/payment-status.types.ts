@@ -16,3 +16,18 @@ export interface PaymentStatusRow {
 export function paymentTable(schemaName?: string): string {
   return `${quoteIdent(schemaName || 'public')}.payments`;
 }
+
+/**
+ * Extrae la primera fila de un resultado de `query(... RETURNING *)`.
+ *
+ * Según la sentencia, TypeORM puede devolver las filas planas (`[row, ...]`)
+ * o un resultado estructurado (`[rows, affectedCount]`). Sin esta
+ * normalización, `result[0]` puede ser el array de filas en vez del objeto,
+ * lo que hacía que aprobar/rechazar un pago devolviera `[{...}]` en lugar de
+ * `{...}` y la UI no reflejara el cambio de estado.
+ */
+export function firstReturnedRow<T>(result: unknown): T | undefined {
+  if (!Array.isArray(result)) return undefined;
+  const first: unknown = result[0];
+  return (Array.isArray(first) ? first[0] : first) as T | undefined;
+}

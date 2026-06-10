@@ -1,7 +1,17 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { CreateVendorDto, UpdateVendorDto, VendorFiltersDto } from './dto';
+
+const BCRYPT_SALT_ROUNDS = 10;
 
 export interface VendorRow {
   id: number;
@@ -18,6 +28,8 @@ export interface VendorRow {
   created_by: number | null;
   created_at: Date;
   updated_at: Date;
+  total_orders?: number | string | null;
+  has_account?: boolean;
 }
 
 export interface VendorHistoryRow {
@@ -73,7 +85,11 @@ export class VendorsService {
   async findOne(id: number): Promise<VendorRow> {
     const rows: VendorRow[] = await this.dataSource.query(
       `SELECT v.*,
-              COUNT(mr.id) FILTER (WHERE mr.vendor_id = v.id) AS total_orders
+              COUNT(mr.id) FILTER (WHERE mr.vendor_id = v.id) AS total_orders,
+              EXISTS (
+                SELECT 1 FROM "user" u
+                WHERE u.email = v.email AND u.role = 'VENDOR'
+              ) AS has_account
          FROM vendors v
          LEFT JOIN maintenance_requests mr ON mr.vendor_id = v.id
          WHERE v.id = $1
@@ -192,6 +208,65 @@ export class VendorsService {
          WHERE id = $1`,
       [vendorId],
     );
+  }
+
+  /**
+   * Crea una cuenta de acceso (rol VENDOR) para el proveedor.
+   * Genera una contraseña temporal y vincula el usuario por email.
+   * Devuelve las credenciales para que el admin se las comparta una vez.
+   */
+  async createVendorAccount(
+    vendorId: number,
+  ): Promise<{ email: string; temporaryPassword: string }> {
+    const vendor = await this.findOne(vendorId);
+
+    if (!vendor.is_active) {
+      throw new BadRequestException(
+        'El proveedor debe estar activo para tener una cuenta.',
+      );
+    }
+
+    if (!vendor.email) {
+      throw new BadRequestException(
+        'El proveedor necesita un correo para poder crear su cuenta de acceso.',
+      );
+    }
+
+    const existingUser = await this.dataSource.query<
+      { id: number; role: string }[]
+    >(`SELECT id, role FROM "user" WHERE email = $1`, [vendor.email]);
+
+    // Si el email ya pertenece a otro tipo de cuenta (admin, inquilino, etc.)
+    // no la tocamos: es una colisión real que el admin debe resolver.
+    if (existingUser.length > 0 && existingUser[0].role !== 'VENDOR') {
+      throw new ConflictException(
+        'Ya existe una cuenta de otro tipo con el email de este proveedor.',
+      );
+    }
+
+    const temporaryPassword = randomBytes(5).toString('hex');
+    const hashedPassword = await bcrypt.hash(
+      temporaryPassword,
+      BCRYPT_SALT_ROUNDS,
+    );
+
+    if (existingUser.length > 0) {
+      // Ya tiene cuenta VENDOR: regeneramos su contraseña (reset).
+      await this.dataSource.query(
+        `UPDATE "user" SET password = $1, is_active = true, updated_at = NOW() WHERE id = $2`,
+        [hashedPassword, existingUser[0].id],
+      );
+      this.logger.log(`Contraseña regenerada para proveedor ${vendorId}`);
+    } else {
+      await this.dataSource.query(
+        `INSERT INTO "user" (email, password, name, phone, role, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'VENDOR', true, NOW(), NOW())`,
+        [vendor.email, hashedPassword, vendor.name, vendor.phone],
+      );
+      this.logger.log(`Cuenta de VENDOR creada para proveedor ${vendorId}`);
+    }
+
+    return { email: vendor.email, temporaryPassword };
   }
 
   private async assertExists(id: number): Promise<void> {

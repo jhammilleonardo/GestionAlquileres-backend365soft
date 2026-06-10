@@ -99,6 +99,13 @@ export class TenantProvisioningService {
         () => this.tenantContractsProvisioningService.ensureUnitId(schemaName),
       ],
       [
+        'ensureContractSignatureColumns',
+        () =>
+          this.tenantContractsProvisioningService.ensureSignatureColumns(
+            schemaName,
+          ),
+      ],
+      [
         'ensurePropertyOwnersUniqueness',
         () =>
           this.tenantPropertiesProvisioningService.ensurePropertyOwnersUniqueness(
@@ -167,6 +174,10 @@ export class TenantProvisioningService {
         'ensureUserRolePropietario',
         () =>
           this.tenantSchemaService.ensureUserRole(schemaName, 'PROPIETARIO'),
+      ],
+      [
+        'ensureUserRoleVendor',
+        () => this.tenantSchemaService.ensureUserRole(schemaName, 'VENDOR'),
       ],
       [
         'ensureViolations',

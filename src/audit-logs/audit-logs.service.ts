@@ -7,9 +7,13 @@ import { QueryAuditLogsDto } from './dto/query-audit-logs.dto';
 export interface AuditLog {
   id: number;
   user_id: number;
+  user_name: string | null;
+  user_email: string | null;
+  user_role: string | null;
   action: AuditAction;
   entity_type: string;
   entity_id: number;
+  entity_label: string | null;
   old_values: Record<string, unknown> | null;
   new_values: Record<string, unknown> | null;
   ip_address: string | null;
@@ -84,37 +88,54 @@ export class AuditLogsService {
     let idx = 1;
 
     if (filters.user_id) {
-      where += ` AND user_id = $${idx++}`;
+      where += ` AND a.user_id = $${idx++}`;
       params.push(parseInt(filters.user_id, 10));
     }
     if (filters.entity_type) {
-      where += ` AND entity_type = $${idx++}`;
+      where += ` AND a.entity_type = $${idx++}`;
       params.push(filters.entity_type);
     }
     if (filters.entity_id) {
-      where += ` AND entity_id = $${idx++}`;
+      where += ` AND a.entity_id = $${idx++}`;
       params.push(parseInt(filters.entity_id, 10));
     }
     if (filters.action) {
-      where += ` AND action = $${idx++}`;
+      where += ` AND a.action = $${idx++}`;
       params.push(filters.action);
     }
     if (filters.from) {
-      where += ` AND timestamp >= $${idx++}`;
+      where += ` AND a.timestamp >= $${idx++}`;
       params.push(filters.from);
     }
     if (filters.to) {
-      where += ` AND timestamp <= $${idx++}`;
+      where += ` AND a.timestamp <= $${idx++}`;
       params.push(filters.to);
     }
 
+    // Se resuelve el autor uniendo con la tabla "user" del tenant para mostrar
+    // nombre y rol en lugar de solo el id. LEFT JOIN preserva el registro aunque
+    // el usuario haya sido eliminado (el frontend cae al id como respaldo).
     const [countRows, data] = await Promise.all([
       this.dataSource.query<{ total: string }[]>(
-        `SELECT COUNT(*) AS total FROM audit_logs ${where}`,
+        `SELECT COUNT(*) AS total FROM audit_logs a ${where}`,
         params,
       ),
       this.dataSource.query<AuditLog[]>(
-        `SELECT * FROM audit_logs ${where} ORDER BY timestamp DESC LIMIT $${idx++} OFFSET $${idx++}`,
+        `SELECT a.*, u.name AS user_name, u.email AS user_email, u.role AS user_role,
+                CASE a.entity_type
+                  WHEN 'employee' THEN (SELECT e.name FROM "user" e WHERE e.id = a.entity_id)
+                  WHEN 'contract' THEN (SELECT c.contract_number FROM contracts c WHERE c.id = a.entity_id)
+                  WHEN 'payment'  THEN (
+                    SELECT COALESCE(NULLIF(p.reference_number, ''), p.amount::text || ' ' || p.currency)
+                      FROM payments p WHERE p.id = a.entity_id
+                  )
+                  ELSE NULL
+                END AS entity_label
+           FROM audit_logs a
+           LEFT JOIN "user" u ON u.id = a.user_id
+           ${where}
+           ORDER BY a.timestamp DESC
+           LIMIT $${idx++} OFFSET $${idx++}`,
         [...params, limit, offset],
       ),
     ]);

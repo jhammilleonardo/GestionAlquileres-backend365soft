@@ -8,7 +8,10 @@ import {
   ContractQueriesService,
 } from './contract-queries.service';
 import { ContractRenewalService } from './contract-renewal.service';
-import { ContractSigningService } from './contract-signing.service';
+import {
+  ContractSigningService,
+  SignatureEvidence,
+} from './contract-signing.service';
 import {
   ContractCreatedSideEffectsParams,
   ContractCreationService,
@@ -50,6 +53,11 @@ export interface ContractResult {
   bank_account_holder?: string | null;
   status: ContractStatus;
   terms_conditions?: string | null;
+  signature_image?: string | null;
+  signature_method?: string | null;
+  signed_user_agent?: string | null;
+  tenant_signature_date?: string | Date | null;
+  signed_ip?: string | null;
   created_at: Date;
   updated_at: Date;
   // Campos de JOIN — SQL retorna null cuando no hay coincidencia
@@ -124,8 +132,15 @@ export class ContractsService {
     userId: number,
     ip: string,
     tenantSlug?: string,
+    signature?: SignatureEvidence,
   ) {
-    return this.contractSigningService.signContract(id, userId, ip, tenantSlug);
+    return this.contractSigningService.signContract(
+      id,
+      userId,
+      ip,
+      tenantSlug,
+      signature,
+    );
   }
 
   async getMetrics(tenantSlug?: string) {

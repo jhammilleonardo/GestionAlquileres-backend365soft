@@ -11,6 +11,7 @@ export enum AuthLoginContext {
   ADMIN = 'admin_login',
   TENANT = 'tenant_login',
   OWNER = 'owner_login',
+  VENDOR = 'vendor_login',
   JWT_TENANT_CONTEXT = 'jwt_tenant_context',
 }
 

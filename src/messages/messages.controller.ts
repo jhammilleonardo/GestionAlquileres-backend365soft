@@ -7,18 +7,24 @@ import {
   ParseIntPipe,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MessagesService } from './messages.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { BroadcastMessageDto } from './dto/broadcast-message.dto';
+import { messageMulterConfig } from '../common/utils/multer.config';
 
 interface JwtUser {
   userId: number;
@@ -68,17 +74,45 @@ export class MessagesController {
     const parsedBefore = before ? Number(before) : undefined;
     return this.messagesService.getThread(
       user.userId,
+      user.role,
       otherId,
       parsedLimit,
       parsedBefore,
     );
   }
 
+  @Post('upload')
+  @ApiOperation({ summary: 'Subir adjuntos (imágenes, video, PDF) del chat' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('files', 3, messageMulterConfig))
+  uploadFiles(
+    @CurrentUser() user: JwtUser,
+    @Param('slug') slug: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se enviaron archivos');
+    }
+    return this.messagesService.saveUploadedFiles(files, user.userId, slug);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Enviar un mensaje a un usuario' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
-  send(@CurrentUser() user: JwtUser, @Body() dto: SendMessageDto) {
-    return this.messagesService.send(user.userId, dto.recipient_id, dto.body);
+  send(
+    @CurrentUser() user: JwtUser,
+    @Param('slug') slug: string,
+    @Body() dto: SendMessageDto,
+  ) {
+    return this.messagesService.send(
+      user.userId,
+      user.role,
+      dto.recipient_id,
+      dto.body ?? '',
+      dto.files ?? [],
+      slug,
+    );
   }
 
   @Post('broadcast')
@@ -87,6 +121,6 @@ export class MessagesController {
   })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   broadcast(@CurrentUser() user: JwtUser, @Body() dto: BroadcastMessageDto) {
-    return this.messagesService.broadcast(user.userId, dto.body);
+    return this.messagesService.broadcast(user.userId, user.role, dto.body);
   }
 }

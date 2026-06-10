@@ -33,5 +33,23 @@ export class TenantMessagesProvisioningService {
       CREATE INDEX IF NOT EXISTS idx_internal_messages_created
         ON ${q}.internal_messages(created_at DESC);
     `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.internal_message_attachments (
+        id SERIAL PRIMARY KEY,
+        message_id integer REFERENCES ${q}.internal_messages(id) ON DELETE CASCADE,
+        file_url text NOT NULL,
+        file_name text NOT NULL,
+        file_type text NOT NULL,
+        file_size bigint NOT NULL DEFAULT 0,
+        uploaded_by integer NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_internal_message_attachments_message
+        ON ${q}.internal_message_attachments(message_id);
+    `);
   }
 }

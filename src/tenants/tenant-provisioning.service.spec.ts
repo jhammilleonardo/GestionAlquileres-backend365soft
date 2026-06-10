@@ -98,6 +98,7 @@ describe('TenantProvisioningService', () => {
       'ensureContracts',
       'ensureApplicationId',
       'ensureContractNumberSequence',
+      'ensureSignatureColumns',
       'ensureUnitId',
       'ensureContractTemplates',
     ]);

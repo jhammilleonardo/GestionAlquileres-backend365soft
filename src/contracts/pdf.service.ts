@@ -35,11 +35,20 @@ export interface ContractData {
   jurisdiction?: string | null;
 }
 
+/** Evidencia de firma electrónica a estampar en el PDF generado. */
+export interface SignatureStamp {
+  signatureImage?: string; // data URL PNG/JPEG
+  tenantName?: string;
+  signedDate?: string | Date;
+  signedIp?: string;
+}
+
 @Injectable()
 export class PdfService {
   async generateContractPdf(
     contract: ContractData,
     tenantInfo: { name?: string; address?: string },
+    signature?: SignatureStamp,
   ): Promise<string> {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const fileName = `contract_${contract.contract_number}.pdf`;
@@ -188,6 +197,8 @@ export class PdfService {
         align: 'center',
       });
 
+    this.stampSignature(doc, signature);
+
     doc.moveDown(4);
     doc
       .fillColor('gray')
@@ -233,6 +244,7 @@ export class PdfService {
   async generateContractPdfFromTemplate(
     contractNumber: string,
     content: string,
+    signature?: SignatureStamp,
   ): Promise<string> {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const fileName = `contract_${contractNumber}.pdf`;
@@ -285,6 +297,8 @@ export class PdfService {
       doc.fontSize(10).font('Helvetica').text(line, { align: 'justify' });
     }
 
+    this.stampSignature(doc, signature);
+
     doc.moveDown(3);
     doc
       .fillColor('gray')
@@ -335,5 +349,81 @@ export class PdfService {
     doc.font('Helvetica-Bold').fontSize(11).text(title);
     doc.font('Helvetica').fontSize(10).text(content, { align: 'justify' });
     doc.moveDown();
+  }
+
+  /**
+   * Estampa la firma electrónica del inquilino en el PDF: imagen de la firma
+   * más la evidencia (nombre, fecha, IP) — equivalente al bloque de firma de
+   * un documento eSignature.
+   */
+  private stampSignature(
+    doc: PDFKit.PDFDocument,
+    signature?: SignatureStamp,
+  ): void {
+    if (!signature?.signatureImage) {
+      return;
+    }
+
+    const buffer = this.dataUrlToBuffer(signature.signatureImage);
+    if (!buffer) {
+      return;
+    }
+
+    doc.moveDown(2);
+
+    // Evita que la firma quede partida entre páginas.
+    if (doc.y > 650) {
+      doc.addPage();
+    }
+
+    doc
+      .fontSize(11)
+      .font('Helvetica-Bold')
+      .fillColor('black')
+      .text('FIRMA ELECTRÓNICA DEL ARRENDATARIO');
+    doc.moveDown(0.5);
+
+    try {
+      doc.image(buffer, { width: 180, height: 70 });
+    } catch {
+      // PNG inválido — no interrumpir la generación del documento.
+    }
+
+    doc
+      .moveTo(doc.x, doc.y)
+      .lineTo(doc.x + 220, doc.y)
+      .stroke();
+    doc.moveDown(0.3);
+
+    const signedDate = signature.signedDate
+      ? new Date(signature.signedDate).toLocaleString()
+      : new Date().toLocaleString();
+
+    doc.fontSize(9).font('Helvetica').fillColor('gray');
+    if (signature.tenantName) {
+      doc.text(`Firmado por: ${signature.tenantName}`);
+    }
+    doc.text(`Fecha de firma: ${signedDate}`);
+    if (signature.signedIp) {
+      doc.text(`IP de origen: ${signature.signedIp}`);
+    }
+    doc.text(
+      'Firma electrónica con validez legal (ESIGN / UETA). Esta firma y su ' +
+        'registro de auditoría identifican de forma única al firmante.',
+    );
+    doc.fillColor('black');
+  }
+
+  /** Convierte un data URL (data:image/png;base64,...) a Buffer. */
+  private dataUrlToBuffer(dataUrl: string): Buffer | null {
+    const match = /^data:image\/(?:png|jpeg);base64,(.+)$/.exec(dataUrl);
+    if (!match) {
+      return null;
+    }
+    try {
+      return Buffer.from(match[1], 'base64');
+    } catch {
+      return null;
+    }
   }
 }

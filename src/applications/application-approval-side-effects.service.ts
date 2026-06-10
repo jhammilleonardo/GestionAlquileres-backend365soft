@@ -38,6 +38,7 @@ export class ApplicationApprovalSideEffectsService {
         `Tu solicitud para la propiedad ${String(params.application.property_title)} ha cambiado a: ${String(ApplicationStatus.APROBADA)}`,
         {
           applicationId: params.application.id,
+          property_title: params.application.property_title,
           status: ApplicationStatus.APROBADA,
           feedback: params.updateDto.admin_feedback,
         },

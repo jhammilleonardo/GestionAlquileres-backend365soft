@@ -68,6 +68,7 @@ describe('ContractPdfService', () => {
     toRoutePath: jest.fn(),
     isS3Enabled: jest.fn(),
     getSignedReadUrl: jest.fn(),
+    resolveReadAccess: jest.fn(),
   };
 
   beforeEach(() => {
@@ -96,6 +97,10 @@ describe('ContractPdfService', () => {
     mockStorageService.getSignedReadUrl.mockResolvedValue(
       'https://signed.example/contract.pdf',
     );
+    mockStorageService.resolveReadAccess.mockResolvedValue({
+      kind: 'local',
+      absolutePath: '/app/storage/contracts/acme/1/contract.pdf',
+    });
 
     mockDataSource.query.mockImplementation((sql: string) => {
       if (sql.includes('FROM public.tenant')) {
@@ -136,6 +141,12 @@ describe('ContractPdfService', () => {
         name: 'ACME Rentals',
         address: 'Dirección de la administración',
       },
+      {
+        signatureImage: undefined,
+        tenantName: 'Juan Perez',
+        signedDate: undefined,
+        signedIp: undefined,
+      },
     );
     expect(mockStorageService.uploadLocalFile).toHaveBeenCalledWith(
       '/tmp/contract.pdf',
@@ -149,7 +160,7 @@ describe('ContractPdfService', () => {
       ['/storage/contracts/acme/1/contract.pdf', 1],
     );
     expect(result).toEqual({
-      path: '/tmp/contract.pdf',
+      path: '/app/storage/contracts/acme/1/contract.pdf',
       url: '/storage/contracts/acme/1/contract.pdf',
       fullUrl: 'https://api.test/storage/contracts/acme/1/contract.pdf',
     });
@@ -204,6 +215,7 @@ describe('ContractPdfService', () => {
     expect(mockPdfService.generateContractPdfFromTemplate).toHaveBeenCalledWith(
       'CTR-2026-0001',
       'populated contract',
+      expect.objectContaining({ signatureImage: undefined }),
     );
     expect(mockPdfService.generateContractPdf).not.toHaveBeenCalled();
   });

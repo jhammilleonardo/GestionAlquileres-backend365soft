@@ -13,6 +13,7 @@ import {
   AdminMaintenanceController,
   TenantMaintenanceController,
   TecnicoMaintenanceController,
+  VendorMaintenanceController,
 } from './maintenance.controller';
 import { MaintenanceRequest } from './entities/maintenance-request.entity';
 import { MaintenanceMessage } from './entities/maintenance-message.entity';
@@ -38,6 +39,7 @@ import { StorageModule } from '../common/storage/storage.module';
     AdminMaintenanceController,
     TenantMaintenanceController,
     TecnicoMaintenanceController,
+    VendorMaintenanceController,
   ],
   providers: [
     MaintenanceService,

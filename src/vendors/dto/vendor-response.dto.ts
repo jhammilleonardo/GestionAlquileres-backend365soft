@@ -27,11 +27,29 @@ export class VendorResponseDto {
 
   @ApiPropertyOptional({ example: '4.50', nullable: true })
   average_rating: string | null;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Indica si el proveedor ya tiene cuenta de acceso (rol VENDOR).',
+  })
+  has_account?: boolean;
 }
 
 export class VendorMessageResponseDto {
   @ApiProperty({ example: 'Proveedor 1 desactivado correctamente' })
   message: string;
+}
+
+export class VendorAccountResponseDto {
+  @ApiProperty({ example: 'proveedor@example.com' })
+  email: string;
+
+  @ApiProperty({
+    example: 'a1b2c3d4e5',
+    description: 'Contraseña temporal — mostrarla al admin una sola vez.',
+  })
+  temporaryPassword: string;
 }
 
 export class VendorHistoryResponseDto {

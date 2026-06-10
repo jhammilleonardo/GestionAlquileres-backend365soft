@@ -62,6 +62,7 @@ export interface AuthRequestUser {
   role: string;
   tenantSlug: string;
   rentalOwnerId?: number | null;
+  vendorId?: number | null;
   mfaVerified?: boolean;
   mfaAt?: number | null;
 }
@@ -508,6 +509,111 @@ export class AuthService {
         role: user.role,
         tenant_slug: tenant.slug,
         rental_owner_id: rentalOwnerId,
+      },
+    };
+  }
+
+  async loginVendor(email: string, password: string, tenantSlug: string) {
+    const tenant = await this.tenantsService.findActiveBySlug(tenantSlug);
+    await this.authSecurityService.assertLoginAllowed(
+      email,
+      tenant.slug,
+      AuthLoginContext.VENDOR,
+    );
+
+    const user = await this.findUserByEmail(email, tenant.schema_name);
+
+    if (!user) {
+      await this.authSecurityService.recordFailure({
+        email,
+        tenantSlug: tenant.slug,
+        context: AuthLoginContext.VENDOR,
+        reason: 'user_not_found',
+      });
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    if (user.role !== 'VENDOR') {
+      await this.authSecurityService.recordFailure({
+        email,
+        tenantSlug: tenant.slug,
+        context: AuthLoginContext.VENDOR,
+        reason: 'non_vendor_role',
+      });
+      throw new UnauthorizedException(
+        'Acceso denegado: se requiere rol VENDOR',
+      );
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      await this.authSecurityService.recordFailure({
+        email,
+        tenantSlug: tenant.slug,
+        context: AuthLoginContext.VENDOR,
+        reason: 'invalid_password',
+      });
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    if (!user.is_active) {
+      await this.authSecurityService.recordInactiveUserAttempt({
+        email,
+        tenantSlug: tenant.slug,
+        context: AuthLoginContext.VENDOR,
+        userId: user.id,
+      });
+      throw new UnauthorizedException('Cuenta de proveedor inactiva');
+    }
+
+    // Resolver vendor_id vinculado por email
+    const q = quoteIdent(tenant.schema_name);
+    const vendorRows: { id: number }[] = await this.dataSource.query(
+      `SELECT id FROM ${q}.vendors WHERE email = $1 AND is_active = true LIMIT 1`,
+      [user.email],
+    );
+
+    if (vendorRows.length === 0) {
+      await this.authSecurityService.recordFailure({
+        email,
+        tenantSlug: tenant.slug,
+        context: AuthLoginContext.VENDOR,
+        reason: 'vendor_link_not_found',
+      });
+      throw new UnauthorizedException(
+        'Este usuario no está vinculado a ningún proveedor activo',
+      );
+    }
+
+    const vendorId = vendorRows[0].id;
+
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      role: user.role,
+      tenantSlug: tenant.slug,
+      vendorId,
+    };
+
+    const access_token = this.jwtService.sign(payload);
+
+    await this.authSecurityService.recordSuccess({
+      email,
+      tenantSlug: tenant.slug,
+      context: AuthLoginContext.VENDOR,
+      userId: user.id,
+    });
+
+    return {
+      access_token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+        tenant_slug: tenant.slug,
+        vendor_id: vendorId,
       },
     };
   }

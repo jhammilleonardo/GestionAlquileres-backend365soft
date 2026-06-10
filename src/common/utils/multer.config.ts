@@ -370,3 +370,66 @@ export const inspectionPhotoMulterConfig = {
     fileSize: 10 * 1024 * 1024, // 10MB max por foto
   },
 };
+
+// ──────────────────────────────────────────────────────────────
+// Adjuntos de mensajería interna (imágenes + video + PDF, máx 25 MB)
+// Almacenados en: storage/messages/{slug}/{userId}/
+// ──────────────────────────────────────────────────────────────
+
+export const messageFileStorage = diskStorage({
+  destination: (req: Request, file: Express.Multer.File, cb) => {
+    const tenantSlug = getTenantSlug(req);
+    const userId = String((req as TenantRequest).user?.userId ?? 'temp');
+
+    const uploadPath = path.join(
+      process.cwd(),
+      'storage',
+      'messages',
+      tenantSlug,
+      userId,
+    );
+    ensureDirExists(uploadPath);
+
+    cb(null, uploadPath);
+  },
+  filename: (req: Request, file: Express.Multer.File, cb) => {
+    cb(null, generateSecureFilename(file.originalname));
+  },
+});
+
+export const messageFileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  cb: (error: Error | null, acceptFile: boolean) => void,
+) => {
+  const allowedMimes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'video/mp4',
+    'video/webm',
+    'video/quicktime',
+    'application/pdf',
+  ];
+
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        'Solo se permiten imágenes (JPEG, PNG, GIF, WebP), videos (MP4, WebM, MOV) y documentos PDF',
+      ),
+      false,
+    );
+  }
+};
+
+export const messageMulterConfig = {
+  storage: messageFileStorage,
+  fileFilter: messageFileFilter,
+  limits: {
+    fileSize: 25 * 1024 * 1024, // 25MB max
+  },
+};

@@ -72,6 +72,16 @@ export class Contract {
   @Column({ nullable: true })
   signed_ip: string;
 
+  // Firma electrónica del inquilino (modelo eSignature: imagen + método + user-agent)
+  @Column({ type: 'text', nullable: true })
+  signature_image: string; // PNG en data URL (data:image/png;base64,...)
+
+  @Column({ nullable: true })
+  signature_method: string; // 'draw' | 'type' | 'upload'
+
+  @Column({ type: 'text', nullable: true })
+  signed_user_agent: string;
+
   @Column({ type: 'timestamp', nullable: true })
   activation_date: Date;
 

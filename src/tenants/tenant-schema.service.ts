@@ -17,7 +17,7 @@ export class TenantSchemaService {
 
     await this.dataSource.query(`
       DO $$ BEGIN
-        CREATE TYPE ${q}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO', 'PROPIETARIO');
+        CREATE TYPE ${q}.user_role_enum AS ENUM ('ADMIN', 'INQUILINO', 'EMPLEADO', 'TECNICO', 'PROPIETARIO', 'VENDOR');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;

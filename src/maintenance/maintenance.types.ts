@@ -60,6 +60,8 @@ export interface MaintenanceMessageRow {
   send_to_resident: boolean;
   attachments: MaintenanceAttachmentRow[];
   created_at?: Date | string;
+  sender_name?: string | null;
+  sender_role?: string | null;
 }
 
 export interface MaintenanceRequestRow {

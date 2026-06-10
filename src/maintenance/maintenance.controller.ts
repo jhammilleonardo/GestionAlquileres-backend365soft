@@ -40,6 +40,7 @@ import { CreateMaintenanceDto } from './dto/create-maintenance.dto';
 import { UpdateMaintenanceDto } from './dto/update-maintenance.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
+import { MaintenanceStage } from './enums/maintenance-stage.enum';
 import { AssignVendorDto } from './dto/assign-vendor.dto';
 import { RateVendorDto } from './dto/rate-vendor.dto';
 import { MaintenanceFiltersDto } from './dto/maintenance-filters.dto';
@@ -55,6 +56,7 @@ import {
 } from './dto/maintenance-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { VendorPortalGuard } from '../common/guards/vendor-portal.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 
@@ -644,6 +646,213 @@ export class TecnicoMaintenanceController {
     @UploadedFiles() files: Express.Multer.File[],
     @Request() req: TenantRequest,
   ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se enviaron fotos');
+    }
+    return this.maintenanceService.saveStagePhotos(
+      id,
+      files,
+      req.user!.userId,
+      slug,
+    );
+  }
+}
+
+@ApiTags('Maintenance - Proveedor')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, VendorPortalGuard)
+@Controller(':slug/vendor/maintenance')
+export class VendorMaintenanceController {
+  constructor(private readonly maintenanceService: MaintenanceService) {}
+
+  /**
+   * Verifica que la orden pertenezca al proveedor autenticado.
+   * El portal del proveedor solo opera sobre sus propias órdenes.
+   */
+  private async assertOwnership(
+    requestId: number,
+    vendorId: number,
+  ): Promise<void> {
+    const request = await this.maintenanceService.findOne(requestId);
+    if (request.vendor_id !== vendorId) {
+      throw new ForbiddenException('Esta orden no está asignada a tu cuenta');
+    }
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Órdenes asignadas al proveedor' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiOkResponse({ type: MaintenanceRequestResponseDto, isArray: true })
+  @ApiForbiddenResponse({ description: 'Rol distinto de VENDOR' })
+  async findAssigned(
+    @Param('slug') _slug: string,
+    @Request() req: TenantRequest,
+  ) {
+    return this.maintenanceService.findAll({ vendor_id: req.user!.vendorId! });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Detalle de una orden asignada al proveedor' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: MaintenanceRequestResponseDto })
+  @ApiNotFoundResponse({ description: 'Orden no encontrada' })
+  async findOne(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
+  ) {
+    await this.assertOwnership(id, req.user!.vendorId!);
+    return this.maintenanceService.findOne(id);
+  }
+
+  @Get(':id/stage-history')
+  @ApiOperation({ summary: 'Historial de etapas de la orden' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: MaintenanceStageHistoryResponseDto, isArray: true })
+  async getStageHistory(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
+  ) {
+    await this.assertOwnership(id, req.user!.vendorId!);
+    return this.maintenanceService.getStageHistory(id);
+  }
+
+  @Patch(':id/stage')
+  @ApiOperation({
+    summary: 'Avanzar etapa (proveedor — solo IN_PROGRESS o COMPLETED)',
+  })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: UpdateStageDto })
+  @ApiOkResponse({ type: MaintenanceRequestResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Solo se puede avanzar a IN_PROGRESS o COMPLETED',
+  })
+  async changeStage(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateStageDto,
+    @Request() req: TenantRequest,
+  ) {
+    await this.assertOwnership(id, req.user!.vendorId!);
+    // El proveedor avanza el ESTADO de la orden (NEW→IN_PROGRESS→COMPLETED),
+    // igual que el técnico, en vez del pipeline granular de etapas.
+    if (
+      dto.to_stage !== MaintenanceStage.IN_PROGRESS &&
+      dto.to_stage !== MaintenanceStage.COMPLETED
+    ) {
+      throw new BadRequestException(
+        'Solo se puede avanzar a IN_PROGRESS o COMPLETED',
+      );
+    }
+    return this.maintenanceService.update(id, {
+      status: dto.to_stage as 'IN_PROGRESS' | 'COMPLETED',
+    });
+  }
+
+  @Get(':id/messages')
+  @ApiOperation({ summary: 'Mensajes de la orden' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: MaintenanceMessageResponseDto, isArray: true })
+  async getMessages(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
+  ) {
+    await this.assertOwnership(id, req.user!.vendorId!);
+    return this.maintenanceService.getMessages(id, req.user!.userId);
+  }
+
+  @Post(':id/messages')
+  @ApiOperation({ summary: 'Agregar un mensaje/nota a la orden' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: CreateMessageDto })
+  @ApiCreatedResponse({ type: MaintenanceMessageResponseDto })
+  async addMessage(
+    @Param('slug') _slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateMessageDto,
+    @Request() req: TenantRequest,
+  ) {
+    await this.assertOwnership(id, req.user!.vendorId!);
+    return this.maintenanceService.addMessage(id, dto, req.user!.userId);
+  }
+
+  @Post(':id/upload')
+  @ApiOperation({ summary: 'Subir archivos adjuntos para un mensaje del chat' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['files'],
+      properties: {
+        files: {
+          type: 'array',
+          maxItems: 3,
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({ type: MaintenanceAttachmentResponseDto, isArray: true })
+  @ApiBadRequestResponse({ description: 'No se enviaron archivos' })
+  @UseInterceptors(FilesInterceptor('files', 3, maintenanceMulterConfig))
+  async uploadFiles(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Request() req: TenantRequest,
+  ) {
+    await this.assertOwnership(id, req.user!.vendorId!);
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se enviaron archivos');
+    }
+    return this.maintenanceService.saveUploadedFiles(
+      id,
+      files,
+      req.user!.userId,
+      slug,
+    );
+  }
+
+  @Post(':id/photos')
+  @ApiOperation({ summary: 'Subir fotos del trabajo (máx. 5, solo imágenes)' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['files'],
+      properties: {
+        files: {
+          type: 'array',
+          maxItems: 5,
+          items: { type: 'string', format: 'binary' },
+          description: 'Hasta 5 imágenes del avance del trabajo.',
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({ type: MaintenanceFileUrlResponseDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: 'No se enviaron fotos o formato inválido',
+  })
+  @UseInterceptors(FilesInterceptor('files', 5, stagePhotoMulterConfig))
+  async uploadStagePhotos(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Request() req: TenantRequest,
+  ) {
+    await this.assertOwnership(id, req.user!.vendorId!);
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron fotos');
     }

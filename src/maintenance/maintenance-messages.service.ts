@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -32,6 +33,13 @@ export class MaintenanceMessagesService {
     createMessageDto: CreateMessageDto,
     userId: number,
   ): Promise<MaintenanceMessageRow> {
+    const message = createMessageDto.message.trim();
+    const hasFiles = (createMessageDto.files?.length ?? 0) > 0;
+
+    if (!message && !hasFiles) {
+      throw new BadRequestException('El mensaje o adjunto es obligatorio');
+    }
+
     const request = await this.maintenanceLookupService.findOne(requestId);
 
     const isTenant = request.tenant_id === userId;
@@ -52,35 +60,35 @@ export class MaintenanceMessagesService {
             [
               requestId,
               userId,
-              createMessageDto.message,
+              message,
               createMessageDto.send_to_resident !== false,
             ],
           ),
         );
 
-        const message = messageResult[0];
-        if (!message) {
+        const savedMessage = messageResult[0];
+        if (!savedMessage) {
           throw new Error('No se pudo crear el mensaje de mantenimiento');
         }
 
         if (createMessageDto.files && createMessageDto.files.length > 0) {
           await this.linkMessageFiles(
             queryRunner,
-            message.id,
+            savedMessage.id,
             requestId,
             createMessageDto.files,
             userId,
           );
         }
 
-        return message;
+        return savedMessage;
       },
     );
 
     await this.maintenanceMessageNotificationsService.notifyMessageReceived(
       requestId,
       savedMessage.id,
-      createMessageDto.message,
+      message,
       userId,
     );
 
@@ -185,6 +193,8 @@ export class MaintenanceMessagesService {
     const messages = await this.dataSource.query<MaintenanceMessageRow[]>(
       `SELECT
         mm.*,
+        u.name AS sender_name,
+        u.role AS sender_role,
         COALESCE(
           json_agg(
             json_build_object(
@@ -199,8 +209,9 @@ export class MaintenanceMessagesService {
         ) as attachments
       FROM maintenance_messages mm
       LEFT JOIN maintenance_attachments ma ON ma.message_id = mm.id
+      LEFT JOIN "user" u ON u.id = mm.user_id
       WHERE mm.id = $1
-      GROUP BY mm.id`,
+      GROUP BY mm.id, u.name, u.role`,
       [messageId],
     );
 

@@ -54,10 +54,19 @@ export class ContractPdfService {
           schemaPrefix,
           landlordName,
         )
-      : await this.pdfService.generateContractPdf(contract, {
-          name: landlordName,
-          address: 'Dirección de la administración',
-        });
+      : await this.pdfService.generateContractPdf(
+          contract,
+          {
+            name: landlordName,
+            address: 'Dirección de la administración',
+          },
+          {
+            signatureImage: contract.signature_image ?? undefined,
+            tenantName: contract.tenant_name ?? undefined,
+            signedDate: contract.tenant_signature_date ?? undefined,
+            signedIp: contract.signed_ip ?? undefined,
+          },
+        );
 
     const persistedPdf = await this.persistPdf(pdfPath, tenantSlug, id);
     const fullUrl = this.storageService.isS3Enabled()
@@ -72,11 +81,30 @@ export class ContractPdfService {
       [persistedPdf.routePath, id],
     );
 
+    const localPdfPath = await this.resolveLocalPdfPath(
+      persistedPdf.storagePath,
+    );
+
     return {
-      path: this.storageService.isS3Enabled() ? undefined : pdfPath,
+      path: localPdfPath,
       url: persistedPdf.routePath,
       fullUrl,
     };
+  }
+
+  private async resolveLocalPdfPath(
+    storagePath: string,
+  ): Promise<string | undefined> {
+    if (this.storageService.isS3Enabled()) {
+      return undefined;
+    }
+
+    const readAccess = await this.storageService.resolveReadAccess(
+      storagePath,
+      'private',
+    );
+
+    return readAccess.kind === 'local' ? readAccess.absolutePath : undefined;
   }
 
   private async generatePdfFromTemplate(
@@ -128,6 +156,12 @@ export class ContractPdfService {
     return this.pdfService.generateContractPdfFromTemplate(
       contract.contract_number,
       populated,
+      {
+        signatureImage: contract.signature_image ?? undefined,
+        tenantName: contract.tenant_name ?? undefined,
+        signedDate: contract.tenant_signature_date ?? undefined,
+        signedIp: contract.signed_ip ?? undefined,
+      },
     );
   }
 

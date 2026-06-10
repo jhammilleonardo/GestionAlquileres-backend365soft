@@ -46,7 +46,124 @@ describe('PropertyPublicCatalogService', () => {
     );
     expect(dataSource.query).toHaveBeenNthCalledWith(
       3,
-      expect.stringContaining('ORDER BY p.id, p.monthly_rent ASC'),
+      expect.stringContaining('ORDER BY p.monthly_rent ASC NULLS LAST'),
+      ['DISPONIBLE', 20, 0],
+    );
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('unit_metrics.available_units'),
+      ['DISPONIBLE', 20, 0],
+    );
+  });
+
+  it('uses available unit nightly price for short-term catalog filters', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ count: '1' }])
+      .mockResolvedValueOnce([
+        {
+          id: 16,
+          title: 'Suite Centro',
+          min_price_per_night: '85.00',
+          available_short_term_units: 1,
+        },
+      ]);
+
+    await expect(
+      service.findCatalogProperties(
+        {
+          page: 1,
+          limit: 20,
+          sort: 'price_asc',
+          rental_type: 'SHORT_TERM',
+          min_price: 50,
+          max_price: 120,
+        },
+        'acme',
+      ),
+    ).resolves.toMatchObject({
+      data: [
+        {
+          id: 16,
+          title: 'Suite Centro',
+          min_price_per_night: '85.00',
+        },
+      ],
+      total: 1,
+    });
+
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("p.rental_type IN ('SHORT_TERM', 'BOTH')"),
+      ['DISPONIBLE', 50, 120],
+    );
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('COALESCE(unit_metrics.total_units, 0) = 0 OR'),
+      ['DISPONIBLE', 50, 120],
+    );
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining(
+        'COALESCE(unit_metrics.min_price_per_night, p.monthly_rent) >= $2',
+      ),
+      ['DISPONIBLE', 50, 120],
+    );
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(
+        'ORDER BY COALESCE(unit_metrics.min_price_per_night, p.monthly_rent) ASC NULLS LAST',
+      ),
+      ['DISPONIBLE', 50, 120, 20, 0],
+    );
+  });
+
+  it('matches country by display name or ISO code using schema-qualified address SQL', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ count: '0' }])
+      .mockResolvedValueOnce([]);
+
+    await service.findCatalogProperties(
+      { page: 1, limit: 20, country: 'Bolivia' },
+      'acme',
+    );
+
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining(
+        'FROM "tenant_acme".property_addresses pa_search',
+      ),
+      ['DISPONIBLE', ['bolivia', 'bo']],
+    );
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('LOWER(pa_search.country) = ANY($2::text[])'),
+      ['DISPONIBLE', ['bolivia', 'bo']],
+    );
+  });
+
+  it('orders available catalog properties by available unit count, not views', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ count: '0' }])
+      .mockResolvedValueOnce([]);
+
+    await service.findCatalogProperties(
+      { page: 1, limit: 20, sort: 'available' },
+      'acme',
+    );
+
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(
+        'ORDER BY unit_metrics.available_units DESC, p.created_at DESC, p.id ASC',
+      ),
+      ['DISPONIBLE', 20, 0],
+    );
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      3,
+      expect.not.stringContaining('ORDER BY p.last_viewed_at'),
       ['DISPONIBLE', 20, 0],
     );
   });
@@ -56,7 +173,8 @@ describe('PropertyPublicCatalogService', () => {
       .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
       .mockResolvedValueOnce([{ id: 15, title: 'Casa Norte' }])
       .mockResolvedValueOnce([{ id: 1, street_address: 'Av. 1' }])
-      .mockResolvedValueOnce([{ id: 2, name: 'Owner' }]);
+      .mockResolvedValueOnce([{ id: 2, name: 'Owner' }])
+      .mockResolvedValueOnce([{ id: 3, unit_number: '101' }]);
 
     const recordSpy = jest
       .spyOn(service, 'recordPropertyView')
@@ -69,6 +187,7 @@ describe('PropertyPublicCatalogService', () => {
       title: 'Casa Norte',
       addresses: [{ id: 1, street_address: 'Av. 1' }],
       owners: [{ id: 2, name: 'Owner' }],
+      units: [{ id: 3, unit_number: '101' }],
     });
 
     expect(recordSpy).toHaveBeenCalledWith(15, '127.0.0.1', 'tenant_acme');

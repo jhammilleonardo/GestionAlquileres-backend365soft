@@ -27,6 +27,7 @@ export interface RequestUserContext {
   role: string;
   tenantSlug?: string;
   rentalOwnerId?: number | null;
+  vendorId?: number | null;
 }
 
 export interface TenantRequest extends Request {

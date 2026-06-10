@@ -121,7 +121,11 @@ describe('ContractSigningService', () => {
       .mockResolvedValueOnce([{ ...contract, status: ContractStatus.ACTIVO }]);
 
     await expect(
-      service.signContract(1, 10, '127.0.0.1', 'acme'),
+      service.signContract(1, 10, '127.0.0.1', 'acme', {
+        signatureImage: 'data:image/png;base64,AAA',
+        signatureMethod: 'draw',
+        userAgent: 'jest-agent',
+      }),
     ).resolves.toMatchObject({
       id: 1,
       status: ContractStatus.ACTIVO,
@@ -135,7 +139,14 @@ describe('ContractSigningService', () => {
     expect(queryRunner.query).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining('UPDATE "tenant_acme".contracts'),
-      [ContractStatus.ACTIVO, '127.0.0.1', 1],
+      [
+        ContractStatus.ACTIVO,
+        '127.0.0.1',
+        'data:image/png;base64,AAA',
+        'draw',
+        'jest-agent',
+        1,
+      ],
     );
     expect(queryRunner.query).toHaveBeenNthCalledWith(
       3,

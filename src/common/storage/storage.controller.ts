@@ -10,9 +10,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import type { TenantRequest } from '../middleware/tenant-context.middleware';
 import { isValidTenantSlug } from '../utils/tenant-slug';
+import { quoteIdent } from '../utils/sql-identifier';
 import { StorageService } from './storage.service';
 
 /**
@@ -30,6 +33,8 @@ export class StorageController {
   constructor(
     @Inject(StorageService)
     private readonly storageService: StorageService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   // ──────────────────────────────────────────────────────────────
@@ -221,6 +226,30 @@ export class StorageController {
   }
 
   // ──────────────────────────────────────────────────────────────
+  // Privado: adjuntos de mensajería interna
+  // ──────────────────────────────────────────────────────────────
+  @Get('messages/:slug/:userId/:filename')
+  @UseGuards(JwtAuthGuard)
+  async serveMessageFile(
+    @Param('slug') slug: string,
+    @Param('userId') userId: string,
+    @Param('filename') filename: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    this.assertTenantOwnership(req, slug);
+    this.assertSafeSegment(userId);
+    this.assertSafeFilename(filename);
+    await this.assertMessageFileAccess(req, slug, userId, filename);
+
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath('messages', slug, userId, filename),
+      'private',
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────
   // Privado: documentos de contratos
   // ──────────────────────────────────────────────────────────────
   @Get('contracts/:slug/:contractId/:filename')
@@ -257,6 +286,49 @@ export class StorageController {
     const user = (req as TenantRequest).user;
     if (!user?.tenantSlug || user.tenantSlug !== slug) {
       throw new ForbiddenException('Not authorized for this tenant');
+    }
+  }
+
+  private async assertMessageFileAccess(
+    req: Request,
+    slug: string,
+    userId: string,
+    filename: string,
+  ): Promise<void> {
+    const user = (req as TenantRequest).user;
+    if (!user?.userId) {
+      throw new ForbiddenException('Not authorized for this file');
+    }
+
+    const [tenant] = await this.dataSource.query<
+      Array<{ schema_name: string }>
+    >(
+      'SELECT schema_name FROM public.tenant WHERE slug = $1 AND is_active = true',
+      [slug],
+    );
+
+    if (!tenant) {
+      throw new ForbiddenException('Not authorized for this file');
+    }
+
+    const fileUrl = `/storage/messages/${slug}/${userId}/${filename}`;
+    const q = quoteIdent(tenant.schema_name);
+    const rows = await this.dataSource.query<Array<{ allowed: number }>>(
+      `SELECT 1 AS allowed
+       FROM ${q}.internal_message_attachments ima
+       LEFT JOIN ${q}.internal_messages im ON im.id = ima.message_id
+       WHERE ima.file_url = $1
+         AND (
+           ima.uploaded_by = $2
+           OR im.sender_id = $2
+           OR im.recipient_id = $2
+         )
+       LIMIT 1`,
+      [fileUrl, user.userId],
+    );
+
+    if (!rows[0]) {
+      throw new ForbiddenException('Not authorized for this file');
     }
   }
 

@@ -14,7 +14,11 @@ import { Payment } from './interfaces/payment.interface';
 import { PaymentStatus } from './enums';
 import { PaymentApprovalService } from './payment-approval.service';
 import { PaymentStatusNotificationService } from './payment-status-notification.service';
-import { PaymentStatusRow, paymentTable } from './payment-status.types';
+import {
+  firstReturnedRow,
+  PaymentStatusRow,
+  paymentTable,
+} from './payment-status.types';
 
 const ALLOWED_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
   [PaymentStatus.PENDING]: [
@@ -112,7 +116,7 @@ export class PaymentStatusService {
 
       await this.notifyStatusChange(payment, id, dto, schemaName);
 
-      return updated[0];
+      return firstReturnedRow<Payment>(updated)!;
     } catch (error) {
       if (
         !(error instanceof BadRequestException) &&

@@ -29,6 +29,7 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import {
+  VendorAccountResponseDto,
   VendorHistoryResponseDto,
   VendorMessageResponseDto,
   VendorResponseDto,
@@ -112,5 +113,21 @@ export class VendorsController {
   @ApiNotFoundResponse({ description: 'Proveedor no encontrado' })
   getHistory(@Param('id', ParseIntPipe) id: number) {
     return this.vendorsService.getHistory(id);
+  }
+
+  @Post(':id/account')
+  @RequirePermission('vendors', 'edit')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Crear cuenta de acceso (rol VENDOR) para el proveedor',
+    description:
+      'Genera credenciales temporales. El proveedor podrá entrar en /:slug/vendor/login.',
+  })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiCreatedResponse({ type: VendorAccountResponseDto })
+  @ApiNotFoundResponse({ description: 'Proveedor no encontrado' })
+  createAccount(@Param('id', ParseIntPipe) id: number) {
+    return this.vendorsService.createVendorAccount(id);
   }
 }

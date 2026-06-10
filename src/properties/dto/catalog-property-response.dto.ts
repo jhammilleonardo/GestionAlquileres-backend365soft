@@ -36,8 +36,21 @@ export class CatalogPropertyResponseDto {
   @ApiProperty({ example: 3000 })
   monthly_rent: number;
 
+  @ApiPropertyOptional({
+    example: 120,
+    description:
+      'Precio mínimo por noche entre unidades disponibles de corto plazo.',
+  })
+  min_price_per_night?: number;
+
   @ApiProperty({ example: 'BOB' })
   currency: string;
+
+  @ApiPropertyOptional({
+    example: 'BOTH',
+    enum: ['SHORT_TERM', 'LONG_TERM', 'BOTH'],
+  })
+  rental_type?: string;
 
   @ApiPropertyOptional({ example: 2 })
   bedrooms?: number;
@@ -68,6 +81,18 @@ export class CatalogPropertyResponseDto {
 
   @ApiProperty({ example: 12 })
   view_count: number;
+
+  @ApiPropertyOptional({ example: 4 })
+  total_units?: number;
+
+  @ApiPropertyOptional({ example: 2 })
+  available_units?: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  available_short_term_units?: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  available_long_term_units?: number;
 
   @ApiPropertyOptional({ type: CatalogPropertyAddressResponseDto })
   first_address?: CatalogPropertyAddressResponseDto;
@@ -117,6 +142,19 @@ export class CatalogPropertyDetailResponseDto {
 
   @ApiProperty({ example: 3000 })
   monthly_rent: number;
+
+  @ApiPropertyOptional({
+    example: 120,
+    description:
+      'Precio mínimo por noche entre unidades disponibles de corto plazo.',
+  })
+  min_price_per_night?: number;
+
+  @ApiPropertyOptional({
+    example: 'BOTH',
+    enum: ['SHORT_TERM', 'LONG_TERM', 'BOTH'],
+  })
+  rental_type?: string;
 
   @ApiPropertyOptional({ example: 3000 })
   security_deposit_amount?: number;

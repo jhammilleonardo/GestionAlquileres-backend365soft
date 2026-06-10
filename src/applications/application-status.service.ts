@@ -55,6 +55,7 @@ export class ApplicationStatusService {
         `Tu solicitud para la propiedad ${String(application.property_title)} ha cambiado a: ${String(updateDto.status)}`,
         {
           applicationId: id,
+          property_title: application.property_title,
           status: updateDto.status,
           feedback: updateDto.admin_feedback,
         },

@@ -63,4 +63,11 @@ export class MaintenanceFiltersDto {
   @Type(() => Number)
   @IsOptional()
   assigned_to?: number;
+
+  @ApiPropertyOptional({ example: 3, type: Number })
+  @IsInt()
+  @IsPositive()
+  @Type(() => Number)
+  @IsOptional()
+  vendor_id?: number;
 }

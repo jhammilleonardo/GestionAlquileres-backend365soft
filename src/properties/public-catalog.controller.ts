@@ -19,6 +19,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { PropertiesService } from './properties.service';
 import { FilterCatalogPropertiesDto } from './dto/filter-catalog-properties.dto';
@@ -30,6 +31,15 @@ import {
   CatalogPropertyDetailResponseDto,
   PaginatedCatalogPropertiesResponseDto,
 } from './dto/catalog-property-response.dto';
+
+/**
+ * Navegación pública del catálogo: solo lectura y de alto tráfico legítimo
+ * (varios visitantes pueden compartir IP tras un NAT). El límite general de
+ * 100/min es demasiado restrictivo aquí, así que se amplía a 600/min.
+ */
+const PUBLIC_CATALOG_THROTTLE = {
+  default: { limit: 600, ttl: 60000 },
+} as const;
 
 /**
  * Controlador público del catálogo de propiedades
@@ -57,6 +67,7 @@ export class PublicCatalogController {
    * - page: número de página (default: 1)
    * - limit: items por página (default: 20, máximo: 100)
    */
+  @Throttle(PUBLIC_CATALOG_THROTTLE)
   @Get('properties')
   @ApiOperation({
     summary: 'Listar propiedades disponibles del catálogo público',
@@ -152,6 +163,7 @@ export class PublicCatalogController {
    * - Efecto colateral: Incrementa el contador de vistas
    * - Registra: IP del cliente y timestamp de visualización
    */
+  @Throttle(PUBLIC_CATALOG_THROTTLE)
   @Get('properties/:id')
   @ApiOperation({
     summary: 'Obtener detalle de propiedad específica del catálogo',

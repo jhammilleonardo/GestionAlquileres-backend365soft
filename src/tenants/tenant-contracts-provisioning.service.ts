@@ -39,6 +39,9 @@ export class TenantContractsProvisioningService {
         tenant_signature_date timestamp with time zone,
         owner_signature_date timestamp with time zone,
         signed_ip character varying,
+        signature_image text,
+        signature_method character varying,
+        signed_user_agent text,
         activation_date timestamp with time zone,
         actual_termination_date date,
         monthly_rent decimal(10,2) NOT NULL,
@@ -150,6 +153,17 @@ export class TenantContractsProvisioningService {
         [`${schemaName}.contract_number_seq`, maxNumber],
       );
     }
+  }
+
+  async ensureSignatureColumns(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(`
+      ALTER TABLE ${q}.contracts
+        ADD COLUMN IF NOT EXISTS signature_image text,
+        ADD COLUMN IF NOT EXISTS signature_method character varying,
+        ADD COLUMN IF NOT EXISTS signed_user_agent text;
+    `);
   }
 
   async ensureUnitId(schemaName: string): Promise<void> {

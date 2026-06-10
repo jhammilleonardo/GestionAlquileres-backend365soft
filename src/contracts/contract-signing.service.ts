@@ -17,6 +17,13 @@ import { ContractHistoryService } from './contract-history.service';
 import { ContractQueriesService } from './contract-queries.service';
 import { ContractStatus } from './enums/contract-status.enum';
 
+/** Evidencia de firma electrónica capturada del firmante (modelo eSignature). */
+export interface SignatureEvidence {
+  signatureImage: string;
+  signatureMethod?: string;
+  userAgent?: string;
+}
+
 @Injectable()
 export class ContractSigningService {
   constructor(
@@ -35,6 +42,7 @@ export class ContractSigningService {
     userId: number,
     ip: string,
     tenantSlug?: string,
+    signature?: SignatureEvidence,
   ): Promise<ContractResult> {
     const schemaName = tenantSlug
       ? await this.getTenantSchemaName(tenantSlug)
@@ -77,9 +85,20 @@ export class ContractSigningService {
              tenant_signature_date = NOW(),
              activation_date = NOW(),
              signed_ip = $2,
+             is_signed = true,
+             signature_image = $3,
+             signature_method = $4,
+             signed_user_agent = $5,
              updated_at = NOW()
-         WHERE id = $3`,
-        [ContractStatus.ACTIVO, ip, id],
+         WHERE id = $6`,
+        [
+          ContractStatus.ACTIVO,
+          ip,
+          signature?.signatureImage ?? null,
+          signature?.signatureMethod ?? null,
+          signature?.userAgent ?? null,
+          id,
+        ],
       );
 
       await this.contractHistoryService.logChange({
@@ -122,7 +141,11 @@ export class ContractSigningService {
       entityType: 'contract',
       entityId: id,
       oldValues: { status: oldStatus },
-      newValues: { status: ContractStatus.ACTIVO },
+      newValues: {
+        status: ContractStatus.ACTIVO,
+        signature_method: signature?.signatureMethod ?? null,
+        signed_user_agent: signature?.userAgent ?? null,
+      },
       ipAddress: ip,
     });
 

@@ -10,6 +10,7 @@ interface JwtPayload {
   role: string;
   tenantSlug: string;
   rentalOwnerId?: number | null;
+  vendorId?: number | null;
   mfaVerified?: boolean;
   mfaAt?: number | null;
 }
@@ -40,6 +41,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: payload.role,
       tenantSlug: payload.tenantSlug,
       rentalOwnerId: payload.rentalOwnerId ?? null,
+      vendorId: payload.vendorId ?? null,
       mfaVerified: payload.mfaVerified ?? false,
       mfaAt: payload.mfaAt ?? null,
     };

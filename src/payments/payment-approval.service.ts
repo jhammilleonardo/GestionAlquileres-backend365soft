@@ -11,7 +11,11 @@ import { ApprovePaymentDto, RejectPaymentDto } from './dto';
 import { PaymentStatus } from './enums';
 import { Payment } from './interfaces/payment.interface';
 import { PaymentStatusNotificationService } from './payment-status-notification.service';
-import { PaymentStatusRow, paymentTable } from './payment-status.types';
+import {
+  firstReturnedRow,
+  PaymentStatusRow,
+  paymentTable,
+} from './payment-status.types';
 
 @Injectable()
 export class PaymentApprovalService {
@@ -57,7 +61,7 @@ export class PaymentApprovalService {
          RETURNING *`,
         [PaymentStatus.APPROVED, dto.admin_notes || null, adminId, id],
       )) as Payment[];
-      updatedPayment = updated[0];
+      updatedPayment = firstReturnedRow<Payment>(updated);
 
       await this.splitPaymentService.executeSplit(
         {
@@ -144,7 +148,7 @@ export class PaymentApprovalService {
           id,
         ],
       )) as Payment[];
-      updatedPayment = updated[0];
+      updatedPayment = firstReturnedRow<Payment>(updated);
 
       await queryRunner.commitTransaction();
     } catch (error) {

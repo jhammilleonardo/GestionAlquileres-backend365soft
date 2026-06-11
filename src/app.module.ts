@@ -47,19 +47,24 @@ import { ProductionReadinessService } from './common/production/production-readi
     ConfigModule,
     HealthModule,
     ScheduleModule.forRoot(),
-    // Rate Limiting - Protección contra fuerza bruta y DoS
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60000, // 60 segundos
-        limit: 100, // 100 requests por minuto (general)
-      },
-      {
-        name: 'strict',
-        ttl: 60000, // 60 segundos
-        limit: 20, // 20 requests por minuto (endpoints sensibles)
-      },
-    ]),
+    // Rate Limiting - Protección contra fuerza bruta y DoS.
+    // En desarrollo se omite para no bloquear pruebas repetidas (p. ej. el
+    // registro admin, limitado a 3/hora). En producción aplica completo.
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          name: 'default',
+          ttl: 60000, // 60 segundos
+          limit: 100, // 100 requests por minuto (general)
+        },
+        {
+          name: 'strict',
+          ttl: 60000, // 60 segundos
+          limit: 20, // 20 requests por minuto (endpoints sensibles)
+        },
+      ],
+      skipIf: () => process.env.NODE_ENV !== 'production',
+    }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

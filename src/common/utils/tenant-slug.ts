@@ -6,8 +6,10 @@
  * alfabeto permitido abre la puerta a inyección SQL.
  *
  * Mantener esta regex sincronizada con `quoteIdent()` en `sql-identifier.ts`.
+ * Puede empezar con letra o dígito: el schema siempre es `tenant_<slug>`,
+ * que comienza con "t", por lo que un slug con dígito inicial es seguro.
  */
-export const TENANT_SLUG_REGEX = /^[a-z][a-z0-9-]{2,49}$/;
+export const TENANT_SLUG_REGEX = /^[a-z0-9][a-z0-9-]{2,49}$/;
 
 /**
  * Palabras reservadas que no pueden usarse como slug porque colisionan

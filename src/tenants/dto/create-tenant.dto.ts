@@ -20,7 +20,7 @@ export class CreateTenantDto {
   @IsNotEmpty()
   @Matches(TENANT_SLUG_REGEX, {
     message:
-      'El slug debe empezar con letra minúscula y contener sólo letras minúsculas, dígitos y guiones (3-50 caracteres).',
+      'El slug debe empezar con letra minúscula o dígito y contener sólo letras minúsculas, dígitos y guiones (3-50 caracteres).',
   })
   slug: string;
 

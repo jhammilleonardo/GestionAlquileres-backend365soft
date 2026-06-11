@@ -349,9 +349,11 @@ export class MessagesService {
       ? ['INQUILINO', 'PROPIETARIO', 'VENDOR']
       : ['ADMIN', 'SUPERADMIN', 'EMPLEADO'];
 
+    // `role` es un enum (user_role_enum); al pasar un text[] desde JS hay que
+    // castear la columna a text para que exista el operador de comparación.
     return this.dataSource.query<RecipientRow[]>(
       `SELECT id, name, role FROM "user"
-       WHERE role = ANY($1)
+       WHERE role::text = ANY($1)
          AND is_active = true
        ORDER BY name ASC`,
       [targetRoles],

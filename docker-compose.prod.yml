@@ -1,0 +1,106 @@
+# Despliegue manual en VPS (Contabo) — construye las imágenes localmente.
+# A diferencia de docker-compose.staging.yml (que DESCARGA la imagen de GHCR),
+# este compose CONSTRUYE backend y frontend en el propio servidor.
+#
+# Uso:
+#   cp .env.prod.example .env.prod   # y rellenar secretos
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Requiere que el repo del frontend esté como carpeta hermana. Ajusta la ruta
+# con FRONTEND_CONTEXT en .env.prod si tu carpeta tiene otro nombre.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: gestion-postgres-prod
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - gestion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gestion-api-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.prod
+    environment:
+      # Overrides que NO deben venir del .env.prod (apuntan a la red interna)
+      NODE_ENV: staging
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+    volumes:
+      - uploads_prod:/app/uploads
+      - storage_prod:/app/storage
+    networks:
+      - gestion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health']
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  frontend:
+    build:
+      context: ${FRONTEND_CONTEXT:-../GestionAlquileres-frontend365soft}
+      dockerfile: Dockerfile
+      args:
+        # La URL del API se HORNEA en el build del frontend (Angular).
+        # Debe terminar en "/" porque los servicios concatenan ${apiUrl}${slug}/...
+        NG_APP_API_URL: https://${APP_DOMAIN}/api/
+        NG_APP_API_TIMEOUT: '30000'
+        NG_APP_SENTRY_DSN: ${FRONTEND_SENTRY_DSN:-}
+        NG_APP_SENTRY_ENV: production
+    container_name: gestion-frontend-prod
+    networks:
+      - gestion-network
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: gestion-caddy-prod
+    depends_on:
+      - api
+      - frontend
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - gestion-network
+    restart: unless-stopped
+
+networks:
+  gestion-network:
+    driver: bridge
+
+volumes:
+  postgres_prod_data:
+  uploads_prod:
+  storage_prod:
+  caddy_data:
+  caddy_config:

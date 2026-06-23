@@ -1,0 +1,21 @@
+# Reverse proxy con HTTPS automático (Let's Encrypt).
+# Caddy obtiene y renueva el certificado SSL solo, sin certbot ni cron.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# /api/* -> backend NestJS. handle_path ELIMINA el prefijo /api,
+	# así /api/acme/admin/x llega al backend como /acme/admin/x
+	handle_path /api/* {
+		reverse_proxy api:3000
+	}
+
+	# Todo lo demás -> frontend Angular (nginx)
+	handle {
+		reverse_proxy frontend:80
+	}
+}

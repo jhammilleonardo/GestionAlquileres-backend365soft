@@ -1,14 +1,11 @@
-# Reverse proxy con HTTPS automático (Let's Encrypt).
-# Caddy obtiene y renueva el certificado SSL solo, sin certbot ni cron.
+# Router HTTP interno. El TLS lo termina Nginx Proxy Manager (NPM), que reenvía
+# el tráfico de gestionalquileres.acmanalytics.online a este Caddy en el puerto 80.
+# Caddy solo reparte: /api -> backend NestJS, el resto -> frontend Angular.
 
-{
-	email {$ACME_EMAIL}
-}
-
-{$APP_DOMAIN} {
+:80 {
 	encode zstd gzip
 
-	# /api/* -> backend NestJS. handle_path ELIMINA el prefijo /api,
+	# /api/* -> backend. handle_path ELIMINA el prefijo /api,
 	# así /api/acme/admin/x llega al backend como /acme/admin/x
 	handle_path /api/* {
 		reverse_proxy api:3000

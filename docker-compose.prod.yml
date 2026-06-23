@@ -76,29 +76,29 @@ services:
       - gestion-network
     restart: unless-stopped
 
+  # Router HTTP interno. NO publica puertos al host: Nginx Proxy Manager (NPM)
+  # termina el TLS y reenvía a este Caddy por la red 'proxy_network'.
   caddy:
     image: caddy:2-alpine
     container_name: gestion-caddy-prod
     depends_on:
       - api
       - frontend
-    ports:
-      - '80:80'
-      - '443:443'
-    environment:
-      APP_DOMAIN: ${APP_DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
       - gestion-network
+      - proxy_network
     restart: unless-stopped
 
 networks:
   gestion-network:
     driver: bridge
+  # Red existente de Nginx Proxy Manager (creada por el otro proyecto).
+  proxy_network:
+    external: true
 
 volumes:
   postgres_prod_data:

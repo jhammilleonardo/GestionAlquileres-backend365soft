@@ -1,0 +1,9 @@
+set -e
+
+echo "🔍 pre-push: verificando lint..."
+npm run lint:check
+
+echo "🧪 pre-push: ejecutando tests..."
+npm test
+
+echo "✅ pre-push: todo OK, subiendo..."

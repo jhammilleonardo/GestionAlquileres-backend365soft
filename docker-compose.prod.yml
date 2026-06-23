@@ -3,8 +3,8 @@
 # este compose CONSTRUYE backend y frontend en el propio servidor.
 #
 # Uso:
-#   # crear vps.env en el servidor (pegando el contenido con los secretos)
-#   docker compose --env-file vps.env -f docker-compose.prod.yml up -d --build
+#   # crear .env en el servidor (pegando el contenido con los secretos)
+#   docker compose -f docker-compose.prod.yml up -d --build
 #
 # Requiere que el repo del frontend esté como carpeta hermana. Ajusta la ruta
 # con FRONTEND_CONTEXT en .env.prod si tu carpeta tiene otro nombre.
@@ -38,7 +38,7 @@ services:
       postgres:
         condition: service_healthy
     env_file:
-      - vps.env
+      - .env
     environment:
       # Overrides que NO deben venir del .env.prod (apuntan a la red interna)
       NODE_ENV: staging

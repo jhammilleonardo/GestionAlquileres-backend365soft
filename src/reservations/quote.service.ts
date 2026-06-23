@@ -126,7 +126,9 @@ export class QuoteService {
     // Adelanto para confirmar: % del total si la unidad lo define (0 < pct < 100);
     // si no, el total completo.
     const depositPct =
-      unit.deposit_to_confirm_pct != null ? Number(unit.deposit_to_confirm_pct) : null;
+      unit.deposit_to_confirm_pct != null
+        ? Number(unit.deposit_to_confirm_pct)
+        : null;
     const depositToConfirm =
       depositPct != null && depositPct > 0 && depositPct < 100
         ? Math.round(pricing.totalDue * depositPct) / 100

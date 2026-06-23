@@ -322,7 +322,9 @@ export class ReservationsService {
     // reserva se confirma al cubrir ese adelanto y el resto queda como saldo
     // pendiente (p. ej. a pagar en efectivo al check-in). NULL/>=100 = pago total.
     const depositPct =
-      unit.deposit_to_confirm_pct != null ? Number(unit.deposit_to_confirm_pct) : null;
+      unit.deposit_to_confirm_pct != null
+        ? Number(unit.deposit_to_confirm_pct)
+        : null;
     const depositRequired =
       depositPct != null && depositPct > 0 && depositPct < 100
         ? Math.round(totalAmount * depositPct) / 100
@@ -483,7 +485,9 @@ export class ReservationsService {
       // Las columnas DATE llegan como objetos Date desde el driver; normalizar a
       // string YYYY-MM-DD para comparaciones y cálculo de precios consistentes.
       reservation.checkin_date = this.toIsoDateString(reservation.checkin_date);
-      reservation.checkout_date = this.toIsoDateString(reservation.checkout_date);
+      reservation.checkout_date = this.toIsoDateString(
+        reservation.checkout_date,
+      );
       if (
         ![
           ReservationStatus.PENDING_PAYMENT,
@@ -1225,7 +1229,9 @@ export class ReservationsService {
    * fallo en el cálculo de precios por temporada y en las comparaciones de fechas.
    */
   private toIsoDateString(value: string | Date): string {
-    return value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
+    return value instanceof Date
+      ? value.toISOString().slice(0, 10)
+      : value.slice(0, 10);
   }
 
   private generateNightDates(checkin: Date, checkout: Date): string[] {

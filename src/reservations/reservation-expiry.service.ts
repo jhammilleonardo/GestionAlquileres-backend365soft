@@ -100,7 +100,21 @@ export class ReservationExpiryService {
       `,
     );
 
-    return expired;
+    return this.dedupeById(expired);
+  }
+
+  /**
+   * Una reserva puede aparecer repetida si abarca varias noches; se cuenta y
+   * notifica una sola vez por reserva.
+   */
+  private dedupeById(rows: ExpiredReservation[]): ExpiredReservation[] {
+    const unique = new Map<number, ExpiredReservation>();
+    for (const row of rows) {
+      if (!unique.has(row.id)) {
+        unique.set(row.id, row);
+      }
+    }
+    return Array.from(unique.values());
   }
 
   private async getActiveTenantSchemas(): Promise<ActiveTenant[]> {

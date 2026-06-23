@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { TenantCountry } from './dto/create-tenant.dto';
 import { Tenant } from './metadata/tenant.entity';
+import { TenantAccountingProvisioningService } from './tenant-accounting-provisioning.service';
 import { TenantApplicationsProvisioningService } from './tenant-applications-provisioning.service';
 import { TenantAuditComplianceProvisioningService } from './tenant-audit-compliance-provisioning.service';
 import { TenantConfigProvisioningService } from './tenant-config-provisioning.service';
@@ -40,6 +41,7 @@ describe('TenantProvisioningService', () => {
   let tenantEmployeesProvisioningService: Record<string, jest.Mock>;
   let tenantAuditComplianceProvisioningService: Record<string, jest.Mock>;
   let tenantWebsiteProvisioningService: Record<string, jest.Mock>;
+  let tenantAccountingProvisioningService: Record<string, jest.Mock>;
   let service: TenantProvisioningService;
 
   beforeEach(() => {
@@ -53,6 +55,7 @@ describe('TenantProvisioningService', () => {
     tenantConfigProvisioningService = mockService(['ensureTenantConfig']);
     tenantPaymentsProvisioningService = mockService([
       'ensurePayments',
+      'ensureReservationPaymentSupport',
       'ensureOwnerStatements',
     ]);
     tenantExpensesProvisioningService = mockService([
@@ -83,12 +86,18 @@ describe('TenantProvisioningService', () => {
       'ensureShortTermFields',
       'ensurePropertyAvailability',
       'ensureReservations',
+      'ensureReservationOverlapGuard',
+      'ensureReviews',
+      'ensureSeasonRules',
+      'ensureHousekeepingTasks',
+      'ensureCalendarSync',
     ]);
     tenantPropertiesProvisioningService = mockService([
       'ensureProperties',
       'ensurePropertyColumns',
       'migrateImagesToJson',
       'ensurePropertyLeads',
+      'ensurePropertyViewLogs',
       'ensurePropertyOwnersUniqueness',
       'ensureRentalOwnerBankFields',
       'ensurePropertyCatalog',
@@ -114,6 +123,7 @@ describe('TenantProvisioningService', () => {
       'ensureTenantWebsite',
       'ensureWebsiteContacts',
     ]);
+    tenantAccountingProvisioningService = mockService(['ensureAccounting']);
 
     service = new TenantProvisioningService(
       tenantSchemaService as unknown as TenantSchemaService,
@@ -132,6 +142,7 @@ describe('TenantProvisioningService', () => {
       tenantEmployeesProvisioningService as unknown as TenantEmployeesProvisioningService,
       tenantAuditComplianceProvisioningService as unknown as TenantAuditComplianceProvisioningService,
       tenantWebsiteProvisioningService as unknown as TenantWebsiteProvisioningService,
+      tenantAccountingProvisioningService as unknown as TenantAccountingProvisioningService,
     );
   });
 
@@ -175,9 +186,12 @@ describe('TenantProvisioningService', () => {
     ).toHaveBeenCalledWith(schemaName);
     expect(
       tenantConfigProvisioningService.ensureTenantConfig,
-    ).toHaveBeenCalledWith(schemaName, TenantCountry.GT);
+    ).toHaveBeenCalledWith(schemaName, TenantCountry.GT, undefined);
     expect(
       tenantApplicationsProvisioningService.ensureScreeningChecklist,
+    ).toHaveBeenCalledWith(schemaName);
+    expect(
+      tenantPropertiesProvisioningService.ensurePropertyViewLogs,
     ).toHaveBeenCalledWith(schemaName);
     expect(tenantUnitsProvisioningService.ensureUnits).toHaveBeenCalledWith(
       schemaName,
@@ -202,6 +216,9 @@ describe('TenantProvisioningService', () => {
     ).toHaveBeenCalledWith(schemaName);
     expect(
       tenantWebsiteProvisioningService.ensureWebsiteContacts,
+    ).toHaveBeenCalledWith(schemaName);
+    expect(
+      tenantAccountingProvisioningService.ensureAccounting,
     ).toHaveBeenCalledWith(schemaName);
     expect(
       tenantPropertiesProvisioningService.seedPropertyTypesAndSubtypes,
@@ -266,6 +283,12 @@ describe('TenantProvisioningService', () => {
     ).toHaveBeenCalledWith(schemaName);
     expect(
       tenantPropertiesProvisioningService.ensurePropertyCatalog,
+    ).toHaveBeenCalledWith(schemaName);
+    expect(
+      tenantPropertiesProvisioningService.ensurePropertyViewLogs,
+    ).toHaveBeenCalledWith(schemaName);
+    expect(
+      tenantAccountingProvisioningService.ensureAccounting,
     ).toHaveBeenCalledWith(schemaName);
   });
 });

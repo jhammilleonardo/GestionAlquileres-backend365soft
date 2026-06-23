@@ -7,9 +7,12 @@ export class PropertyPublicCatalogQueryService {
   buildWhereClause(
     filters: FilterCatalogPropertiesDto,
     schemaPrefix = '',
+    allowNonPublicStatus = false,
   ): PublicCatalogWhereClause {
     let whereSql = 'WHERE p.status = $1';
-    const params: unknown[] = [filters.status || 'DISPONIBLE'];
+    const params: unknown[] = [
+      allowNonPublicStatus ? filters.status || 'DISPONIBLE' : 'DISPONIBLE',
+    ];
     let paramIndex = 2;
 
     if (filters.type) {
@@ -66,7 +69,6 @@ export class PropertyPublicCatalogQueryService {
           FROM ${schemaPrefix}property_addresses pa_search
           WHERE pa_search.property_id = p.id
             AND (
-              LOWER(pa_search.street_address) ILIKE LOWER($${paramIndex}) OR
               LOWER(pa_search.city) ILIKE LOWER($${paramIndex}) OR
               LOWER(pa_search.state) ILIKE LOWER($${paramIndex})
             )

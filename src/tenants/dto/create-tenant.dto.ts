@@ -7,6 +7,7 @@ import {
   Matches,
 } from 'class-validator';
 import { TENANT_SLUG_REGEX } from '../../common/utils/tenant-slug';
+import { RentalType } from '../../units/enums/rental-type.enum';
 
 export enum TenantCountry {
   US = 'US',
@@ -31,6 +32,12 @@ export class CreateTenantDto {
   @IsEnum(TenantCountry)
   @IsNotEmpty()
   country: TenantCountry;
+
+  // Modo de operación elegido al registrar. Si se omite, el provisioning usa el
+  // default por país. No se persiste en la entidad Tenant: vive en tenant_config.
+  @IsEnum(RentalType)
+  @IsOptional()
+  rental_type?: RentalType;
 
   @IsString()
   @IsOptional()

@@ -1,13 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
 import {
   IPaymentProcessor,
   ProcessorPaymentInput,
   ProcessorResult,
   WebhookResult,
 } from './payment-processor.interface';
+import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
 
 /** Tarifa PayPal: 3.49% + $0.49 (pagos internacionales estándar) */
 const PAYPAL_FEE_PERCENT = 0.0349;
@@ -59,7 +58,7 @@ export class PayPalProcessor implements IPaymentProcessor {
 
   constructor(
     private readonly config: ConfigService,
-    private readonly httpService: HttpService,
+    private readonly httpService: SafeHttpClientService,
   ) {
     this.baseUrl = this.config.get<string>(
       'PAYPAL_BASE_URL',
@@ -75,18 +74,16 @@ export class PayPalProcessor implements IPaymentProcessor {
       `${this.clientId}:${this.clientSecret}`,
     ).toString('base64');
 
-    const resp = await firstValueFrom(
-      this.httpService.post<PayPalTokenResponse>(
-        `${this.baseUrl}/v1/oauth2/token`,
-        'grant_type=client_credentials',
-        {
-          headers: {
-            Authorization: `Basic ${credentials}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          timeout: 15000,
+    const resp = await this.httpService.post<PayPalTokenResponse>(
+      `${this.baseUrl}/v1/oauth2/token`,
+      'grant_type=client_credentials',
+      {
+        headers: {
+          Authorization: `Basic ${credentials}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
-      ),
+        timeout: 15000,
+      },
     );
 
     return resp.data.access_token;
@@ -99,31 +96,29 @@ export class PayPalProcessor implements IPaymentProcessor {
 
     const token = await this.getAccessToken();
 
-    const resp = await firstValueFrom(
-      this.httpService.post<PayPalOrderResponse>(
-        `${this.baseUrl}/v2/checkout/orders`,
-        {
-          intent: 'CAPTURE',
-          purchase_units: [
-            {
-              amount: {
-                currency_code: input.currency.toUpperCase(),
-                value: input.amount.toFixed(2),
-              },
-              description: input.notes ?? `Pago contrato #${input.contractId}`,
-              custom_id: String(input.contractId),
-              reference_id: input.reference_number ?? `REF-${input.contractId}`,
+    const resp = await this.httpService.post<PayPalOrderResponse>(
+      `${this.baseUrl}/v2/checkout/orders`,
+      {
+        intent: 'CAPTURE',
+        purchase_units: [
+          {
+            amount: {
+              currency_code: input.currency.toUpperCase(),
+              value: input.amount.toFixed(2),
             },
-          ],
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            description: input.notes ?? `Pago contrato #${input.contractId}`,
+            custom_id: String(input.contractId),
+            reference_id: input.reference_number ?? `REF-${input.contractId}`,
           },
-          timeout: 30000,
+        ],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-      ),
+        timeout: 30000,
+      },
     );
 
     const orderId = resp.data.id;
@@ -142,18 +137,16 @@ export class PayPalProcessor implements IPaymentProcessor {
   async confirmPayment(transactionId: string): Promise<ProcessorResult> {
     const token = await this.getAccessToken();
 
-    const resp = await firstValueFrom(
-      this.httpService.post<PayPalCaptureResponse>(
-        `${this.baseUrl}/v2/checkout/orders/${transactionId}/capture`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 30000,
+    const resp = await this.httpService.post<PayPalCaptureResponse>(
+      `${this.baseUrl}/v2/checkout/orders/${transactionId}/capture`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-      ),
+        timeout: 30000,
+      },
     );
 
     const status = resp.data.status;
@@ -174,23 +167,21 @@ export class PayPalProcessor implements IPaymentProcessor {
   ): Promise<ProcessorResult> {
     const token = await this.getAccessToken();
 
-    const resp = await firstValueFrom(
-      this.httpService.post<PayPalRefundResponse>(
-        `${this.baseUrl}/v2/payments/captures/${captureId}/refund`,
-        {
-          amount: {
-            value: amount.toFixed(2),
-            currency_code: 'USD',
-          },
+    const resp = await this.httpService.post<PayPalRefundResponse>(
+      `${this.baseUrl}/v2/payments/captures/${captureId}/refund`,
+      {
+        amount: {
+          value: amount.toFixed(2),
+          currency_code: 'USD',
         },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 30000,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-      ),
+        timeout: 30000,
+      },
     );
 
     const refundStatus = resp.data.status;
@@ -214,6 +205,13 @@ export class PayPalProcessor implements IPaymentProcessor {
   ): Promise<WebhookResult> {
     if (this.webhookId && signature) {
       await this.verifyPayPalWebhook(payload, signature);
+    } else if (this.config.get<string>('NODE_ENV') === 'production') {
+      // En producción no se procesa un webhook sin verificar: faltaría
+      // PAYPAL_WEBHOOK_ID o la firma, lo que permitiría eventos forjados.
+      this.logger.error(
+        'PayPal webhook rechazado: falta PAYPAL_WEBHOOK_ID o cabeceras de firma',
+      );
+      throw new BadRequestException('PayPal webhook: no verificable');
     }
 
     const event = payload as Record<string, unknown>;
@@ -228,6 +226,8 @@ export class PayPalProcessor implements IPaymentProcessor {
         return {
           event_id: eventId,
           transaction_id: resource.id as string,
+          reference_number: this.webhookReference(resource),
+          ...this.webhookMoney(resource),
           status: 'APPROVED',
           raw_event: payload,
         };
@@ -236,6 +236,8 @@ export class PayPalProcessor implements IPaymentProcessor {
         return {
           event_id: eventId,
           transaction_id: resource.id as string,
+          reference_number: this.webhookReference(resource),
+          ...this.webhookMoney(resource),
           status: 'FAILED',
           raw_event: payload,
         };
@@ -243,13 +245,39 @@ export class PayPalProcessor implements IPaymentProcessor {
         return {
           event_id: eventId,
           transaction_id: resource.id as string,
-          status: 'APPROVED',
+          status: 'REFUNDED',
           raw_event: payload,
         };
       default:
         this.logger.debug(`PayPal webhook: evento no manejado — ${eventType}`);
-        return { event_id: eventId, status: 'APPROVED', raw_event: payload };
+        return { event_id: eventId, status: 'IGNORED', raw_event: payload };
     }
+  }
+
+  private webhookMoney(resource: Record<string, unknown>): {
+    amount?: number;
+    currency?: string;
+  } {
+    const amount = resource.amount as
+      | { value?: unknown; currency_code?: unknown }
+      | undefined;
+    const value = Number(amount?.value);
+    return {
+      amount: Number.isFinite(value) ? value : undefined,
+      currency:
+        typeof amount?.currency_code === 'string'
+          ? amount.currency_code.toUpperCase()
+          : undefined,
+    };
+  }
+
+  private webhookReference(
+    resource: Record<string, unknown>,
+  ): string | undefined {
+    const reference = resource.invoice_id ?? resource.custom_id;
+    return typeof reference === 'string' && reference.trim()
+      ? reference.trim()
+      : undefined;
   }
 
   private async verifyPayPalWebhook(
@@ -259,26 +287,33 @@ export class PayPalProcessor implements IPaymentProcessor {
     const token = await this.getAccessToken();
     const headers = JSON.parse(headersJson) as Record<string, string>;
 
-    await firstValueFrom(
-      this.httpService.post(
-        `${this.baseUrl}/v1/notifications/verify-webhook-signature`,
-        {
-          auth_algo: headers['paypal-auth-algo'],
-          cert_url: headers['paypal-cert-url'],
-          transmission_id: headers['paypal-transmission-id'],
-          transmission_sig: headers['paypal-transmission-sig'],
-          transmission_time: headers['paypal-transmission-time'],
-          webhook_id: this.webhookId,
-          webhook_event: payload,
+    const response = await this.httpService.post<{
+      verification_status?: string;
+    }>(
+      `${this.baseUrl}/v1/notifications/verify-webhook-signature`,
+      {
+        auth_algo: headers['paypal-auth-algo'],
+        cert_url: headers['paypal-cert-url'],
+        transmission_id: headers['paypal-transmission-id'],
+        transmission_sig: headers['paypal-transmission-sig'],
+        transmission_time: headers['paypal-transmission-time'],
+        webhook_id: this.webhookId,
+        webhook_event: payload,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 15000,
-        },
-      ),
+        timeout: 15000,
+      },
     );
+
+    // PayPal responde { verification_status: 'SUCCESS' | 'FAILURE' }. Sin esta
+    // comprobación la verificación era un no-op: el evento se procesaba igual.
+    if (response.data?.verification_status !== 'SUCCESS') {
+      this.logger.error('PayPal webhook: verificación de firma fallida');
+      throw new BadRequestException('PayPal webhook: firma inválida');
+    }
   }
 }

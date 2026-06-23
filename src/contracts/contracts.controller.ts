@@ -34,8 +34,9 @@ import { UpdateContractDto } from './dto/update-contract.dto';
 import { RenewContractDto } from './dto/renew-contract.dto';
 import { SignContractDto } from './dto/sign-contract.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
+import { OptionalPositiveIntPipe } from '../common/pipes/optional-positive-int.pipe';
 import { ContractStatus } from './enums/contract-status.enum';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 import type { ContractMetrics } from './contract-queries.service';
@@ -51,12 +52,12 @@ import {
 @ApiTags('Contracts - Admin')
 @ApiBearerAuth()
 @Controller(':slug/admin/contracts')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'EMPLEADO')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminContractsController {
   constructor(private readonly contractsService: ContractsService) {}
 
   @Get('dashboard')
+  @RequirePermission('contracts', 'view')
   @ApiOperation({ summary: 'Obtener métricas de contratos del tenant' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiOkResponse({ type: ContractMetricsResponseDto })
@@ -66,6 +67,7 @@ export class AdminContractsController {
   }
 
   @Get()
+  @RequirePermission('contracts', 'view')
   @ApiOperation({ summary: 'Listar contratos del tenant como administrador' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiQuery({ name: 'status', enum: ContractStatus, required: false })
@@ -75,24 +77,21 @@ export class AdminContractsController {
   async findAll(
     @Param('slug') slug: string,
     @Query('status') status?: ContractStatus,
-    @Query('tenant_id') tenant_id?: string,
-    @Query('property_id') property_id?: string,
+    @Query('tenant_id', OptionalPositiveIntPipe) tenantId?: number,
+    @Query('property_id', OptionalPositiveIntPipe) propertyId?: number,
   ): Promise<ContractResult[]> {
-    const parsedTenantId = tenant_id ? parseInt(tenant_id, 10) : undefined;
-    const parsedPropertyId = property_id
-      ? parseInt(property_id, 10)
-      : undefined;
     return this.contractsService.findAll(
       {
         status,
-        tenant_id: parsedTenantId,
-        property_id: parsedPropertyId,
+        tenant_id: tenantId,
+        property_id: propertyId,
       },
       slug,
     );
   }
 
   @Post()
+  @RequirePermission('contracts', 'create')
   @ApiOperation({ summary: 'Crear contrato manualmente como administrador' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiBody({ type: CreateContractDto })
@@ -110,6 +109,7 @@ export class AdminContractsController {
   }
 
   @Patch(':id/status')
+  @RequirePermission('contracts', 'edit')
   @ApiOperation({ summary: 'Actualizar estado de un contrato' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -134,6 +134,7 @@ export class AdminContractsController {
   }
 
   @Get(':id/pdf')
+  @RequirePermission('contracts', 'view')
   @ApiOperation({ summary: 'Descargar PDF de contrato como administrador' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -162,6 +163,7 @@ export class AdminContractsController {
   }
 
   @Get(':id/pdf-url')
+  @RequirePermission('contracts', 'view')
   @ApiOperation({ summary: 'Generar u obtener URL del PDF del contrato' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -181,6 +183,7 @@ export class AdminContractsController {
   }
 
   @Post(':id/renew')
+  @RequirePermission('contracts', 'edit')
   @ApiOperation({ summary: 'Renovar contrato activo o por vencer' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -201,6 +204,7 @@ export class AdminContractsController {
   }
 
   @Get(':id/history')
+  @RequirePermission('contracts', 'view')
   @ApiOperation({ summary: 'Obtener historial cronológico de renovaciones' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -214,6 +218,7 @@ export class AdminContractsController {
   }
 
   @Patch(':id')
+  @RequirePermission('contracts', 'edit')
   @ApiOperation({ summary: 'Actualizar datos de contrato' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -237,6 +242,7 @@ export class AdminContractsController {
   }
 
   @Get(':id')
+  @RequirePermission('contracts', 'view')
   @ApiOperation({ summary: 'Obtener detalle de contrato como administrador' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })

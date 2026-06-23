@@ -3,9 +3,9 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { of, throwError } from 'rxjs';
+import { firstValueFrom, of, throwError, type Observable } from 'rxjs';
 import { QrProviderService } from './qr-provider.service';
+import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
 
 describe('QrProviderService', () => {
   let service: QrProviderService;
@@ -29,7 +29,10 @@ describe('QrProviderService', () => {
     httpService = {
       post: jest.fn(),
     };
-    service = new QrProviderService(httpService as unknown as HttpService);
+    service = new QrProviderService({
+      post: (...args: unknown[]) =>
+        firstValueFrom(httpService.post(...args) as Observable<unknown>),
+    } as unknown as SafeHttpClientService);
   });
 
   afterEach(() => {

@@ -18,8 +18,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { violationMulterConfig } from '../common/utils/multer.config';
+import { assertUploadedFilesMatchContent } from '../common/utils/upload-content-validation';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -112,6 +114,7 @@ export class ViolationsController {
   }
 
   @Post(':id/upload')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @RequirePermission('violations', 'edit')
   @ApiOperation({ summary: 'Subir fotos de evidencia (máx. 5, 10MB c/u)' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
@@ -139,6 +142,7 @@ export class ViolationsController {
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron archivos');
     }
+    await assertUploadedFilesMatchContent(files);
     const evidence_photos = await this.violationsService.addEvidencePhotos(
       id,
       files,

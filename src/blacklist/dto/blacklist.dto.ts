@@ -5,6 +5,7 @@ import {
   IsOptional,
   Length,
   MinLength,
+  MaxLength,
 } from 'class-validator';
 import { DocumentType } from '../enums/blacklist.enum';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -49,6 +50,7 @@ export class AddToBlacklistDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(10)
+  @MaxLength(2000)
   reason: string;
 }
 
@@ -63,6 +65,7 @@ export class CheckBlacklistDto {
   })
   @IsString()
   @IsNotEmpty()
+  @Length(5, 50)
   document_number: string;
 
   @ApiPropertyOptional({

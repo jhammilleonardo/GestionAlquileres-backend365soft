@@ -5,6 +5,7 @@ export interface PaymentStatusRow {
   id: number;
   tenant_id: number;
   property_id: number;
+  reservation_id?: number | null;
   amount: string | number;
   currency: string;
   payment_date: string | Date;

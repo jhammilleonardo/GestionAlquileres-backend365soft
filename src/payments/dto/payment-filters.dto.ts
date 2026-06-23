@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsNumber,
   Min,
+  Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -87,6 +88,7 @@ export class PaymentFiltersDto {
   @IsNumber()
   @Type(() => Number)
   @Min(1)
+  @Max(500)
   @IsOptional()
   limit?: number = 50;
 

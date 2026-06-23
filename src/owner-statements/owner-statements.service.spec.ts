@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
 import { OwnerStatementsService } from './owner-statements.service';
 import { OwnerStatementPdfService } from './owner-statement-pdf.service';
 import {
@@ -47,6 +48,12 @@ describe('OwnerStatementsService', () => {
         OwnerStatementsService,
         OwnerStatementPdfService,
         { provide: getDataSourceToken(), useValue: mockDataSource },
+        {
+          provide: AccountingOutboxService,
+          useValue: {
+            enqueue: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

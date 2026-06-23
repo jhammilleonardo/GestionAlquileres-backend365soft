@@ -50,7 +50,7 @@ describe('EmployeesController', () => {
         message: 'Acceso del empleado con ID 1 desactivado correctamente',
       });
 
-      const result = await controller.remove('1', mockTenant, {
+      const result = await controller.remove(1, mockTenant, {
         user: { userId: 0 },
       });
 

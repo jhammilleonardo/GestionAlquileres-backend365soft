@@ -32,6 +32,8 @@ export interface OwnerPropertyDto {
   country: string;
   current_tenant_name: string | null;
   current_tenant_email: string | null;
+  current_tenant_phone: string | null;
+  contract_number: string | null;
   contract_status: string | null;
   contract_end_date: string | null;
 }
@@ -57,12 +59,16 @@ export interface OwnerMaintenanceDto {
   ticket_number: string;
   title: string;
   description: string;
+  category: string | null;
   status: string;
   priority: string;
   current_stage: string;
   owner_authorized: boolean;
   property_id: number;
   property_title: string;
+  technician_name: string | null;
+  due_date: string | null;
+  completed_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -79,7 +85,7 @@ export interface OwnerContractDto {
   property_title: string;
   tenant_name: string;
   is_signed: boolean;
-  pdf_url: string;
+  pdf_url: string | null;
 }
 
 interface OwnerStatementPdfRow {
@@ -133,13 +139,13 @@ export class OwnerPortalService {
         [rentalOwnerId],
       ),
 
-      // Cantidad de inquilinos con contrato activo en sus propiedades
+      // Cantidad de inquilinos con contrato vigente en sus propiedades
       this.dataSource.query<{ count: string; currency: string }[]>(
         `SELECT COUNT(DISTINCT c.tenant_id)::int AS count
            FROM property_owners po
            JOIN contracts c ON c.property_id = po.property_id
            WHERE po.rental_owner_id = $1
-             AND c.status IN ('ACTIVO', 'POR_VENCER')`,
+             AND c.status IN ('ACTIVO', 'POR_VENCER', 'RENOVADO')`,
         [rentalOwnerId],
       ),
 
@@ -201,14 +207,30 @@ export class OwnerPortalService {
          COALESCE(pa.country, '')        AS country,
          u.name                          AS current_tenant_name,
          u.email                         AS current_tenant_email,
+         u.phone                         AS current_tenant_phone,
+         c.contract_number               AS contract_number,
          c.status                        AS contract_status,
          c.end_date::text                AS contract_end_date
        FROM property_owners po
        JOIN properties p ON p.id = po.property_id
        LEFT JOIN property_addresses pa
               ON pa.property_id = p.id AND pa.address_type = 'address_1'
-       LEFT JOIN contracts c
-              ON c.property_id = p.id AND c.status IN ('ACTIVO', 'POR_VENCER')
+       -- Contrato vigente más relevante: prioriza ACTIVO/POR_VENCER, pero cae a
+       -- RENOVADO para no dejar una propiedad ocupada sin inquilino visible.
+       LEFT JOIN LATERAL (
+         SELECT ct.contract_number, ct.status, ct.end_date, ct.tenant_id
+         FROM contracts ct
+         WHERE ct.property_id = p.id
+           AND ct.status IN ('ACTIVO', 'POR_VENCER', 'RENOVADO')
+         ORDER BY
+           CASE ct.status
+             WHEN 'ACTIVO' THEN 0
+             WHEN 'POR_VENCER' THEN 1
+             ELSE 2
+           END,
+           ct.start_date DESC
+         LIMIT 1
+       ) c ON true
        LEFT JOIN "user" u ON u.id = c.tenant_id
        WHERE po.rental_owner_id = $1
        ORDER BY p.id, po.is_primary DESC, p.title ASC`,
@@ -330,17 +352,22 @@ export class OwnerPortalService {
          mr.ticket_number,
          mr.title,
          mr.description,
+         mr.category,
          mr.status,
          mr.priority,
          mr.current_stage,
          mr.owner_authorized,
          mr.property_id,
          p.title AS property_title,
+         tech.name AS technician_name,
+         mr.due_date::text AS due_date,
+         mr.completed_at,
          mr.created_at,
          mr.updated_at
        FROM maintenance_requests mr
        JOIN property_owners po ON po.property_id = mr.property_id
        JOIN properties p ON p.id = mr.property_id
+       LEFT JOIN "user" tech ON tech.id = mr.assigned_to
        WHERE po.rental_owner_id = $1
          AND mr.status IN ('NEW', 'IN_PROGRESS')
        ORDER BY mr.updated_at DESC`,
@@ -388,10 +415,7 @@ export class OwnerPortalService {
     );
   }
 
-  /**
-   * Contratos firmados con PDF disponible en propiedades del propietario.
-   * Solo muestra contratos con is_signed = true y pdf_url IS NOT NULL.
-   */
+  /** Contratos firmados y con PDF disponible en propiedades del propietario. */
   async getContracts(rentalOwnerId: number): Promise<OwnerContractDto[]> {
     return this.dataSource.query<OwnerContractDto[]>(
       `SELECT
@@ -414,7 +438,8 @@ export class OwnerPortalService {
        WHERE po.rental_owner_id = $1
          AND c.is_signed = true
          AND c.pdf_url IS NOT NULL
-       ORDER BY c.end_date DESC`,
+         AND c.pdf_url <> ''
+       ORDER BY c.start_date DESC, c.id DESC`,
       [rentalOwnerId],
     );
   }

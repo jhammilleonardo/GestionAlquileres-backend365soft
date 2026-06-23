@@ -1,14 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import {
   IPaymentProcessor,
   ProcessorPaymentInput,
   ProcessorResult,
   WebhookResult,
 } from './payment-processor.interface';
+import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
 
 /** Códigos de estado IPN de PayU */
 const PAYU_STATE_APPROVED = '4';
@@ -58,7 +57,7 @@ export class PayUProcessor implements IPaymentProcessor {
 
   constructor(
     private readonly config: ConfigService,
-    private readonly httpService: HttpService,
+    private readonly httpService: SafeHttpClientService,
   ) {
     this.baseUrl = this.config.get<string>(
       'PAYU_BASE_URL',
@@ -99,56 +98,50 @@ export class PayUProcessor implements IPaymentProcessor {
     const signature = this.buildSignature(referenceCode, amountStr, currency);
     const isTest = this.config.get<string>('NODE_ENV') !== 'production';
 
-    const resp = await firstValueFrom(
-      this.httpService.post<PayUSubmitTransactionResponse>(
-        this.baseUrl,
-        {
-          language: 'es',
-          command: 'SUBMIT_TRANSACTION',
-          merchant: { apiLogin: this.apiLogin, apiKey: this.apiKey },
-          transaction: {
-            order: {
-              accountId: this.accountId,
-              referenceCode,
-              description: input.notes ?? `Pago contrato #${input.contractId}`,
-              language: 'es',
-              signature,
-              additionalValues: {
-                TX_VALUE: { value: Number(amountStr), currency },
-              },
+    const resp = await this.httpService.post<PayUSubmitTransactionResponse>(
+      this.baseUrl,
+      {
+        language: 'es',
+        command: 'SUBMIT_TRANSACTION',
+        merchant: { apiLogin: this.apiLogin, apiKey: this.apiKey },
+        transaction: {
+          order: {
+            accountId: this.accountId,
+            referenceCode,
+            description: input.notes ?? `Pago contrato #${input.contractId}`,
+            language: 'es',
+            signature,
+            additionalValues: {
+              TX_VALUE: { value: Number(amountStr), currency },
             },
-            type: 'AUTHORIZATION_AND_CAPTURE',
-            paymentMethod: this.metadataString(
-              input.metadata,
-              'paymentMethod',
-              'CARD',
-            ),
-            paymentCountry: this.metadataString(
-              input.metadata,
-              'country',
-              'GT',
-            ),
-            ipAddress: this.metadataString(
-              input.metadata,
-              'ipAddress',
-              '127.0.0.1',
-            ),
-            userAgent: this.metadataString(
-              input.metadata,
-              'userAgent',
-              '365Soft/1.0',
-            ),
           },
-          test: isTest,
+          type: 'AUTHORIZATION_AND_CAPTURE',
+          paymentMethod: this.metadataString(
+            input.metadata,
+            'paymentMethod',
+            'CARD',
+          ),
+          paymentCountry: this.metadataString(input.metadata, 'country', 'GT'),
+          ipAddress: this.metadataString(
+            input.metadata,
+            'ipAddress',
+            '127.0.0.1',
+          ),
+          userAgent: this.metadataString(
+            input.metadata,
+            'userAgent',
+            '365Soft/1.0',
+          ),
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          timeout: 30000,
+        test: isTest,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
-      ),
+        timeout: 30000,
+      },
     );
 
     const txnResponse = resp.data.transactionResponse;
@@ -198,24 +191,22 @@ export class PayUProcessor implements IPaymentProcessor {
     const reportsUrl = this.baseUrl.replace('payments-api', 'reports-api');
     const isTest = this.config.get<string>('NODE_ENV') !== 'production';
 
-    const resp = await firstValueFrom(
-      this.httpService.post<PayUReportResponse>(
-        reportsUrl,
-        {
-          language: 'es',
-          command: 'TRANSACTION_RESPONSE_DETAIL',
-          merchant: { apiLogin: this.apiLogin, apiKey: this.apiKey },
-          details: { transactionId },
-          test: isTest,
+    const resp = await this.httpService.post<PayUReportResponse>(
+      reportsUrl,
+      {
+        language: 'es',
+        command: 'TRANSACTION_RESPONSE_DETAIL',
+        merchant: { apiLogin: this.apiLogin, apiKey: this.apiKey },
+        details: { transactionId },
+        test: isTest,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          timeout: 15000,
-        },
-      ),
+        timeout: 15000,
+      },
     );
 
     const state = resp.data.result?.payload?.state ?? '';
@@ -239,28 +230,26 @@ export class PayUProcessor implements IPaymentProcessor {
   ): Promise<ProcessorResult> {
     const isTest = this.config.get<string>('NODE_ENV') !== 'production';
 
-    const resp = await firstValueFrom(
-      this.httpService.post<PayUSubmitTransactionResponse>(
-        this.baseUrl,
-        {
-          language: 'es',
-          command: 'SUBMIT_TRANSACTION',
-          merchant: { apiLogin: this.apiLogin, apiKey: this.apiKey },
-          transaction: {
-            parentTransactionId: transactionId,
-            type: 'REFUND',
-            reason: `Reembolso de ${amount}`,
-          },
-          test: isTest,
+    const resp = await this.httpService.post<PayUSubmitTransactionResponse>(
+      this.baseUrl,
+      {
+        language: 'es',
+        command: 'SUBMIT_TRANSACTION',
+        merchant: { apiLogin: this.apiLogin, apiKey: this.apiKey },
+        transaction: {
+          parentTransactionId: transactionId,
+          type: 'REFUND',
+          reason: `Reembolso de ${amount}`,
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          timeout: 30000,
+        test: isTest,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
-      ),
+        timeout: 30000,
+      },
     );
 
     const txnResponse = resp.data.transactionResponse;
@@ -283,19 +272,35 @@ export class PayUProcessor implements IPaymentProcessor {
    * Procesa la notificación IPN de PayU (application/x-www-form-urlencoded).
    * Verifica la firma antes de actualizar el estado del pago.
    */
-  handleWebhook(payload: unknown, signature?: string): Promise<WebhookResult> {
+  async handleWebhook(
+    payload: unknown,
+    signature?: string,
+  ): Promise<WebhookResult> {
     void signature;
 
     const body = payload as Record<string, string>;
     const statePol = body.state_pol ?? '';
-    const transactionId = body.transaction_id ?? body.reference_pol ?? '';
-    const eventId = `payu:${transactionId}:${statePol}:${body.reference_pol ?? ''}`;
+    const transactionId = body.transaction_id ?? '';
+    const referenceNumber = body.reference_sale ?? body.reference_pol ?? '';
+    const amount = Number(body.amount_pol);
+    const currency = (body.currency ?? '').toUpperCase();
+    const eventId = `${transactionId}:${statePol}:${referenceNumber}`;
 
     if (!this.verifyIpnSignature(body)) {
       this.logger.warn(
         `PayU IPN: firma inválida para referencia ${body.reference_pol}`,
       );
-      return Promise.resolve({ status: 'FAILED', raw_event: payload });
+      throw new BadRequestException('PayU IPN: firma inválida');
+    }
+
+    if (
+      !transactionId ||
+      !referenceNumber ||
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !/^[A-Z]{3}$/.test(currency)
+    ) {
+      throw new BadRequestException('PayU IPN: campos obligatorios inválidos');
     }
 
     this.logger.log(
@@ -306,6 +311,9 @@ export class PayUProcessor implements IPaymentProcessor {
       return Promise.resolve({
         event_id: eventId,
         transaction_id: transactionId,
+        reference_number: referenceNumber,
+        amount,
+        currency,
         status: 'APPROVED',
         raw_event: payload,
       });
@@ -314,6 +322,9 @@ export class PayUProcessor implements IPaymentProcessor {
       return Promise.resolve({
         event_id: eventId,
         transaction_id: transactionId,
+        reference_number: referenceNumber,
+        amount,
+        currency,
         status: 'FAILED',
         raw_event: payload,
       });
@@ -322,15 +333,17 @@ export class PayUProcessor implements IPaymentProcessor {
       return Promise.resolve({
         event_id: eventId,
         transaction_id: transactionId,
-        status: 'APPROVED',
+        reference_number: referenceNumber,
+        amount,
+        currency,
+        status: 'PROCESSING',
         raw_event: payload,
       });
     }
 
     return Promise.resolve({
       event_id: eventId,
-      transaction_id: transactionId,
-      status: 'APPROVED',
+      status: 'IGNORED',
       raw_event: payload,
     });
   }
@@ -343,13 +356,24 @@ export class PayUProcessor implements IPaymentProcessor {
   private verifyIpnSignature(body: Record<string, string>): boolean {
     const { reference_pol, amount_pol, currency, state_pol, sign } = body;
 
-    // En sandbox la firma puede no enviarse
-    if (!sign) return true;
+    // PayU sandbox puede no enviar firma; en producción se exige siempre para
+    // no aceptar un IPN forjado sin firma como pago aprobado.
+    if (!sign) {
+      return ['development', 'test'].includes(
+        this.config.get<string>('NODE_ENV', 'development'),
+      );
+    }
 
     const rawAmount = Number(amount_pol ?? 0).toFixed(1);
-    const raw = `${this.apiKey}~${this.merchantId}~${reference_pol}~${rawAmount}~${currency}~${state_pol}`;
+    const merchantReference = body.reference_sale ?? reference_pol ?? '';
+    const raw = `${this.apiKey}~${this.merchantId}~${merchantReference}~${rawAmount}~${currency}~${state_pol}`;
     const expected = createHash('md5').update(raw).digest('hex');
 
-    return expected === sign;
+    const expectedBuffer = Buffer.from(expected, 'utf8');
+    const receivedBuffer = Buffer.from(sign.toLowerCase(), 'utf8');
+    return (
+      expectedBuffer.length === receivedBuffer.length &&
+      timingSafeEqual(expectedBuffer, receivedBuffer)
+    );
   }
 }

@@ -67,11 +67,33 @@ export class StorageController {
   }
 
   // ──────────────────────────────────────────────────────────────
+  // Público: logo e imagen de fondo del portal (branding del tenant)
+  // ──────────────────────────────────────────────────────────────
+  @Get('branding/:slug/:filename')
+  serveBrandingImage(
+    @Param('slug') slug: string,
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    this.assertSafeSlug(slug);
+    this.assertSafeFilename(filename);
+
+    // Branding es público — permitir carga cross-origin desde el frontend
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+    return this.sendFile(
+      res,
+      this.storageService.buildStoragePath('branding', slug, filename),
+      'public',
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────
   // Privado: archivos de mantenimiento
   // ──────────────────────────────────────────────────────────────
   @Get('maintenance/:slug/:requestId/:filename')
   @UseGuards(JwtAuthGuard)
-  serveMaintenanceFile(
+  async serveMaintenanceFile(
     @Param('slug') slug: string,
     @Param('requestId') requestId: string,
     @Param('filename') filename: string,
@@ -81,6 +103,7 @@ export class StorageController {
     this.assertTenantOwnership(req, slug);
     this.assertSafeSegment(requestId);
     this.assertSafeFilename(filename);
+    await this.assertMaintenanceFileAccess(req, slug, requestId, filename);
 
     return this.sendFile(
       res,
@@ -96,7 +119,7 @@ export class StorageController {
 
   @Get('maintenance/:slug/:requestId/stage/:filename')
   @UseGuards(JwtAuthGuard)
-  serveMaintenanceStageFile(
+  async serveMaintenanceStageFile(
     @Param('slug') slug: string,
     @Param('requestId') requestId: string,
     @Param('filename') filename: string,
@@ -106,6 +129,13 @@ export class StorageController {
     this.assertTenantOwnership(req, slug);
     this.assertSafeSegment(requestId);
     this.assertSafeFilename(filename);
+    await this.assertMaintenanceFileAccess(
+      req,
+      slug,
+      requestId,
+      filename,
+      true,
+    );
 
     return this.sendFile(
       res,
@@ -125,7 +155,7 @@ export class StorageController {
   // ──────────────────────────────────────────────────────────────
   @Get('receipts/:slug/:filename')
   @UseGuards(JwtAuthGuard)
-  serveReceipt(
+  async serveReceipt(
     @Param('slug') slug: string,
     @Param('filename') filename: string,
     @Req() req: Request,
@@ -133,6 +163,7 @@ export class StorageController {
   ) {
     this.assertTenantOwnership(req, slug);
     this.assertSafeFilename(filename);
+    await this.assertReceiptFileAccess(req, slug, filename);
 
     return this.sendFile(
       res,
@@ -146,7 +177,7 @@ export class StorageController {
   // ──────────────────────────────────────────────────────────────
   @Get('applications/:slug/:applicationId/:filename')
   @UseGuards(JwtAuthGuard)
-  serveApplicationDocument(
+  async serveApplicationDocument(
     @Param('slug') slug: string,
     @Param('applicationId') applicationId: string,
     @Param('filename') filename: string,
@@ -156,6 +187,12 @@ export class StorageController {
     this.assertTenantOwnership(req, slug);
     this.assertSafeSegment(applicationId);
     this.assertSafeFilename(filename);
+    await this.assertApplicationDocumentAccess(
+      req,
+      slug,
+      applicationId,
+      filename,
+    );
 
     return this.sendFile(
       res,
@@ -174,7 +211,7 @@ export class StorageController {
   // ──────────────────────────────────────────────────────────────
   @Get('inspections/:slug/:inspectionId/:filename')
   @UseGuards(JwtAuthGuard)
-  serveInspectionFile(
+  async serveInspectionFile(
     @Param('slug') slug: string,
     @Param('inspectionId') inspectionId: string,
     @Param('filename') filename: string,
@@ -184,6 +221,7 @@ export class StorageController {
     this.assertTenantOwnership(req, slug);
     this.assertSafeSegment(inspectionId);
     this.assertSafeFilename(filename);
+    await this.assertInspectionFileAccess(req, slug, inspectionId, filename);
 
     return this.sendFile(
       res,
@@ -202,7 +240,7 @@ export class StorageController {
   // ──────────────────────────────────────────────────────────────
   @Get('violations/:slug/:violationId/:filename')
   @UseGuards(JwtAuthGuard)
-  serveViolationFile(
+  async serveViolationFile(
     @Param('slug') slug: string,
     @Param('violationId') violationId: string,
     @Param('filename') filename: string,
@@ -212,6 +250,7 @@ export class StorageController {
     this.assertTenantOwnership(req, slug);
     this.assertSafeSegment(violationId);
     this.assertSafeFilename(filename);
+    await this.assertViolationFileAccess(req, slug, violationId, filename);
 
     return this.sendFile(
       res,
@@ -254,7 +293,7 @@ export class StorageController {
   // ──────────────────────────────────────────────────────────────
   @Get('contracts/:slug/:contractId/:filename')
   @UseGuards(JwtAuthGuard)
-  serveContractFile(
+  async serveContractFile(
     @Param('slug') slug: string,
     @Param('contractId') contractId: string,
     @Param('filename') filename: string,
@@ -264,6 +303,7 @@ export class StorageController {
     this.assertTenantOwnership(req, slug);
     this.assertSafeSegment(contractId);
     this.assertSafeFilename(filename);
+    await this.assertContractFileAccess(req, slug, contractId, filename);
 
     return this.sendFile(
       res,
@@ -289,30 +329,327 @@ export class StorageController {
     }
   }
 
+  private async assertMaintenanceFileAccess(
+    req: Request,
+    slug: string,
+    requestId: string,
+    filename: string,
+    isStageFile = false,
+  ): Promise<void> {
+    const user = this.getRequestUser(req);
+    const schema = await this.getTenantSchemaOrThrow(slug);
+    const q = quoteIdent(schema);
+    const resourceId = this.parseNumericSegment(requestId);
+    const fileUrl = isStageFile
+      ? `/storage/maintenance/${slug}/${requestId}/stage/${filename}`
+      : `/storage/maintenance/${slug}/${requestId}/${filename}`;
+
+    const rows = await this.dataSource.query<
+      Array<{
+        tenant_id: number;
+        assigned_to: number | null;
+        vendor_id: number | null;
+        owner_allowed: boolean;
+        file_registered: boolean;
+      }>
+    >(
+      `SELECT
+         mr.tenant_id,
+         mr.assigned_to,
+         mr.vendor_id,
+         EXISTS (
+           SELECT 1
+           FROM ${q}.property_owners po
+           WHERE po.property_id = mr.property_id
+             AND po.rental_owner_id = $3
+         ) AS owner_allowed,
+         EXISTS (
+           SELECT 1
+           FROM ${q}.maintenance_attachments ma
+           WHERE ma.maintenance_request_id = mr.id
+             AND ma.file_url = $2
+         ) AS file_registered
+       FROM ${q}.maintenance_requests mr
+       WHERE mr.id = $1
+       LIMIT 1`,
+      [resourceId, fileUrl, user.rentalOwnerId ?? null],
+    );
+
+    const row = rows[0];
+    if (!row?.file_registered) {
+      throw new ForbiddenException('Not authorized for this file');
+    }
+
+    if (
+      this.isTenantStaff(user.role) ||
+      row.tenant_id === user.userId ||
+      row.assigned_to === user.userId ||
+      (user.vendorId != null && row.vendor_id === user.vendorId) ||
+      row.owner_allowed
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException('Not authorized for this file');
+  }
+
+  private async assertReceiptFileAccess(
+    req: Request,
+    slug: string,
+    filename: string,
+  ): Promise<void> {
+    const user = this.getRequestUser(req);
+    const schema = await this.getTenantSchemaOrThrow(slug);
+    const q = quoteIdent(schema);
+    const storagePath = `storage/receipts/${slug}/${filename}`;
+    const routePath = `/storage/receipts/${slug}/${filename}`;
+
+    const rows = await this.dataSource.query<
+      Array<{
+        tenant_id: number;
+        contract_tenant_id: number | null;
+        owner_allowed: boolean;
+      }>
+    >(
+      `SELECT
+         p.tenant_id,
+         c.tenant_id AS contract_tenant_id,
+         EXISTS (
+           SELECT 1
+           FROM ${q}.property_owners po
+           WHERE po.property_id = p.property_id
+             AND po.rental_owner_id = $3
+         ) AS owner_allowed
+       FROM ${q}.payments p
+       LEFT JOIN ${q}.contracts c ON c.id = p.contract_id
+       WHERE p.proof_file IN ($1, $2)
+          OR p.receipt_file IN ($1, $2)
+       LIMIT 1`,
+      [storagePath, routePath, user.rentalOwnerId ?? null],
+    );
+
+    const row = rows[0];
+    if (
+      row &&
+      (this.isTenantStaff(user.role) ||
+        row.tenant_id === user.userId ||
+        row.contract_tenant_id === user.userId ||
+        row.owner_allowed)
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException('Not authorized for this file');
+  }
+
+  private async assertApplicationDocumentAccess(
+    req: Request,
+    slug: string,
+    applicationId: string,
+    filename: string,
+  ): Promise<void> {
+    const user = this.getRequestUser(req);
+    const schema = await this.getTenantSchemaOrThrow(slug);
+    const q = quoteIdent(schema);
+    const resourceId = this.parseNumericSegment(applicationId);
+    const fileUrl = `/storage/applications/${slug}/${applicationId}/${filename}`;
+
+    const rows = await this.dataSource.query<
+      Array<{ applicant_id: number; file_registered: boolean }>
+    >(
+      `SELECT
+         ra.applicant_id,
+         EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements(COALESCE(ra.documents, '[]'::jsonb)) AS doc
+           WHERE doc->>'url' = $2
+         ) AS file_registered
+       FROM ${q}.rental_applications ra
+       WHERE ra.id = $1
+       LIMIT 1`,
+      [resourceId, fileUrl],
+    );
+
+    const row = rows[0];
+    if (
+      row?.file_registered &&
+      (this.isTenantStaff(user.role) || row.applicant_id === user.userId)
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException('Not authorized for this file');
+  }
+
+  private async assertInspectionFileAccess(
+    req: Request,
+    slug: string,
+    inspectionId: string,
+    filename: string,
+  ): Promise<void> {
+    const user = this.getRequestUser(req);
+    const schema = await this.getTenantSchemaOrThrow(slug);
+    const q = quoteIdent(schema);
+    const resourceId = this.parseNumericSegment(inspectionId);
+    const fileUrl = `/storage/inspections/${slug}/${inspectionId}/${filename}`;
+
+    const rows = await this.dataSource.query<
+      Array<{
+        tenant_id: number | null;
+        inspector_user_id: number | null;
+        created_by: number;
+        owner_allowed: boolean;
+        file_registered: boolean;
+      }>
+    >(
+      `SELECT
+         c.tenant_id,
+         i.inspector_user_id,
+         i.created_by,
+         EXISTS (
+           SELECT 1
+           FROM ${q}.property_owners po
+           WHERE po.property_id = i.property_id
+             AND po.rental_owner_id = $3
+         ) AS owner_allowed,
+         EXISTS (
+           SELECT 1
+           FROM ${q}.inspection_items ii,
+                jsonb_array_elements_text(COALESCE(ii.photos, '[]'::jsonb)) AS photo
+           WHERE ii.inspection_id = i.id
+             AND photo = $2
+         ) AS file_registered
+       FROM ${q}.inspections i
+       LEFT JOIN ${q}.contracts c ON c.id = i.contract_id
+       WHERE i.id = $1
+       LIMIT 1`,
+      [resourceId, fileUrl, user.rentalOwnerId ?? null],
+    );
+
+    const row = rows[0];
+    if (
+      row?.file_registered &&
+      (this.isTenantStaff(user.role) ||
+        row.tenant_id === user.userId ||
+        row.inspector_user_id === user.userId ||
+        row.created_by === user.userId ||
+        row.owner_allowed)
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException('Not authorized for this file');
+  }
+
+  private async assertViolationFileAccess(
+    req: Request,
+    slug: string,
+    violationId: string,
+    filename: string,
+  ): Promise<void> {
+    const user = this.getRequestUser(req);
+    const schema = await this.getTenantSchemaOrThrow(slug);
+    const q = quoteIdent(schema);
+    const resourceId = this.parseNumericSegment(violationId);
+    const fileUrl = `/storage/violations/${slug}/${violationId}/${filename}`;
+
+    const rows = await this.dataSource.query<
+      Array<{
+        tenant_id: number;
+        owner_allowed: boolean;
+        file_registered: boolean;
+      }>
+    >(
+      `SELECT
+         v.tenant_id,
+         EXISTS (
+           SELECT 1
+           FROM ${q}.property_owners po
+           WHERE po.property_id = v.property_id
+             AND po.rental_owner_id = $3
+         ) AS owner_allowed,
+         EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements_text(COALESCE(v.evidence_photos, '[]'::jsonb)) AS photo
+           WHERE photo = $2
+         ) AS file_registered
+       FROM ${q}.violations v
+       WHERE v.id = $1
+       LIMIT 1`,
+      [resourceId, fileUrl, user.rentalOwnerId ?? null],
+    );
+
+    const row = rows[0];
+    if (
+      row?.file_registered &&
+      (this.isTenantStaff(user.role) ||
+        row.tenant_id === user.userId ||
+        row.owner_allowed)
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException('Not authorized for this file');
+  }
+
+  private async assertContractFileAccess(
+    req: Request,
+    slug: string,
+    contractId: string,
+    filename: string,
+  ): Promise<void> {
+    const user = this.getRequestUser(req);
+    const schema = await this.getTenantSchemaOrThrow(slug);
+    const q = quoteIdent(schema);
+    const resourceId = this.parseNumericSegment(contractId);
+    const fileUrl = `/storage/contracts/${slug}/${contractId}/${filename}`;
+
+    const rows = await this.dataSource.query<
+      Array<{
+        tenant_id: number;
+        owner_allowed: boolean;
+        file_registered: boolean;
+      }>
+    >(
+      `SELECT
+         c.tenant_id,
+         EXISTS (
+           SELECT 1
+           FROM ${q}.property_owners po
+           WHERE po.property_id = c.property_id
+             AND po.rental_owner_id = $3
+         ) AS owner_allowed,
+         (c.pdf_url = $2) AS file_registered
+       FROM ${q}.contracts c
+       WHERE c.id = $1
+       LIMIT 1`,
+      [resourceId, fileUrl, user.rentalOwnerId ?? null],
+    );
+
+    const row = rows[0];
+    if (
+      row?.file_registered &&
+      (this.isTenantStaff(user.role) ||
+        row.tenant_id === user.userId ||
+        row.owner_allowed)
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException('Not authorized for this file');
+  }
+
   private async assertMessageFileAccess(
     req: Request,
     slug: string,
     userId: string,
     filename: string,
   ): Promise<void> {
-    const user = (req as TenantRequest).user;
-    if (!user?.userId) {
-      throw new ForbiddenException('Not authorized for this file');
-    }
-
-    const [tenant] = await this.dataSource.query<
-      Array<{ schema_name: string }>
-    >(
-      'SELECT schema_name FROM public.tenant WHERE slug = $1 AND is_active = true',
-      [slug],
-    );
-
-    if (!tenant) {
-      throw new ForbiddenException('Not authorized for this file');
-    }
+    const user = this.getRequestUser(req);
+    const schema = await this.getTenantSchemaOrThrow(slug);
 
     const fileUrl = `/storage/messages/${slug}/${userId}/${filename}`;
-    const q = quoteIdent(tenant.schema_name);
+    const q = quoteIdent(schema);
     const rows = await this.dataSource.query<Array<{ allowed: number }>>(
       `SELECT 1 AS allowed
        FROM ${q}.internal_message_attachments ima
@@ -332,6 +669,33 @@ export class StorageController {
     }
   }
 
+  private getRequestUser(req: Request) {
+    const user = (req as TenantRequest).user;
+    if (!user?.userId) {
+      throw new ForbiddenException('Not authorized for this file');
+    }
+    return user;
+  }
+
+  private async getTenantSchemaOrThrow(slug: string): Promise<string> {
+    const [tenant] = await this.dataSource.query<
+      Array<{ schema_name: string }>
+    >(
+      'SELECT schema_name FROM public.tenant WHERE slug = $1 AND is_active = true',
+      [slug],
+    );
+
+    if (!tenant) {
+      throw new ForbiddenException('Not authorized for this file');
+    }
+
+    return tenant.schema_name;
+  }
+
+  private isTenantStaff(role: string | undefined): boolean {
+    return role === 'ADMIN' || role === 'SUPERADMIN' || role === 'EMPLEADO';
+  }
+
   private assertSafeSlug(slug: string) {
     if (!isValidTenantSlug(slug)) {
       throw new BadRequestException(`Invalid tenant slug: '${slug}'`);
@@ -343,6 +707,15 @@ export class StorageController {
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(segment)) {
       throw new BadRequestException(`Invalid path segment: '${segment}'`);
     }
+  }
+
+  private parseNumericSegment(segment: string): number {
+    if (!/^\d+$/.test(segment)) {
+      throw new BadRequestException(
+        `Invalid numeric path segment: '${segment}'`,
+      );
+    }
+    return Number(segment);
   }
 
   // El nombre de archivo ya lo genera `crypto.randomBytes` (32 hex + ext);
@@ -358,6 +731,19 @@ export class StorageController {
     storagePath: string,
     visibility: 'public' | 'private',
   ) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'none'; script-src 'none'; sandbox",
+    );
+    res.setHeader(
+      'Cache-Control',
+      visibility === 'public'
+        ? 'public, max-age=604800, immutable'
+        : 'private, no-store, max-age=0',
+    );
+
     const access = await this.storageService.resolveReadAccess(
       storagePath,
       visibility,

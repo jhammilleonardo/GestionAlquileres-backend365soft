@@ -115,6 +115,52 @@ describe('MessagesService', () => {
     );
   });
 
+  it('send enlaza solo adjuntos pendientes del remitente', async () => {
+    const row = {
+      id: 1,
+      sender_id: 1,
+      recipient_id: 2,
+      body: '',
+      attachments: [{ file_url: '/storage/messages/acme/1/a.webp' }],
+    };
+    dataSource.query
+      .mockResolvedValueOnce([{ role: 'INQUILINO' }])
+      .mockResolvedValueOnce([row]);
+    queryRunner.query
+      .mockResolvedValueOnce([{ count: 1 }])
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockResolvedValueOnce(undefined);
+
+    const result = await service.send(1, 'ADMIN', 2, '', [
+      '/storage/messages/acme/1/a.webp',
+    ]);
+
+    expect(result).toEqual(row);
+    expect(queryRunner.query.mock.calls[0][0]).toContain(
+      'FROM internal_message_attachments',
+    );
+    expect(queryRunner.query.mock.calls[2][0]).toContain('SET message_id = $1');
+  });
+
+  it('send rechaza adjuntos inexistentes o ajenos', async () => {
+    dataSource.query.mockResolvedValueOnce([{ role: 'INQUILINO' }]);
+    queryRunner.query.mockResolvedValueOnce([{ count: 0 }]);
+
+    await expect(
+      service.send(1, 'ADMIN', 2, '', ['/storage/messages/acme/2/a.webp']),
+    ).rejects.toThrow('Adjunto inválido o no disponible');
+  });
+
+  it('send rechaza adjuntos duplicados', async () => {
+    await expect(
+      service.send(1, 'ADMIN', 2, '', [
+        '/storage/messages/acme/1/a.webp',
+        '/storage/messages/acme/1/a.webp',
+      ]),
+    ).rejects.toThrow('No se permiten adjuntos duplicados');
+    expect(dataSource.query).not.toHaveBeenCalled();
+  });
+
   it('send bloquea conversaciones entre dos usuarios externos', async () => {
     dataSource.query.mockResolvedValueOnce([{ role: 'PROPIETARIO' }]);
 

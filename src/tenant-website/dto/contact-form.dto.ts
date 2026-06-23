@@ -22,5 +22,15 @@ export class ContactFormDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(2000)
   message: string;
+
+  /**
+   * Honeypot anti-spam: campo señuelo oculto en el formulario. Un humano nunca
+   * lo rellena; si llega con contenido, el backend descarta el envío en silencio.
+   */
+  @IsString()
+  @IsOptional()
+  @MaxLength(255)
+  website?: string;
 }

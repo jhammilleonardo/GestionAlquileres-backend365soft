@@ -610,6 +610,83 @@ export class ReportsService {
       delinquentPropertyFilter = `AND p.id = $${delinquentParams.length}`;
     }
 
+    const expectedParams: ReportQueryParam[] = [
+      ContractStatus.FINALIZADO,
+      ContractStatus.CANCELADO,
+      INACTIVE_PROPERTY_STATUS,
+    ];
+    let expectedPropertyFilter = '';
+    if (filters.property_id) {
+      expectedParams.push(filters.property_id);
+      expectedPropertyFilter = `AND p.id = $${expectedParams.length}`;
+    }
+
+    const recentMaintenanceParams: ReportQueryParam[] = [
+      ACTIVE_MAINTENANCE_STAGES,
+      INACTIVE_PROPERTY_STATUS,
+    ];
+    let recentMaintenancePropertyFilter = '';
+    if (filters.property_id) {
+      recentMaintenanceParams.push(filters.property_id);
+      recentMaintenancePropertyFilter = `AND p.id = $${recentMaintenanceParams.length}`;
+    }
+
+    const expiringListParams: ReportQueryParam[] = [
+      INACTIVE_PROPERTY_STATUS,
+      ContractStatus.FINALIZADO,
+      ContractStatus.CANCELADO,
+    ];
+    let expiringListPropertyFilter = '';
+    if (filters.property_id) {
+      expiringListParams.push(filters.property_id);
+      expiringListPropertyFilter = `AND p.id = $${expiringListParams.length}`;
+    }
+
+    const delinquentListParams: ReportQueryParam[] = [
+      PaymentStatus.APPROVED,
+      INACTIVE_PROPERTY_STATUS,
+    ];
+    let delinquentListPropertyFilter = '';
+    if (filters.property_id) {
+      delinquentListParams.push(filters.property_id);
+      delinquentListPropertyFilter = `AND p.id = $${delinquentListParams.length}`;
+    }
+
+    const pendingApplicationsParams: ReportQueryParam[] = [
+      ['PENDIENTE', 'EN_REVISION'],
+    ];
+    let pendingApplicationsPropertyFilter = '';
+    if (filters.property_id) {
+      pendingApplicationsParams.push(filters.property_id);
+      pendingApplicationsPropertyFilter = `AND ra.property_id = $${pendingApplicationsParams.length}`;
+    }
+
+    const violationsParams: ReportQueryParam[] = [
+      INACTIVE_PROPERTY_STATUS,
+      ['open', 'notified'],
+    ];
+    let violationsPropertyFilter = '';
+    if (filters.property_id) {
+      violationsParams.push(filters.property_id);
+      violationsPropertyFilter = `AND p.id = $${violationsParams.length}`;
+    }
+
+    const inspectionsParams: ReportQueryParam[] = [
+      ['scheduled', 'in_progress'],
+    ];
+    let inspectionsPropertyFilter = '';
+    if (filters.property_id) {
+      inspectionsParams.push(filters.property_id);
+      inspectionsPropertyFilter = `AND p.id = $${inspectionsParams.length}`;
+    }
+
+    const expensesParams: ReportQueryParam[] = [INACTIVE_PROPERTY_STATUS];
+    let expensesPropertyFilter = '';
+    if (filters.property_id) {
+      expensesParams.push(filters.property_id);
+      expensesPropertyFilter = `AND p.id = $${expensesParams.length}`;
+    }
+
     const [
       [incomeResult],
       [previousIncomeResult],
@@ -617,6 +694,15 @@ export class ReportsService {
       [maintenanceResult],
       [expiringResult],
       [delinquentResult],
+      [expectedResult],
+      recentMaintenanceResult,
+      expiringContractsListResult,
+      delinquentListResult,
+      pendingApplicationsResult,
+      openViolationsResult,
+      upcomingInspectionsResult,
+      [expensesResult],
+      recentExpensesResult,
     ] = await Promise.all([
       this.dataSource.query<SumQueryResult[]>(
         `
@@ -691,6 +777,211 @@ export class ReportsService {
           `,
         delinquentParams,
       ),
+      this.dataSource.query<SumQueryResult[]>(
+        `
+            SELECT COALESCE(SUM(c.monthly_rent), 0) AS total
+            FROM contracts c
+            JOIN properties p ON p.id = c.property_id
+            WHERE c.status::text NOT IN ($1, $2)
+              AND p.status <> $3
+            ${expectedPropertyFilter}
+          `,
+        expectedParams,
+      ),
+      this.dataSource.query<
+        {
+          id: number;
+          title: string;
+          property_name: string;
+          stage: string;
+          days_open: number;
+        }[]
+      >(
+        `
+            SELECT mr.id, mr.title, p.title AS property_name,
+              mr.current_stage::text AS stage,
+              GREATEST(EXTRACT(DAY FROM NOW() - mr.created_at)::int, 0) AS days_open
+            FROM maintenance_requests mr
+            JOIN properties p ON p.id = mr.property_id
+            WHERE mr.current_stage = ANY($1::text[])
+              AND p.status <> $2
+            ${recentMaintenancePropertyFilter}
+            ORDER BY mr.created_at DESC
+            LIMIT 5
+          `,
+        recentMaintenanceParams,
+      ),
+      this.dataSource.query<
+        {
+          id: number;
+          tenant_name: string;
+          property_name: string;
+          end_date: string;
+          days_left: number;
+        }[]
+      >(
+        `
+            SELECT c.id,
+              COALESCE(u.name, 'Sin inquilino') AS tenant_name,
+              p.title AS property_name,
+              TO_CHAR(c.end_date, 'YYYY-MM-DD') AS end_date,
+              (c.end_date - CURRENT_DATE)::int AS days_left
+            FROM contracts c
+            JOIN properties p ON p.id = c.property_id
+            LEFT JOIN "user" u ON u.id = c.tenant_id
+            WHERE p.status <> $1
+              AND c.status::text NOT IN ($2, $3)
+              AND c.end_date >= CURRENT_DATE
+              AND c.end_date <= CURRENT_DATE + INTERVAL '30 days'
+            ${expiringListPropertyFilter}
+            ORDER BY c.end_date ASC
+            LIMIT 5
+          `,
+        expiringListParams,
+      ),
+      this.dataSource.query<
+        {
+          tenant_id: number;
+          tenant_name: string;
+          property_name: string;
+          amount_owed: number;
+          days_overdue: number;
+        }[]
+      >(
+        `
+            SELECT pay.tenant_id,
+              u.name AS tenant_name,
+              p.title AS property_name,
+              COALESCE(SUM(pay.amount), 0)::numeric AS amount_owed,
+              COALESCE(MAX(CURRENT_DATE - pay.due_date::date), 0)::int AS days_overdue
+            FROM payments pay
+            JOIN properties p ON p.id = pay.property_id
+            JOIN "user" u ON u.id = pay.tenant_id
+            WHERE pay.status::text <> $1
+              AND p.status <> $2
+              AND pay.due_date IS NOT NULL
+              AND pay.due_date < CURRENT_DATE
+            ${delinquentListPropertyFilter}
+            GROUP BY pay.tenant_id, u.name, p.title
+            ORDER BY amount_owed DESC
+            LIMIT 5
+          `,
+        delinquentListParams,
+      ),
+      this.dataSource.query<
+        {
+          id: number;
+          applicant_name: string;
+          property_name: string;
+          status: string;
+          created_at: string;
+        }[]
+      >(
+        `
+            SELECT ra.id,
+              COALESCE(ra.personal_data->>'full_name', 'Sin nombre') AS applicant_name,
+              p.title AS property_name,
+              ra.status::text AS status,
+              TO_CHAR(ra.created_at, 'YYYY-MM-DD') AS created_at
+            FROM rental_applications ra
+            JOIN properties p ON p.id = ra.property_id
+            WHERE ra.status::text = ANY($1::text[])
+            ${pendingApplicationsPropertyFilter}
+            ORDER BY ra.created_at DESC
+            LIMIT 5
+          `,
+        pendingApplicationsParams,
+      ),
+      this.dataSource.query<
+        {
+          id: number;
+          type: string;
+          description: string;
+          property_name: string;
+          tenant_name: string | null;
+          status: string;
+          created_at: string;
+        }[]
+      >(
+        `
+            SELECT v.id, v.type, v.description,
+              p.title AS property_name,
+              COALESCE(u.name, '') AS tenant_name,
+              v.status,
+              TO_CHAR(v.created_at, 'YYYY-MM-DD') AS created_at
+            FROM violations v
+            JOIN properties p ON p.id = v.property_id
+            LEFT JOIN "user" u ON u.id = v.tenant_id
+            WHERE v.status = ANY($2::text[])
+              AND p.status <> $1
+            ${violationsPropertyFilter}
+            ORDER BY v.created_at ASC
+            LIMIT 5
+          `,
+        violationsParams,
+      ),
+      this.dataSource.query<
+        {
+          id: number;
+          type: string;
+          property_name: string;
+          scheduled_date: string;
+          status: string;
+          days_until: number;
+        }[]
+      >(
+        `
+            SELECT i.id, i.type,
+              p.title AS property_name,
+              TO_CHAR(i.scheduled_date, 'YYYY-MM-DD') AS scheduled_date,
+              i.status,
+              GREATEST((i.scheduled_date::date - CURRENT_DATE)::int, 0) AS days_until
+            FROM inspections i
+            JOIN properties p ON p.id = i.property_id
+            WHERE i.status = ANY($1::text[])
+              AND i.scheduled_date >= CURRENT_DATE
+            ${inspectionsPropertyFilter}
+            ORDER BY i.scheduled_date ASC
+            LIMIT 5
+          `,
+        inspectionsParams,
+      ),
+      this.dataSource.query<SumQueryResult[]>(
+        `
+            SELECT COALESCE(SUM(e.amount), 0) AS total
+            FROM expenses e
+            JOIN properties p ON p.id = e.property_id
+            WHERE DATE_TRUNC('month', e.date) = DATE_TRUNC('month', CURRENT_DATE)
+              AND p.status <> $1
+            ${expensesPropertyFilter}
+          `,
+        expensesParams,
+      ),
+      this.dataSource.query<
+        {
+          id: number;
+          category: string;
+          amount: number;
+          property_name: string;
+          vendor_name: string;
+          date: string;
+        }[]
+      >(
+        `
+            SELECT e.id, e.category, e.amount,
+              p.title AS property_name,
+              COALESCE(e.vendor_name, 'Sin proveedor') AS vendor_name,
+              TO_CHAR(e.date, 'YYYY-MM-DD') AS date
+            FROM expenses e
+            JOIN properties p ON p.id = e.property_id
+            WHERE DATE_TRUNC('month', e.date) = DATE_TRUNC('month', CURRENT_DATE)
+              AND p.status <> $1
+            ${expensesPropertyFilter}
+            ORDER BY e.date DESC
+            LIMIT 5
+          `,
+        expensesParams,
+      ),
     ]);
 
     return {
@@ -701,10 +992,67 @@ export class ReportsService {
       availableUnits: Math.max(totalUnits - occupiedUnits, 0),
       monthlyIncome: this.toNumber(incomeResult?.total),
       monthlyIncomePrevious: this.toNumber(previousIncomeResult?.total),
+      monthlyExpected: this.toNumber(expectedResult?.total),
       pendingPaymentsCount: this.toNumber(pendingPaymentResult?.count),
       delinquentCount: this.toNumber(delinquentResult?.count),
       activeMaintenanceCount: this.toNumber(maintenanceResult?.count),
       expiringContracts: this.toNumber(expiringResult?.count),
+      recentMaintenance: recentMaintenanceResult.map((r) => ({
+        id: r.id,
+        title: r.title,
+        propertyName: r.property_name,
+        stage: r.stage,
+        daysOpen: r.days_open,
+      })),
+      expiringContractsList: expiringContractsListResult.map((r) => ({
+        id: r.id,
+        tenantName: r.tenant_name,
+        propertyName: r.property_name,
+        endDate: r.end_date,
+        daysLeft: r.days_left,
+      })),
+      delinquentList: delinquentListResult.map((r) => ({
+        tenantId: r.tenant_id,
+        tenantName: r.tenant_name,
+        propertyName: r.property_name,
+        amountOwed: this.toNumber(r.amount_owed),
+        daysOverdue: r.days_overdue,
+      })),
+      pendingApplicationsList: pendingApplicationsResult.map((r) => ({
+        id: r.id,
+        applicantName: r.applicant_name,
+        propertyName: r.property_name,
+        status: r.status,
+        createdAt: r.created_at,
+      })),
+      openViolationsCount: openViolationsResult.length,
+      openViolationsList: openViolationsResult.map((r) => ({
+        id: r.id,
+        type: r.type,
+        description: r.description,
+        propertyName: r.property_name,
+        tenantName: r.tenant_name ?? '',
+        status: r.status,
+        createdAt: r.created_at,
+      })),
+      upcomingInspectionsCount: upcomingInspectionsResult.length,
+      upcomingInspectionsList: upcomingInspectionsResult.map((r) => ({
+        id: r.id,
+        type: r.type,
+        propertyName: r.property_name,
+        scheduledDate: r.scheduled_date,
+        status: r.status,
+        daysUntil: r.days_until,
+      })),
+      monthlyExpenses: this.toNumber(expensesResult?.total),
+      recentExpensesList: recentExpensesResult.map((r) => ({
+        id: r.id,
+        category: r.category,
+        amount: this.toNumber(r.amount),
+        propertyName: r.property_name,
+        vendorName: r.vendor_name,
+        date: r.date,
+      })),
     };
   }
 

@@ -23,6 +23,7 @@ import { LifecycleNotificationsModule } from '../lifecycle-notifications/lifecyc
 import { ContractTemplatesModule } from '../contract-templates/contract-templates.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { TenantsModule } from '../tenants/tenants.module';
+import { TenantConfigModule } from '../tenant-config/tenant-config.module';
 import { StorageModule } from '../common/storage/storage.module';
 
 @Module({
@@ -33,6 +34,7 @@ import { StorageModule } from '../common/storage/storage.module';
     ContractTemplatesModule,
     AuditLogsModule,
     TenantsModule,
+    TenantConfigModule,
     StorageModule,
   ],
   providers: [

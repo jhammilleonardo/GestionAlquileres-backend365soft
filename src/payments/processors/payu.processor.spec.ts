@@ -1,10 +1,11 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { of } from 'rxjs';
+import { firstValueFrom, of, type Observable } from 'rxjs';
 import { createHash } from 'crypto';
 import { PayUProcessor } from './payu.processor';
 import { ProcessorPaymentInput } from './payment-processor.interface';
+import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
 
 describe('PayUProcessor', () => {
   let processor: PayUProcessor;
@@ -51,13 +52,16 @@ describe('PayUProcessor', () => {
 
   beforeEach(async () => {
     httpPost = jest.fn();
-    const mockHttpService = { post: httpPost };
+    const mockHttpService = {
+      post: (...args: unknown[]) =>
+        firstValueFrom(httpPost(...args) as Observable<unknown>),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PayUProcessor,
         { provide: ConfigService, useValue: { get: mockConfig } },
-        { provide: HttpService, useValue: mockHttpService },
+        { provide: SafeHttpClientService, useValue: mockHttpService },
       ],
     }).compile();
 
@@ -213,7 +217,7 @@ describe('PayUProcessor', () => {
       expect(result.status).toBe('FAILED');
     });
 
-    it('debe devolver FAILED si la firma es inválida', async () => {
+    it('debe rechazar si la firma es inválida', async () => {
       const body = {
         state_pol: '4',
         reference_pol: 'REF-001',
@@ -223,8 +227,9 @@ describe('PayUProcessor', () => {
         sign: 'firma_incorrecta',
       };
 
-      const result = await processor.handleWebhook(body);
-      expect(result.status).toBe('FAILED');
+      await expect(processor.handleWebhook(body)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe aceptar IPN sin firma (sandbox)', async () => {
@@ -238,6 +243,50 @@ describe('PayUProcessor', () => {
 
       const result = await processor.handleWebhook(body);
       expect(result.status).toBe('APPROVED');
+    });
+
+    it('rechaza un IPN sin firma en producción', async () => {
+      const prodConfig = {
+        get: (key: string, def = '') =>
+          key === 'NODE_ENV' ? 'production' : mockConfig(key, def),
+      };
+      const prodProcessor = new PayUProcessor(
+        prodConfig as never,
+        { post: httpPost } as never,
+      );
+      const body = {
+        state_pol: '4',
+        reference_pol: 'REF-001',
+        transaction_id: 'TXN_001',
+        amount_pol: '100.00',
+        currency: 'GTQ',
+      };
+
+      await expect(prodProcessor.handleWebhook(body)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('mantiene PROCESSING para state_pol=7 (PENDING)', async () => {
+      const body = buildIpnBody('7', 'REF-GT-001', '650.00', 'GTQ');
+
+      const result = await processor.handleWebhook(body);
+
+      expect(result).toMatchObject({
+        status: 'PROCESSING',
+        reference_number: 'REF-GT-001',
+        amount: 650,
+        currency: 'GTQ',
+      });
+    });
+
+    it('ignora estados PayU desconocidos aunque tengan firma válida', async () => {
+      const body = buildIpnBody('99', 'REF-GT-001', '650.00', 'GTQ');
+
+      const result = await processor.handleWebhook(body);
+
+      expect(result.status).toBe('IGNORED');
+      expect(result.transaction_id).toBeUndefined();
     });
   });
 });

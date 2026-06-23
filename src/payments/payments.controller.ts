@@ -16,6 +16,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -33,9 +34,11 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PaymentsService } from './payments.service';
+import { ReservationPaymentService } from './reservation-payment.service';
 import {
   CreatePaymentDto,
   CreatePaymentAsAdminDto,
+  CreateReservationPaymentDto,
   UpdatePaymentStatusDto,
   PaymentFiltersDto,
   CreateRefundDto,
@@ -48,9 +51,10 @@ import {
   PaymentStatsResponseDto,
 } from './dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { receiptMulterConfig } from '../common/utils/multer.config';
+import { assertUploadedFilesMatchContent } from '../common/utils/upload-content-validation';
 import { StorageService } from '../common/storage/storage.service';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 
@@ -76,8 +80,7 @@ function getRequestUserId(req: TenantRequest): number {
 // ADMIN ENDPOINTS
 // ===========================================
 
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiTags('Payments - Admin')
 @ApiBearerAuth()
 @Controller(':slug/admin/payments')
@@ -89,6 +92,7 @@ export class AdminPaymentsController {
    * Listar todos los pagos con filtros
    */
   @Get()
+  @RequirePermission('payments', 'view')
   @ApiOperation({
     summary: 'Listar pagos del tenant con filtros',
     description:
@@ -112,6 +116,7 @@ export class AdminPaymentsController {
    * Obtener estadísticas generales
    */
   @Get('stats')
+  @RequirePermission('payments', 'view')
   @ApiOperation({ summary: 'Obtener estadísticas agregadas de pagos' })
   @ApiParam({ name: 'slug', example: 'mi-empresa' })
   @ApiOkResponse({ type: PaymentStatsResponseDto })
@@ -125,6 +130,7 @@ export class AdminPaymentsController {
    * Crear un nuevo pago como admin
    */
   @Post()
+  @RequirePermission('payments', 'create')
   @ApiOperation({
     summary: 'Crear pago manual como administrador',
     description:
@@ -151,6 +157,7 @@ export class AdminPaymentsController {
    * Exportar pagos como CSV con los mismos filtros del listado
    */
   @Get('export')
+  @RequirePermission('payments', 'view')
   @ApiOperation({
     summary: 'Exportar pagos a CSV',
     description: 'Usa los mismos filtros permitidos por el listado admin.',
@@ -190,6 +197,7 @@ export class AdminPaymentsController {
    * Obtener un pago por ID
    */
   @Get(':id')
+  @RequirePermission('payments', 'view')
   @ApiOperation({ summary: 'Obtener detalle de pago por ID' })
   @ApiParam({ name: 'slug', example: 'mi-empresa' })
   @ApiParam({ name: 'id', type: Number })
@@ -210,6 +218,7 @@ export class AdminPaymentsController {
    * Dispara el cálculo de split payment automáticamente.
    */
   @Patch(':id/approve')
+  @RequirePermission('payments', 'edit')
   @ApiOperation({
     summary: 'Aprobar pago',
     description:
@@ -238,6 +247,7 @@ export class AdminPaymentsController {
    * El inquilino verá el motivo en su portal.
    */
   @Patch(':id/reject')
+  @RequirePermission('payments', 'edit')
   @ApiOperation({
     summary: 'Rechazar pago',
     description: 'El motivo de rechazo queda visible para el inquilino.',
@@ -266,6 +276,7 @@ export class AdminPaymentsController {
    * Actualizar estado de un pago (genérico — mantener para compatibilidad)
    */
   @Patch(':id')
+  @RequirePermission('payments', 'edit')
   @ApiOperation({
     summary: 'Actualizar estado de pago',
     description:
@@ -298,6 +309,7 @@ export class AdminPaymentsController {
    * Eliminar un pago
    */
   @Delete(':id')
+  @RequirePermission('payments', 'delete')
   @ApiOperation({
     summary: 'Eliminar pago',
     description:
@@ -325,6 +337,7 @@ export class AdminPaymentsController {
    * Crear un reembolso
    */
   @Post(':id/refund')
+  @RequirePermission('payments', 'edit')
   @ApiOperation({
     summary: 'Crear reembolso de pago',
     description:
@@ -389,6 +402,7 @@ export class TenantPaymentsController {
    * Campo file: "receipt" (imagen o PDF, máx 10 MB).
    */
   @Post()
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @UseInterceptors(FileInterceptor('receipt', receiptMulterConfig))
   @ApiOperation({
     summary: 'Registrar pago del inquilino',
@@ -435,6 +449,7 @@ export class TenantPaymentsController {
     @UploadedFile() receipt?: Express.Multer.File,
   ) {
     const tenantId = getRequestUserId(req);
+    await assertUploadedFilesMatchContent(receipt);
     // Construir ruta relativa para almacenar en la DB
     const receiptPath = receipt
       ? await this.storageService.persistUploadedFile(
@@ -508,5 +523,57 @@ export class TenantPaymentsController {
     const tenantId = getRequestUserId(req);
     const schemaName = getTenantSchemaName(req, slug);
     return this.paymentsService.getPaymentById(id, tenantId, schemaName);
+  }
+}
+
+// ===========================================
+// TENANT — RESERVATION PAYMENTS (short-term)
+// ===========================================
+
+@UseGuards(JwtAuthGuard)
+@ApiTags('Payments - Reservation')
+@ApiBearerAuth()
+@Controller(':slug/tenant/reservations/:reservationId/payments')
+export class TenantReservationPaymentsController {
+  constructor(
+    private readonly reservationPaymentService: ReservationPaymentService,
+  ) {}
+
+  /**
+   * POST /:slug/tenant/reservations/:reservationId/payments
+   * Registra un pago contra una reserva de corto plazo propia. Queda en estado
+   * PENDING y recorre el mismo flujo de aprobación/posteo que el resto de pagos.
+   */
+  @Post()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Registrar pago de una reserva de corto plazo',
+    description:
+      'El pago se vincula a la reserva (reservation_id), no a un contrato. Queda PENDING para aprobación del admin.',
+  })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiParam({ name: 'reservationId', type: Number })
+  @ApiCreatedResponse({ type: PaymentResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Reserva no pagable o monto excede el saldo pendiente',
+  })
+  @ApiNotFoundResponse({
+    description: 'Reserva no encontrada para el inquilino',
+  })
+  async createReservationPayment(
+    @Param('slug') slug: string,
+    @Param('reservationId', ParseIntPipe) reservationId: number,
+    @Body() dto: CreateReservationPaymentDto,
+    @Request() req: TenantRequest,
+  ) {
+    const tenantId = getRequestUserId(req);
+    const schemaName = getTenantSchemaName(req, slug);
+    return this.reservationPaymentService.createReservationPayment(
+      schemaName,
+      reservationId,
+      tenantId,
+      dto,
+      slug,
+    );
   }
 }

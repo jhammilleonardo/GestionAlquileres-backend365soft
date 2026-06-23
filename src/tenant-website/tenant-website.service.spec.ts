@@ -98,21 +98,33 @@ describe('TenantWebsiteService', () => {
     });
   });
 
-  // ─── togglePublish ────────────────────────────────────────────────────────
+  // ─── setPublished ─────────────────────────────────────────────────────────
 
-  describe('togglePublish', () => {
-    it('invierte el estado is_published', async () => {
+  describe('setPublished', () => {
+    it('fija el estado is_published al valor indicado (idempotente)', async () => {
       const website = makeWebsite({ is_published: false });
-      const toggled = makeWebsite({ is_published: true });
+      const published = makeWebsite({ is_published: true });
 
       mockDataSource.query
         .mockResolvedValueOnce([website]) // getOrCreate
-        .mockResolvedValueOnce([toggled]); // UPDATE NOT is_published
+        .mockResolvedValueOnce([published]); // UPDATE is_published = $1
 
-      const result = await service.togglePublish(SCHEMA);
+      const result = await service.setPublished(SCHEMA, true);
       expect(result.is_published).toBe(true);
 
-      expect(getQuerySql(1)).toContain('NOT is_published');
+      expect(getQuerySql(1)).toContain('is_published = $1');
+    });
+
+    it('alterna el estado actual si no se indica valor', async () => {
+      const website = makeWebsite({ is_published: true });
+      const toggled = makeWebsite({ is_published: false });
+
+      mockDataSource.query
+        .mockResolvedValueOnce([website]) // getOrCreate
+        .mockResolvedValueOnce([toggled]); // UPDATE is_published = $1
+
+      const result = await service.setPublished(SCHEMA);
+      expect(result.is_published).toBe(false);
     });
   });
 
@@ -154,6 +166,79 @@ describe('TenantWebsiteService', () => {
     });
   });
 
+  // ─── getBranding (gating de publicación) ───────────────────────────────────
+
+  describe('getBranding', () => {
+    it('retorna null si el tenant no existe', async () => {
+      mockDataSource.query.mockResolvedValueOnce([]); // tenant lookup vacío
+
+      const result = await service.getBranding('noexiste');
+      expect(result).toBeNull();
+    });
+
+    it('retorna null para un sitio no publicado a un anónimo', async () => {
+      mockDataSource.query
+        .mockResolvedValueOnce([{ schema_name: SCHEMA, company_name: 'Acme' }])
+        .mockResolvedValueOnce([makeWebsite({ is_published: false })]);
+
+      const result = await service.getBranding('acme');
+      expect(result).toBeNull();
+    });
+
+    it('NO crea la fila (sin INSERT) en un GET anónimo', async () => {
+      mockDataSource.query
+        .mockResolvedValueOnce([{ schema_name: SCHEMA, company_name: 'Acme' }])
+        .mockResolvedValueOnce([]); // readWebsiteRow sin fila
+
+      const result = await service.getBranding('acme');
+      expect(result).toBeNull();
+      expect(mockDataSource.query).toHaveBeenCalledTimes(2);
+      expect(getQuerySql(1)).not.toContain('INSERT');
+    });
+
+    it('retorna el branding de un sitio no publicado al staff del tenant', async () => {
+      mockDataSource.query
+        .mockResolvedValueOnce([{ schema_name: SCHEMA, company_name: 'Acme' }])
+        .mockResolvedValueOnce([makeWebsite({ is_published: false })]);
+
+      const result = await service.getBranding('acme', true);
+      expect(result).not.toBeNull();
+      expect(result?.company_name).toBe('Acme');
+    });
+
+    it('retorna el branding de un sitio publicado a anónimos', async () => {
+      mockDataSource.query
+        .mockResolvedValueOnce([{ schema_name: SCHEMA, company_name: 'Acme' }])
+        .mockResolvedValueOnce([makeWebsite({ is_published: true })]);
+
+      const result = await service.getBranding('acme');
+      expect(result?.is_published).toBe(true);
+    });
+  });
+
+  // ─── isStaffOfTenant ───────────────────────────────────────────────────────
+
+  describe('isStaffOfTenant', () => {
+    it('true para ADMIN del mismo tenant', () => {
+      expect(
+        service.isStaffOfTenant({ role: 'ADMIN', tenantSlug: 'acme' }, 'acme'),
+      ).toBe(true);
+    });
+
+    it('false para INQUILINO o tenant distinto o anónimo', () => {
+      expect(
+        service.isStaffOfTenant(
+          { role: 'INQUILINO', tenantSlug: 'acme' },
+          'acme',
+        ),
+      ).toBe(false);
+      expect(
+        service.isStaffOfTenant({ role: 'ADMIN', tenantSlug: 'otro' }, 'acme'),
+      ).toBe(false);
+      expect(service.isStaffOfTenant(undefined, 'acme')).toBe(false);
+    });
+  });
+
   // ─── submitContact ────────────────────────────────────────────────────────
 
   describe('submitContact', () => {
@@ -163,6 +248,17 @@ describe('TenantWebsiteService', () => {
       phone: '70000000',
       message: 'Me interesa la propiedad',
     };
+
+    it('descarta el envío en silencio si el honeypot viene relleno', async () => {
+      const result = await service.submitContact(
+        'acme',
+        { ...dto, website: 'http://spam.example' },
+        '127.0.0.1',
+      );
+      expect(result.message).toBeDefined();
+      // No debe tocar la base de datos (ni lookup ni INSERT).
+      expect(mockDataSource.query).not.toHaveBeenCalled();
+    });
 
     it('lanza NotFoundException si el tenant no existe', async () => {
       mockDataSource.query.mockResolvedValueOnce([]);

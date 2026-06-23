@@ -6,6 +6,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
+import { tenantConnectionStore } from '../common/tenant/tenant-connection.store';
+import { quoteIdent } from '../common/utils/sql-identifier';
 import { Expense } from './entities/expense.entity';
 import { CreateExpenseDto, UpdateExpenseDto, ExpenseFiltersDto } from './dto';
 import { ExpenseCategoryEnum } from './enums/expense-category.enum';
@@ -43,6 +46,7 @@ export class ExpensesService {
     @InjectRepository(Expense)
     private readonly expenseRepository: Repository<Expense>,
     private readonly dataSource: DataSource,
+    private readonly accountingOutboxService: AccountingOutboxService,
   ) {}
 
   /**
@@ -76,6 +80,8 @@ export class ExpensesService {
 
       const saved = await this.expenseRepository.save(expense);
 
+      await this.enqueueExpenseAccounting(saved, userId);
+
       // Si es un gasto recurrente, generar las instancias futuras
       if (dto.is_recurring && dto.recurrence_interval) {
         await this.generateRecurringExpenses(saved);
@@ -87,6 +93,40 @@ export class ExpensesService {
       this.logger.error(`Error creating expense: ${getErrorMessage(error)}`);
       throw new BadRequestException('Error al crear el gasto');
     }
+  }
+
+  private async enqueueExpenseAccounting(
+    expense: Expense,
+    userId?: number,
+  ): Promise<void> {
+    const schemaName = tenantConnectionStore.getStore()?.schemaName;
+    if (!schemaName) {
+      return;
+    }
+
+    const schema = quoteIdent(schemaName);
+
+    await this.dataSource.query(
+      `
+        UPDATE ${schema}.expenses
+        SET accounting_status = 'pending_posting',
+            journal_entry_id = NULL,
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [expense.id],
+    );
+
+    await this.accountingOutboxService.enqueue({
+      schemaName,
+      eventType: 'expense.created',
+      aggregateType: 'expense',
+      aggregateId: String(expense.id),
+      payload: {
+        expenseId: expense.id,
+        createdBy: userId ?? null,
+      },
+    });
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
@@ -46,7 +46,7 @@ export class ApplicationDocumentsService {
       );
 
       newDocs.push({
-        type: types[index] || 'otros',
+        type: this.normalizeDocumentType(types[index]),
         url: this.storageService.toRoutePath(storagePath),
         name: file.originalname,
       });
@@ -75,5 +75,13 @@ export class ApplicationDocumentsService {
 
   private schemaPrefix(schemaName?: string | null): string {
     return schemaName ? `${quoteIdent(schemaName)}.` : '';
+  }
+
+  private normalizeDocumentType(type?: string): string {
+    const normalized = (type || 'otros').trim();
+    if (normalized.length > 80) {
+      throw new BadRequestException('El tipo de documento es demasiado largo');
+    }
+    return normalized || 'otros';
   }
 }

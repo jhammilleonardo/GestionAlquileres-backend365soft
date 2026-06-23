@@ -57,7 +57,7 @@ export class ManualPaymentProcessor implements IPaymentProcessor {
     // El procesador manual no recibe webhooks externos.
     // Esta implementación existe para cumplir el contrato de la interfaz.
     return Promise.resolve({
-      status: 'APPROVED',
+      status: 'IGNORED',
       raw_event: payload,
     });
   }

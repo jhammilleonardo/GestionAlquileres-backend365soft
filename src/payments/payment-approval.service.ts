@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, QueryRunner } from 'typeorm';
+import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 import { SplitPaymentService } from '../split-payment/split-payment.service';
@@ -16,6 +17,7 @@ import {
   PaymentStatusRow,
   paymentTable,
 } from './payment-status.types';
+import { ReservationPaymentConfirmationService } from './reservation-payment-confirmation.service';
 
 @Injectable()
 export class PaymentApprovalService {
@@ -24,6 +26,8 @@ export class PaymentApprovalService {
     private readonly splitPaymentService: SplitPaymentService,
     private readonly auditLogsService: AuditLogsService,
     private readonly paymentStatusNotificationService: PaymentStatusNotificationService,
+    private readonly accountingOutboxService: AccountingOutboxService,
+    private readonly reservationConfirmationService: ReservationPaymentConfirmationService,
   ) {}
 
   async approvePayment(
@@ -56,12 +60,20 @@ export class PaymentApprovalService {
              admin_notes = COALESCE($2, admin_notes),
              approved_by = $3,
              approved_at = NOW(),
+             accounting_status = 'pending_posting',
+             journal_entry_id = NULL,
              updated_at  = NOW()
          WHERE id = $4
          RETURNING *`,
         [PaymentStatus.APPROVED, dto.admin_notes || null, adminId, id],
       )) as Payment[];
       updatedPayment = firstReturnedRow<Payment>(updated);
+
+      await this.reservationConfirmationService.confirmIfFullyPaid(
+        queryRunner,
+        schemaName,
+        payment.reservation_id,
+      );
 
       await this.splitPaymentService.executeSplit(
         {
@@ -73,6 +85,20 @@ export class PaymentApprovalService {
           schemaName,
         },
         queryRunner,
+      );
+
+      await this.accountingOutboxService.enqueue(
+        {
+          schemaName,
+          eventType: 'payment.approved',
+          aggregateType: 'payment',
+          aggregateId: String(id),
+          payload: {
+            paymentId: id,
+            approvedBy: adminId,
+          },
+        },
+        { queryRunner },
       );
 
       await queryRunner.commitTransaction();

@@ -14,6 +14,7 @@ import { ContractHistoryService } from './contract-history.service';
 import { ContractRenewalService } from './contract-renewal.service';
 import { ContractSigningService } from './contract-signing.service';
 import { ContractCreationService } from './contract-creation.service';
+import { TenantConfigService } from '../tenant-config/tenant-config.service';
 import { ContractCreationSideEffectsService } from './contract-creation-side-effects.service';
 import { ContractCreationValidationService } from './contract-creation-validation.service';
 import { ContractPdfService } from './contract-pdf.service';
@@ -93,6 +94,10 @@ describe('ContractsService.renew', () => {
         ContractRenewalService,
         ContractSigningService,
         { provide: ContractPdfService, useValue: { generatePdf: jest.fn() } },
+        {
+          provide: TenantConfigService,
+          useValue: { getConfig: jest.fn().mockResolvedValue({}) },
+        },
         { provide: getDataSourceToken(), useValue: mockDataSource },
         { provide: NotificationsService, useValue: {} },
         { provide: LifecycleNotificationsService, useValue: {} },
@@ -364,6 +369,10 @@ describe('ContractsService.update', () => {
         ContractRenewalService,
         ContractSigningService,
         { provide: ContractPdfService, useValue: { generatePdf: jest.fn() } },
+        {
+          provide: TenantConfigService,
+          useValue: { getConfig: jest.fn().mockResolvedValue({}) },
+        },
         { provide: getDataSourceToken(), useValue: mockDataSource },
         { provide: NotificationsService, useValue: mockNotifications },
         {
@@ -571,6 +580,10 @@ describe('ContractsService.getContractHistory', () => {
         ContractRenewalService,
         ContractSigningService,
         { provide: ContractPdfService, useValue: { generatePdf: jest.fn() } },
+        {
+          provide: TenantConfigService,
+          useValue: { getConfig: jest.fn().mockResolvedValue({}) },
+        },
         { provide: getDataSourceToken(), useValue: mockDataSource },
         { provide: NotificationsService, useValue: {} },
         { provide: LifecycleNotificationsService, useValue: {} },

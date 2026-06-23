@@ -1,12 +1,17 @@
 import {
   Controller,
   Get,
+  Post,
+  Patch,
   UseGuards,
   Param,
+  Body,
   Query,
   InternalServerErrorException,
   NotFoundException,
+  ParseIntPipe,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiTags,
   ApiOperation,
@@ -19,7 +24,11 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { TenantContext } from '../common/middleware/tenant-context.middleware';
+import type { RequestUserContext } from '../common/middleware/tenant-context.middleware';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 
 interface FindTenantsFilters {
   status?: 'approved' | 'pending' | 'active' | 'past' | 'none';
@@ -105,7 +114,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Obtener un inquilino por ID' })
   async findTenantById(
     @CurrentTenant() currentTenant: TenantContext | undefined,
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
   ) {
     if (!currentTenant) {
       throw new InternalServerErrorException(
@@ -115,7 +124,7 @@ export class UsersController {
 
     const tenant = await this.usersService.findTenantById(
       currentTenant.schema_name,
-      Number(id),
+      id,
     );
 
     if (!tenant) {
@@ -123,5 +132,54 @@ export class UsersController {
     }
 
     return tenant;
+  }
+
+  @Patch(':id')
+  @Roles('ADMIN', 'SUPERADMIN', 'EMPLEADO', 'INQUILINO', 'TECNICO')
+  @ApiOperation({ summary: 'Actualizar perfil de usuario' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', description: 'ID del usuario', type: Number })
+  async updateProfile(
+    @CurrentTenant() tenant: TenantContext | undefined,
+    @CurrentUser() user: RequestUserContext | undefined,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateUserProfileDto,
+  ) {
+    if (!tenant || !user) {
+      throw new InternalServerErrorException(
+        'Contexto de tenant o usuario no encontrado en el request',
+      );
+    }
+
+    return this.usersService.updateProfile(tenant.schema_name, id, dto, user);
+  }
+
+  @Post(':id/reset-password')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Roles('ADMIN', 'SUPERADMIN', 'EMPLEADO', 'INQUILINO', 'TECNICO')
+  @ApiOperation({ summary: 'Cambiar o resetear contraseña de usuario' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', description: 'ID del usuario', type: Number })
+  async resetPassword(
+    @CurrentTenant() tenant: TenantContext | undefined,
+    @CurrentUser() user: RequestUserContext | undefined,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ResetUserPasswordDto,
+  ) {
+    if (!tenant || !user) {
+      throw new InternalServerErrorException(
+        'Contexto de tenant o usuario no encontrado en el request',
+      );
+    }
+
+    await this.usersService.resetPassword(
+      tenant.schema_name,
+      id,
+      dto.password,
+      dto.current_password,
+      user,
+    );
+
+    return { message: 'Contraseña actualizada correctamente' };
   }
 }

@@ -5,11 +5,13 @@ import { RentalOwnersController } from './rental-owners.controller';
 import { RentalOwner } from '../properties/entities/rental-owner.entity';
 import { PropertyOwner } from '../properties/entities/property-owner.entity';
 import { OwnerStatementsModule } from '../owner-statements/owner-statements.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([RentalOwner, PropertyOwner]),
     OwnerStatementsModule,
+    AuthModule,
   ],
   providers: [RentalOwnersService],
   controllers: [RentalOwnersController],

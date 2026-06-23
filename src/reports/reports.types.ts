@@ -89,6 +89,66 @@ export type BudgetVsActualReportRow = ReportRow & {
   variance: string | number;
 };
 
+export interface DashboardMaintenanceItem {
+  id: number;
+  title: string;
+  propertyName: string;
+  stage: string;
+  daysOpen: number;
+}
+
+export interface DashboardContractItem {
+  id: number;
+  tenantName: string;
+  propertyName: string;
+  endDate: string;
+  daysLeft: number;
+}
+
+export interface DashboardDelinquentItem {
+  tenantId: number;
+  tenantName: string;
+  propertyName: string;
+  amountOwed: number;
+  daysOverdue: number;
+}
+
+export interface DashboardApplicationItem {
+  id: number;
+  applicantName: string;
+  propertyName: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface DashboardViolationItem {
+  id: number;
+  type: string;
+  description: string;
+  propertyName: string;
+  tenantName: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface DashboardInspectionItem {
+  id: number;
+  type: string;
+  propertyName: string;
+  scheduledDate: string;
+  status: string;
+  daysUntil: number;
+}
+
+export interface DashboardExpenseItem {
+  id: number;
+  category: string;
+  amount: number;
+  propertyName: string;
+  vendorName: string;
+  date: string;
+}
+
 export interface ReportKpis {
   occupancyRate: string;
   occupancyRateValue: number;
@@ -97,10 +157,21 @@ export interface ReportKpis {
   availableUnits: number;
   monthlyIncome: number;
   monthlyIncomePrevious: number;
+  monthlyExpected: number;
   pendingPaymentsCount: number;
   delinquentCount: number;
   activeMaintenanceCount: number;
   expiringContracts: number;
+  recentMaintenance: DashboardMaintenanceItem[];
+  expiringContractsList: DashboardContractItem[];
+  delinquentList: DashboardDelinquentItem[];
+  pendingApplicationsList: DashboardApplicationItem[];
+  openViolationsCount: number;
+  openViolationsList: DashboardViolationItem[];
+  upcomingInspectionsCount: number;
+  upcomingInspectionsList: DashboardInspectionItem[];
+  monthlyExpenses: number;
+  recentExpensesList: DashboardExpenseItem[];
 }
 
 export type ReportData = ReportTable | ReportKpis;

@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
 import { CreateRefundDto } from './dto';
 import { PaymentStatus } from './enums';
 import { quoteIdent } from '../common/utils/sql-identifier';
@@ -14,9 +15,16 @@ interface RefundablePaymentRow {
   status: PaymentStatus;
 }
 
+interface CreatedRefundRow {
+  id: number;
+}
+
 @Injectable()
 export class PaymentRefundsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly accountingOutboxService: AccountingOutboxService,
+  ) {}
 
   async createRefund(
     paymentId: number,
@@ -65,11 +73,12 @@ export class PaymentRefundsService {
         );
       }
 
-      await queryRunner.query(
+      const createdRefunds = (await queryRunner.query(
         `INSERT INTO ${schemaPrefix}payment_refunds (
           payment_id, amount, reason, refund_method, refund_date,
           transaction_id, processed_by, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        RETURNING id`,
         [
           paymentId,
           dto.amount,
@@ -79,7 +88,29 @@ export class PaymentRefundsService {
           dto.transaction_id || null,
           adminId,
         ],
-      );
+      )) as CreatedRefundRow[];
+      const refundId = createdRefunds[0]?.id;
+
+      if (!refundId) {
+        throw new Error(`No se pudo crear el reembolso del pago #${paymentId}`);
+      }
+
+      if (schemaName) {
+        await this.accountingOutboxService.enqueue(
+          {
+            schemaName,
+            eventType: 'payment.refund.created',
+            aggregateType: 'payment_refund',
+            aggregateId: String(refundId),
+            payload: {
+              refundId,
+              paymentId,
+              processedBy: adminId,
+            },
+          },
+          { queryRunner },
+        );
+      }
 
       if (newRefundTotalCents === paymentAmountCents) {
         await queryRunner.query(

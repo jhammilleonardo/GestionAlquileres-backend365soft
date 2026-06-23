@@ -8,6 +8,7 @@ import {
   Logger,
   HttpCode,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { StripeProcessor } from '../processors/stripe.processor';
@@ -49,6 +50,7 @@ export class WebhookController {
    */
   @Post('stripe')
   @HttpCode(200)
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
   async stripeWebhook(
     @Param('slug') slug: string,
     @Req() req: RawBodyRequest<Request>,
@@ -73,6 +75,7 @@ export class WebhookController {
    */
   @Post('paypal')
   @HttpCode(200)
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
   async paypalWebhook(
     @Param('slug') slug: string,
     @Body() payload: Record<string, unknown>,
@@ -106,6 +109,7 @@ export class WebhookController {
    */
   @Post('payu')
   @HttpCode(200)
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
   async payuWebhook(
     @Param('slug') slug: string,
     @Body() payload: Record<string, string>,

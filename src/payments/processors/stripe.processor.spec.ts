@@ -185,7 +185,7 @@ describe('StripeProcessor', () => {
       expect(result.transaction_id).toBe('pi_test_999');
     });
 
-    it('debe devolver APPROVED para charge.refunded', async () => {
+    it('debe devolver REFUNDED para charge.refunded', async () => {
       const mockEvent = {
         type: 'charge.refunded',
         data: { object: { id: 'ch_test', payment_intent: 'pi_test_123' } },
@@ -194,7 +194,7 @@ describe('StripeProcessor', () => {
 
       const result = await processor.handleWebhook(Buffer.from('{}'), 'sig');
 
-      expect(result.status).toBe('APPROVED');
+      expect(result.status).toBe('REFUNDED');
       expect(result.transaction_id).toBe('pi_test_123');
     });
 
@@ -219,7 +219,7 @@ describe('StripeProcessor', () => {
 
       const result = await processor.handleWebhook(Buffer.from('{}'), 'sig');
 
-      expect(result.status).toBe('APPROVED');
+      expect(result.status).toBe('IGNORED');
     });
   });
 });

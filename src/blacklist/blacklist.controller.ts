@@ -36,6 +36,7 @@ import type { TenantRequest } from '../common/middleware/tenant-context.middlewa
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { OptionalPositiveIntPipe } from '../common/pipes/optional-positive-int.pipe';
 
 interface BlacklistAuditLogResponse {
   id: number;
@@ -213,7 +214,7 @@ export class AdminBlacklistController {
   async getAuditLog(
     @Param('slug') slug: string,
     @Request() req: TenantRequest,
-    @Query('limit') limit?: number,
+    @Query('limit', OptionalPositiveIntPipe) limit?: number,
   ): Promise<BlacklistAuditLogResponse[]> {
     this.logger.log(
       `[ADMIN BLACKLIST] Consultando audit log del tenant ${slug}`,
@@ -222,7 +223,7 @@ export class AdminBlacklistController {
     return await this.blacklistService.getAuditLog(
       slug,
       req.user!.userId,
-      limit || 100,
+      Math.min(limit ?? 100, 500),
     );
   }
 }

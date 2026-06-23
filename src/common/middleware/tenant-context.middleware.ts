@@ -10,7 +10,9 @@ import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { quoteIdent } from '../utils/sql-identifier';
+import { RESERVED_TENANT_SLUGS } from '../utils/tenant-slug';
 import { AuthSecurityService } from '../../auth/auth-security.service';
+import { extractAccessToken } from '../../auth/auth-cookie.util';
 
 export interface TenantContext {
   id: number;
@@ -28,6 +30,7 @@ export interface RequestUserContext {
   tenantSlug?: string;
   rentalOwnerId?: number | null;
   vendorId?: number | null;
+  tokenVersion?: number;
 }
 
 export interface TenantRequest extends Request {
@@ -40,6 +43,15 @@ interface TenantJwtPayload {
   email: string;
   role: string;
   tenantSlug?: string;
+  tokenVersion?: number;
+}
+
+interface TenantUserSessionRow {
+  id: number;
+  email: string;
+  role: string;
+  is_active: boolean;
+  token_version: number;
 }
 
 @Injectable()
@@ -57,11 +69,11 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     let tenantSlug: string | null = null;
 
-    // Estrategia 1: Extraer tenant del JWT (para endpoints privados)
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
+    // La URL manda cuando contiene tenant. El JWT solo completa el contexto en
+    // rutas globales (p. ej. /auth/me) y nunca puede cambiar el schema pedido.
+    const token = extractAccessToken(req);
+    if (token) {
       try {
-        const token = authHeader.substring(7);
         const secret = this.configService.get<string>('JWT_SECRET');
         if (!secret || secret.length < 32) {
           throw new Error('JWT_SECRET no configurado correctamente');
@@ -69,34 +81,34 @@ export class TenantContextMiddleware implements NestMiddleware {
         const payload = this.jwtService.verify(token, { secret }) as unknown;
 
         if (isTenantJwtPayload(payload) && payload.tenantSlug) {
-          tenantSlug = payload.tenantSlug;
+          if (urlSlug && urlSlug !== payload.tenantSlug) {
+            tenantSlug = urlSlug;
+            if (!this.isAnonymousTenantPath(req.originalUrl)) {
+              await this.authSecurityService.recordTenantMismatch({
+                email: payload.email,
+                userId: payload.sub,
+                requestTenantSlug: urlSlug,
+                tokenTenantSlug: payload.tenantSlug,
+                path: req.originalUrl,
+                reason: 'url_slug_mismatch',
+              });
+              throw new UnauthorizedException(
+                'Authentication token is not valid for this company',
+              );
+            }
+          } else {
+            tenantSlug = payload.tenantSlug;
 
-          // VERIFICACIÓN DE SEGURIDAD: El slug de la URL debe coincidir con el del JWT
-          // Esto previene que un usuario acceda a datos de otro tenant manipulando la URL
-          if (urlSlug && urlSlug !== tenantSlug) {
-            await this.authSecurityService.recordTenantMismatch({
-              email: payload.email,
+            req.user = {
               userId: payload.sub,
-              requestTenantSlug: urlSlug,
-              tokenTenantSlug: tenantSlug,
-              path: req.originalUrl,
-              reason: 'url_slug_mismatch',
-            });
-            throw new UnauthorizedException(
-              `Tenant slug "${urlSlug}" does not match your authentication token (${tenantSlug})`,
-            );
+              email: payload.email,
+              role: payload.role,
+              tenantSlug: payload.tenantSlug,
+              tokenVersion: payload.tokenVersion,
+            };
           }
-
-          // Asignar req.user con los datos del JWT para que esté disponible en los controllers
-          req.user = {
-            userId: payload.sub,
-            email: payload.email,
-            role: payload.role,
-            tenantSlug: payload.tenantSlug,
-          };
         }
       } catch (error) {
-        // Si es UnauthorizedException, lanzarla
         if (error instanceof UnauthorizedException) {
           throw error;
         }
@@ -128,38 +140,73 @@ export class TenantContextMiddleware implements NestMiddleware {
       // VERIFICACIÓN ADICIONAL: Si hay un usuario logueado, verificar que EXISTA en este esquema
       // Esto previene el uso de tokens de un tenant en otro tenant
       if (req.user) {
+        const sessionUser = req.user;
         try {
           const userTable = `${quoteIdent(tenant.schema_name)}."user"`;
-          const userRows = await this.dataSource.query<Array<{ id: number }>>(
-            `SELECT id FROM ${userTable} WHERE id = $1`,
-            [req.user.userId],
+          const userRows = await this.dataSource.query<TenantUserSessionRow[]>(
+            `SELECT id, email, role, is_active, token_version FROM ${userTable} WHERE id = $1`,
+            [sessionUser.userId],
           );
-          const userExists = userRows[0];
+          const currentUser = userRows[0];
 
-          if (!userExists) {
-            // Si el ID de usuario no existe en este esquema, el token no es válido para este tenant
+          if (!currentUser) {
             await this.authSecurityService.recordTenantMismatch({
-              email: req.user.email,
-              userId: req.user.userId,
+              email: sessionUser.email,
+              userId: sessionUser.userId,
               requestTenantSlug: tenant.slug,
-              tokenTenantSlug: req.user.tenantSlug ?? tenant.slug,
+              tokenTenantSlug: sessionUser.tenantSlug ?? tenant.slug,
               path: req.originalUrl,
               reason: 'user_not_found_in_tenant_schema',
             });
+            if (this.isAnonymousTenantPath(req.originalUrl)) {
+              req.user = undefined;
+              req.tenant = tenant;
+              return next();
+            }
             throw new UnauthorizedException(
               'User not authorized for this company',
             );
+          }
+
+          const claimsAreCurrent =
+            currentUser.is_active &&
+            currentUser.role === sessionUser.role &&
+            currentUser.email.toLowerCase() ===
+              sessionUser.email.toLowerCase() &&
+            currentUser.token_version === sessionUser.tokenVersion;
+          if (!claimsAreCurrent) {
+            await this.authSecurityService.recordTenantMismatch({
+              email: sessionUser.email,
+              userId: sessionUser.userId,
+              requestTenantSlug: tenant.slug,
+              tokenTenantSlug: sessionUser.tenantSlug ?? tenant.slug,
+              path: req.originalUrl,
+              reason: currentUser.is_active
+                ? 'stale_user_claims'
+                : 'inactive_user_session',
+            });
+            if (this.isAnonymousTenantPath(req.originalUrl)) {
+              req.user = undefined;
+              req.tenant = tenant;
+              return next();
+            }
+            throw new UnauthorizedException('Session is no longer valid');
           }
         } catch (error) {
           if (error instanceof UnauthorizedException) {
             throw error;
           }
+          if (this.isAnonymousTenantPath(req.originalUrl)) {
+            req.user = undefined;
+            req.tenant = tenant;
+            return next();
+          }
           // El schema no tiene tabla user (schema no inicializado), tratar como no autorizado
           await this.authSecurityService.recordTenantMismatch({
-            email: req.user.email,
-            userId: req.user.userId,
+            email: sessionUser.email,
+            userId: sessionUser.userId,
             requestTenantSlug: tenant.slug,
-            tokenTenantSlug: req.user.tenantSlug ?? tenant.slug,
+            tokenTenantSlug: sessionUser.tenantSlug ?? tenant.slug,
             path: req.originalUrl,
             reason: 'tenant_user_lookup_failed',
           });
@@ -188,32 +235,16 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     const firstSegment = urlParts[0];
 
-    // Palabras reservadas que NO son slugs de tenant
-    // Debe mantenerse sincronizado con RESERVED_TENANT_SLUGS de tenant-slug.ts
-    const reservedWords = [
-      'admin',
-      'api',
-      'assets',
-      'auth',
-      'docs',
-      'health',
-      'i18n',
-      'login',
-      'portal',
-      'public',
-      'publico',
-      'register',
-      'static',
-      'storage',
-      'uploads',
-      'www',
-    ];
-
-    if (reservedWords.includes(firstSegment)) {
+    if (RESERVED_TENANT_SLUGS.has(firstSegment)) {
       return null;
     }
 
     return firstSegment;
+  }
+
+  private isAnonymousTenantPath(path: string): boolean {
+    const [, section] = path.split(/[?#]/, 1)[0].split('/').filter(Boolean);
+    return section === 'catalog' || section === 'publico';
   }
 }
 
@@ -231,6 +262,8 @@ function isTenantJwtPayload(payload: unknown): payload is TenantJwtPayload {
     typeof candidate.sub === 'number' &&
     typeof candidate.email === 'string' &&
     typeof candidate.role === 'string' &&
+    (candidate.tokenVersion === undefined ||
+      typeof candidate.tokenVersion === 'number') &&
     hasTenantSlug
   );
 }

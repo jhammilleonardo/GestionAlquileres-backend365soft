@@ -32,8 +32,21 @@ export interface ProcessorResult {
 export interface WebhookResult {
   event_id?: string;
   payment_id?: number;
+  /** ID técnico asignado por el proveedor. */
   transaction_id?: string;
-  status: 'APPROVED' | 'REJECTED' | 'FAILED';
+  /** Referencia comercial que se guardó al iniciar el pago. */
+  reference_number?: string;
+  amount?: number;
+  currency?: string;
+  status:
+    | 'IGNORED'
+    | 'PROCESSING'
+    | 'APPROVED'
+    | 'REJECTED'
+    | 'FAILED'
+    | 'REFUNDED'
+    | 'REVERSED'
+    | 'DISPUTED';
   raw_event: unknown;
 }
 

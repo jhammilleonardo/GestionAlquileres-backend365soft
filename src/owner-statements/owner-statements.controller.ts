@@ -30,16 +30,15 @@ import {
   OwnerStatementResponseDto,
 } from './dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 
 /**
  * Admin endpoints for managing owner statements
  */
 @ApiTags('Owner Statements - Admin')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller(':slug/admin/owner-statements')
 export class AdminOwnerStatementsController {
   private readonly logger = new Logger(AdminOwnerStatementsController.name);
@@ -53,6 +52,7 @@ export class AdminOwnerStatementsController {
    * Obtener un estado de cuenta por ID
    */
   @Get(':id')
+  @RequirePermission('owners', 'view')
   @ApiOperation({
     summary: 'Obtener estado de cuenta por ID',
     description: 'Retorna los detalles de un estado de cuenta específico',
@@ -77,6 +77,7 @@ export class AdminOwnerStatementsController {
    * Descargar PDF del estado de cuenta - ADMIN
    */
   @Get(':id/pdf')
+  @RequirePermission('owners', 'view')
   @ApiOperation({
     summary: 'Descargar PDF de liquidación (Admin)',
     description:
@@ -129,6 +130,7 @@ export class AdminOwnerStatementsController {
    * Crear un estado de cuenta manualmente (normalmente se crea automáticamente)
    */
   @Post()
+  @RequirePermission('owners', 'create')
   @ApiOperation({
     summary: 'Crear estado de cuenta (uso interno)',
     description:
@@ -147,6 +149,7 @@ export class AdminOwnerStatementsController {
    * Actualizar un estado de cuenta
    */
   @Patch(':id')
+  @RequirePermission('owners', 'edit')
   @ApiOperation({
     summary: 'Actualizar estado de cuenta',
     description: 'Actualiza los datos de un estado de cuenta específico',
@@ -170,6 +173,7 @@ export class AdminOwnerStatementsController {
    * Marcar un estado de cuenta como transferido manualmente al propietario
    */
   @Patch(':id/mark-transferred')
+  @RequirePermission('owners', 'edit')
   @ApiOperation({
     summary: 'Marcar estado de cuenta como transferido',
     description:
@@ -199,6 +203,7 @@ export class AdminOwnerStatementsController {
    * Eliminar un estado de cuenta
    */
   @Delete(':id')
+  @RequirePermission('owners', 'delete')
   @ApiOperation({
     summary: 'Eliminar estado de cuenta',
     description: 'Elimina un estado de cuenta específico',

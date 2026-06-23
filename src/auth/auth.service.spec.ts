@@ -167,12 +167,14 @@ describe('AuthService', () => {
       .mockResolvedValueOnce([
         {
           id: 77,
+          tenant_slug: 'demo',
           tenant_schema: 'tenant_demo',
           user_id: 10,
           expires_at: new Date(Date.now() + 60000),
           used_at: null,
         },
-      ]);
+      ])
+      .mockResolvedValueOnce([{ role: 'PROPIETARIO' }]);
     dataSource.transaction.mockImplementationOnce(
       async (callback: (value: typeof manager) => Promise<void>) =>
         callback(manager),
@@ -181,7 +183,9 @@ describe('AuthService', () => {
     const result = await service.resetPassword(token, 'NewPassword123');
 
     expect(result.message).toContain('actualizada');
-    expect(dataSource.query).toHaveBeenLastCalledWith(
+    expect(result.role).toBe('PROPIETARIO');
+    expect(result.tenantSlug).toBe('demo');
+    expect(dataSource.query).toHaveBeenCalledWith(
       expect.stringContaining('WHERE token_hash = $1'),
       [tokenHash],
     );

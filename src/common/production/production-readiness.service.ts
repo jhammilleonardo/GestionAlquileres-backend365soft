@@ -72,6 +72,12 @@ export class ProductionReadinessService implements OnApplicationBootstrap {
       );
     }
 
+    for (const origin of frontendUrls.split(',').map((value) => value.trim())) {
+      if (origin && !this.isSecureAbsoluteUrl(origin, true)) {
+        errors.push(`FRONTEND_URLS contiene un origen inválido: ${origin}`);
+      }
+    }
+
     if (
       !this.envBool('HTTPS_ENABLED') &&
       !this.envBool('TLS_TERMINATED_BY_PROXY')
@@ -137,6 +143,11 @@ export class ProductionReadinessService implements OnApplicationBootstrap {
       if ((process.env.MC4_CALLBACK_SECRET ?? '').length < 32) {
         errors.push('MC4_CALLBACK_SECRET debe tener al menos 32 caracteres');
       }
+      this.requireHttpsUrls(errors, [
+        'MC4_AUTH_URL',
+        'MC4_QR_URL',
+        'MC4_STATUS_URL',
+      ]);
     }
 
     if (this.envBool('STRIPE_ENABLED')) {
@@ -178,6 +189,7 @@ export class ProductionReadinessService implements OnApplicationBootstrap {
 
     if (monitoringProvider === 'webhook') {
       this.requireAll(errors, ['MONITORING_WEBHOOK_URL']);
+      this.requireHttpsUrls(errors, ['MONITORING_WEBHOOK_URL']);
     }
 
     if (
@@ -247,5 +259,28 @@ export class ProductionReadinessService implements OnApplicationBootstrap {
     return ['1', 'true', 'yes', 'on'].includes(
       (process.env[name] ?? '').trim().toLowerCase(),
     );
+  }
+
+  private requireHttpsUrls(errors: string[], names: string[]): void {
+    for (const name of names) {
+      const value = process.env[name];
+      if (value && !this.isSecureAbsoluteUrl(value, false)) {
+        errors.push(`${name} debe ser una URL HTTPS absoluta sin credenciales`);
+      }
+    }
+  }
+
+  private isSecureAbsoluteUrl(value: string, originOnly: boolean): boolean {
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === 'https:' &&
+        !url.username &&
+        !url.password &&
+        (!originOnly || (url.pathname === '/' && !url.search && !url.hash))
+      );
+    } catch {
+      return false;
+    }
   }
 }

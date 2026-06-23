@@ -153,6 +153,51 @@ export class TenantPaymentsProvisioningService {
     `);
   }
 
+  /**
+   * Habilita pagos polimórficos (§4.6): un pago se vincula EXACTAMENTE a un
+   * contrato de largo plazo (`contract_id`) o a una reserva de corto plazo
+   * (`reservation_id`), nunca a ambos ni a ninguno. Se ejecuta como paso
+   * independiente DESPUÉS de `ensureReservations`, porque la FK necesita que la
+   * tabla `reservations` ya exista. Idempotente para tenants existentes:
+   * `contract_id` se vuelve nullable y `num_nonnulls(...)=1` arbitra la
+   * exclusividad sin romper los pagos actuales (todos con contrato).
+   */
+  async ensureReservationPaymentSupport(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(
+      `ALTER TABLE ${q}.payments ALTER COLUMN contract_id DROP NOT NULL`,
+    );
+
+    await this.dataSource.query(
+      `ALTER TABLE ${q}.payments ADD COLUMN IF NOT EXISTS reservation_id INTEGER`,
+    );
+
+    // FK y CHECK no admiten IF NOT EXISTS: se envuelven en un bloque que ignora
+    // el error de duplicado para que la migración sea re-ejecutable.
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        ALTER TABLE ${q}.payments
+          ADD CONSTRAINT fk_payments_reservation
+          FOREIGN KEY (reservation_id) REFERENCES ${q}.reservations(id)
+          ON DELETE SET NULL;
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        ALTER TABLE ${q}.payments
+          ADD CONSTRAINT chk_payments_link_exactly_one
+          CHECK (num_nonnulls(contract_id, reservation_id) = 1);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+
+    await this.dataSource.query(
+      `CREATE INDEX IF NOT EXISTS idx_payments_reservation
+         ON ${q}.payments(reservation_id)`,
+    );
+  }
+
   async ensureWebhookEvents(schemaName: string): Promise<void> {
     const q = quoteIdent(schemaName);
 

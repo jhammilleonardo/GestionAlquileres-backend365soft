@@ -29,10 +29,10 @@ import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
 import { AssignOwnerPropertyDto } from './dto/assign-owner-property.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import {
-  RentalOwnerAccountResponseDto,
+  RentalOwnerInviteResponseDto,
   RentalOwnerMessageResponseDto,
   RentalOwnerResponseDto,
   RentalOwnerSummaryResponseDto,
@@ -41,8 +41,7 @@ import {
 @ApiTags('Rental Owners')
 @ApiBearerAuth()
 @Controller(':slug/admin/rental-owners')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'EMPLEADO')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class RentalOwnersController {
   constructor(
     private readonly rentalOwnersService: RentalOwnersService,
@@ -53,6 +52,7 @@ export class RentalOwnersController {
    * Lista todos los propietarios con cantidad de propiedades y saldo pendiente.
    */
   @Get()
+  @RequirePermission('owners', 'view')
   @ApiOperation({
     summary: 'Listar propietarios',
     description:
@@ -72,6 +72,7 @@ export class RentalOwnersController {
    * Detalle de un propietario por ID.
    */
   @Get(':id')
+  @RequirePermission('owners', 'view')
   @ApiOperation({ summary: 'Obtener propietario por ID' })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
@@ -91,6 +92,7 @@ export class RentalOwnersController {
    * Crea un propietario con datos personales y, opcionalmente, datos bancarios.
    */
   @Post()
+  @RequirePermission('owners', 'create')
   @ApiOperation({
     summary: 'Crear propietario',
     description:
@@ -111,6 +113,7 @@ export class RentalOwnersController {
    * Actualiza datos personales y/o bancarios de un propietario.
    */
   @Patch(':id')
+  @RequirePermission('owners', 'edit')
   @ApiOperation({
     summary: 'Actualizar propietario',
     description:
@@ -138,6 +141,7 @@ export class RentalOwnersController {
    * Falla si el propietario tiene propiedades activas asignadas.
    */
   @Delete(':id')
+  @RequirePermission('owners', 'delete')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Desactivar propietario',
@@ -161,6 +165,7 @@ export class RentalOwnersController {
    * Propiedades asignadas a un propietario con porcentaje de participación.
    */
   @Get(':id/properties')
+  @RequirePermission('owners', 'view')
   @ApiOperation({
     summary: 'Propiedades del propietario',
     description:
@@ -178,6 +183,7 @@ export class RentalOwnersController {
   }
 
   @Post(':id/properties')
+  @RequirePermission('owners', 'edit')
   @ApiOperation({
     summary: 'Asignar propiedad al propietario',
     description:
@@ -196,6 +202,7 @@ export class RentalOwnersController {
   }
 
   @Delete(':id/properties/:propertyId')
+  @RequirePermission('owners', 'edit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover propiedad del propietario',
@@ -224,6 +231,7 @@ export class RentalOwnersController {
    * owner_statements dedicada (planificada para Fase 3).
    */
   @Get(':id/statements')
+  @RequirePermission('owners', 'view')
   @ApiOperation({
     summary: 'Historial de liquidaciones del propietario',
     description:
@@ -247,6 +255,7 @@ export class RentalOwnersController {
   }
 
   @Get(':id/contracts')
+  @RequirePermission('owners', 'view')
   @ApiOperation({
     summary: 'Contratos relacionados al propietario',
     description:
@@ -262,18 +271,26 @@ export class RentalOwnersController {
     return this.rentalOwnersService.getContracts(id);
   }
 
-  @Post(':id/create-account')
+  @Post(':id/invite')
+  @RequirePermission('owners', 'edit')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Crear cuenta de acceso para el propietario',
-    description: 'Genera credenciales de acceso para el propietario.',
+    summary: 'Invitar al propietario a su portal',
+    description:
+      'Asegura la cuenta del propietario y genera un enlace de un solo uso para ' +
+      'que defina su propia contraseña. El admin nunca ve la contraseña. En ' +
+      'producción el enlace también se envía por correo. Sirve tanto para la ' +
+      'invitación inicial como para reenviarla si el propietario olvidó su acceso.',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ type: RentalOwnerAccountResponseDto })
-  async createAccount(
+  @ApiOkResponse({ type: RentalOwnerInviteResponseDto })
+  @ApiNotFoundResponse({ description: 'Propietario no encontrado' })
+  @ApiBadRequestResponse({ description: 'El propietario está inactivo' })
+  async invite(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.rentalOwnersService.createOwnerAccount(id, slug);
+    return this.rentalOwnersService.inviteOwner(id, slug);
   }
 }

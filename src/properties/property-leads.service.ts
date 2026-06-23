@@ -49,6 +49,24 @@ export class PropertyLeadsService {
     tenantSlug: string,
     userIP?: string,
   ): Promise<PropertyLeadRow> {
+    // Honeypot: si el campo señuelo viene relleno, es un bot. Devolvemos una
+    // respuesta de éxito sin persistir nada ni notificar (no informar al bot).
+    if (contactDto.website && contactDto.website.trim().length > 0) {
+      this.logger.debug(`Lead honeypot descartado en sitio ${tenantSlug}`);
+      return {
+        id: 0,
+        property_id: propertyId,
+        name: contactDto.name,
+        email: contactDto.email,
+        phone: contactDto.phone ?? null,
+        message: contactDto.message,
+        inquiry_type: contactDto.inquiry_type || 'general',
+        availability: contactDto.availability ?? null,
+        created_at: new Date(),
+        status: 'PENDING',
+      };
+    }
+
     const schemaName = await this.getTenantSchemaName(tenantSlug);
     const schemaPrefix = this.schemaPrefix(schemaName);
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import axios from 'axios';
+import { nativeHttpClient } from '../common/http/safe-http-client.service';
 
 export type LifecycleExternalChannel = 'email' | 'whatsapp';
 type LifecycleExternalProvider =
@@ -65,7 +65,7 @@ export class LifecycleExternalNotificationAdapter {
       );
     }
 
-    await axios.post(
+    await nativeHttpClient.post(
       'https://api.sendgrid.com/v3/mail/send',
       {
         personalizations: [
@@ -128,15 +128,12 @@ export class LifecycleExternalNotificationAdapter {
       Body: `${notification.title}\n\n${notification.message}`,
     });
 
-    await axios.post(
+    await nativeHttpClient.post(
       `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      body,
+      body.toString(),
       {
-        auth: {
-          username: accountSid,
-          password: authToken,
-        },
         headers: {
+          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         timeout: Number(process.env.NOTIFICATION_TIMEOUT_MS ?? 7000),
@@ -157,7 +154,7 @@ export class LifecycleExternalNotificationAdapter {
       );
     }
 
-    await axios.post(
+    await nativeHttpClient.post(
       `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
       {
         messaging_product: 'whatsapp',

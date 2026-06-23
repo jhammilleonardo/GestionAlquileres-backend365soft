@@ -1,6 +1,7 @@
 import {
   IsNotEmpty,
   IsNumber,
+  IsInt,
   IsEnum,
   IsOptional,
   IsString,
@@ -86,8 +87,9 @@ export class CreatePaymentDto {
   is_partial_payment?: boolean = false;
 
   @ApiPropertyOptional({ example: 31 })
-  @IsNumber()
   @IsOptional()
+  @IsInt()
+  @Min(1)
   parent_payment_id?: number;
 
   @ApiPropertyOptional({ example: false })
@@ -96,7 +98,8 @@ export class CreatePaymentDto {
   is_recurring?: boolean = false;
 
   @ApiPropertyOptional({ example: 2 })
-  @IsNumber()
   @IsOptional()
+  @IsInt()
+  @Min(1)
   recurring_schedule_id?: number;
 }

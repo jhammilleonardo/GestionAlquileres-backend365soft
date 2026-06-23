@@ -15,6 +15,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -37,6 +38,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { inspectionPhotoMulterConfig } from '../common/utils/multer.config';
+import { assertUploadedFilesMatchContent } from '../common/utils/upload-content-validation';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 import {
   InspectionCompareResponseDto,
@@ -129,6 +131,7 @@ export class InspectionsController {
   }
 
   @Post(':id/photos')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @RequirePermission('inspections', 'edit')
   @UseInterceptors(FilesInterceptor('files', 5, inspectionPhotoMulterConfig))
   @ApiOperation({ summary: 'Subir fotos a un ítem de la inspección' })
@@ -156,7 +159,7 @@ export class InspectionsController {
   @ApiOkResponse({ type: InspectionPhotosResponseDto })
   @ApiBadRequestResponse({ description: 'No se enviaron archivos' })
   @ApiNotFoundResponse({ description: 'Inspección o ítem no encontrado' })
-  uploadPhotos(
+  async uploadPhotos(
     @Req() req: TenantRequest,
     @Param('id', ParseIntPipe) id: number,
     @Query('item_id', ParseIntPipe) itemId: number,
@@ -165,6 +168,7 @@ export class InspectionsController {
     if (!files?.length) {
       throw new BadRequestException('No se enviaron archivos');
     }
+    await assertUploadedFilesMatchContent(files);
     return this.inspectionsService.addPhotosToItem(
       req.tenant!.schema_name,
       id,

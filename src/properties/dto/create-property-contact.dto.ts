@@ -4,6 +4,7 @@ import {
   IsEmail,
   IsOptional,
   MinLength,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -20,6 +21,7 @@ export class CreatePropertyContactDto {
   @IsNotEmpty()
   @IsString()
   @MinLength(2)
+  @MaxLength(120)
   name: string;
 
   /**
@@ -37,6 +39,7 @@ export class CreatePropertyContactDto {
   @ApiProperty({ example: '+59171111111' })
   @IsNotEmpty()
   @IsString()
+  @MaxLength(50)
   phone: string;
 
   /**
@@ -46,6 +49,7 @@ export class CreatePropertyContactDto {
   @IsNotEmpty()
   @IsString()
   @MinLength(10)
+  @MaxLength(2000)
   message: string;
 
   /**
@@ -55,6 +59,7 @@ export class CreatePropertyContactDto {
   @ApiPropertyOptional({ example: 'visita' })
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   inquiry_type?: string;
 
   /**
@@ -64,6 +69,7 @@ export class CreatePropertyContactDto {
   @ApiPropertyOptional({ example: 'inmediata' })
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   availability?: string;
 
   /**
@@ -73,7 +79,18 @@ export class CreatePropertyContactDto {
   @ApiPropertyOptional({ example: 'CI-1234567' })
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   identity_document?: string;
+
+  /**
+   * Honeypot anti-spam: campo señuelo oculto. Un humano nunca lo rellena; si
+   * llega con contenido, el backend descarta el lead en silencio.
+   */
+  @ApiPropertyOptional({ description: 'Honeypot anti-spam (dejar vacío)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  website?: string;
 }
 
 /**

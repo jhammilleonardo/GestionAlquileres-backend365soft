@@ -138,10 +138,12 @@ export class PropertiesService {
   async findCatalogProperties(
     filters: FilterCatalogPropertiesDto,
     tenantSlug: string,
+    allowUnpublished = false,
   ) {
     return this.propertyPublicCatalogService.findCatalogProperties(
       filters,
       tenantSlug,
+      allowUnpublished,
     );
   }
 
@@ -153,11 +155,13 @@ export class PropertiesService {
     id: number,
     tenantSlug: string,
     userIP?: string,
+    allowUnpublished = false,
   ) {
     return this.propertyPublicCatalogService.findCatalogPropertyDetail(
       id,
       tenantSlug,
       userIP,
+      allowUnpublished,
     );
   }
 

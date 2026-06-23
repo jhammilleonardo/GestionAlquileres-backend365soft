@@ -96,10 +96,16 @@ export class PropertySearchService {
         p.images, p.amenities, p.included_items,
         p.monthly_rent, p.currency, p.square_meters, p.bedrooms, p.bathrooms,
         p.parking_spaces, p.year_built, p.is_furnished, p.property_rules,
+        p.rental_type,
         p.created_at, p.updated_at,
         pt.name as property_type_name, pt.code as property_type_code,
         pst.name as property_subtype_name, pst.code as property_subtype_code,
         CASE WHEN p.status = 'DISPONIBLE' THEN true ELSE false END as active,
+        (
+          SELECT MIN(u.price_per_night)
+          FROM ${schemaPrefix}units u
+          WHERE u.property_id = p.id AND u.price_per_night IS NOT NULL
+        ) AS min_price_per_night,
         COALESCE(
           jsonb_agg(DISTINCT to_jsonb(pa_all))
             FILTER (WHERE pa_all.id IS NOT NULL),

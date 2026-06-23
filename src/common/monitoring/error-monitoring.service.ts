@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import axios from 'axios';
+import { nativeHttpClient } from '../http/safe-http-client.service';
 
 export interface MonitoringContext {
   tags?: Record<string, string | number | boolean>;
@@ -62,7 +62,7 @@ export class ErrorMonitoringService {
       headers.Authorization = `Bearer ${apiKey}`;
     }
 
-    await axios.post(
+    await nativeHttpClient.post(
       webhookUrl,
       {
         service: this.serviceName,

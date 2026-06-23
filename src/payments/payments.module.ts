@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { HttpModule } from '@nestjs/axios';
 import { PaymentsService } from './payments.service';
 import { PaymentQueriesService } from './payment-queries.service';
 import { PaymentApprovalService } from './payment-approval.service';
@@ -10,10 +9,12 @@ import { PaymentWebhookService } from './payment-webhook.service';
 import { PaymentCreationService } from './payment-creation.service';
 import { PaymentCreationNotificationService } from './payment-creation-notification.service';
 import { PaymentCreationValidationService } from './payment-creation-validation.service';
+import { ReservationPaymentService } from './reservation-payment.service';
 import { PaymentMethodsService } from './payment-methods.service';
 import {
   AdminPaymentsController,
   TenantPaymentsController,
+  TenantReservationPaymentsController,
 } from './payments.controller';
 import { WebhookController } from './webhooks/webhook.controller';
 import { TenantsModule } from '../tenants/tenants.module';
@@ -29,6 +30,9 @@ import { PayPalProcessor } from './processors/paypal.processor';
 import { PayUProcessor } from './processors/payu.processor';
 import { QRBoliviaProcessor } from './processors/qr-bolivia.processor';
 import { StorageModule } from '../common/storage/storage.module';
+import { AccountingModule } from '../accounting/accounting.module';
+import { ReservationPaymentConfirmationService } from './reservation-payment-confirmation.service';
+import { SafeHttpClientService } from '../common/http/safe-http-client.service';
 
 /**
  * Payments Module
@@ -45,7 +49,6 @@ import { StorageModule } from '../common/storage/storage.module';
  */
 @Module({
   imports: [
-    HttpModule.register({ timeout: 30000, maxRedirects: 3 }),
     TenantsModule,
     NotificationsModule,
     OwnerStatementsModule,
@@ -53,10 +56,12 @@ import { StorageModule } from '../common/storage/storage.module';
     AuditLogsModule,
     QrPaymentModule,
     StorageModule,
+    AccountingModule,
   ],
   controllers: [
     AdminPaymentsController,
     TenantPaymentsController,
+    TenantReservationPaymentsController,
     WebhookController,
   ],
   providers: [
@@ -70,6 +75,9 @@ import { StorageModule } from '../common/storage/storage.module';
     PaymentCreationService,
     PaymentCreationNotificationService,
     PaymentCreationValidationService,
+    ReservationPaymentService,
+    ReservationPaymentConfirmationService,
+    SafeHttpClientService,
     PaymentMethodsService,
     PaymentProcessorFactory,
     ManualPaymentProcessor,

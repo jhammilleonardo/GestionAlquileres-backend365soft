@@ -32,11 +32,16 @@ export class TenantSchemaService {
         phone character varying,
         role ${q}.user_role_enum NOT NULL DEFAULT 'INQUILINO',
         is_active boolean NOT NULL DEFAULT true,
+        token_version INTEGER NOT NULL DEFAULT 0,
         last_connection TIMESTAMP,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
         updated_at TIMESTAMP NOT NULL DEFAULT now()
       );
     `);
+
+    await this.dataSource.query(
+      `ALTER TABLE ${q}."user" ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0`,
+    );
 
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS IDX_USER_EMAIL ON ${q}."user"(email);

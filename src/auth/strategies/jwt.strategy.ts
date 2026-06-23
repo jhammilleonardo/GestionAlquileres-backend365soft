@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import type { Request } from 'express';
 import { AuthRequestUser } from '../auth.service';
+import { extractAccessToken } from '../auth-cookie.util';
+import type { TenantRequest } from '../../common/middleware/tenant-context.middleware';
 
 interface JwtPayload {
   sub: number;
@@ -13,6 +16,7 @@ interface JwtPayload {
   vendorId?: number | null;
   mfaVerified?: boolean;
   mfaAt?: number | null;
+  tokenVersion?: number;
 }
 
 @Injectable()
@@ -28,13 +32,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // Acepta el token por cookie HttpOnly o por header Authorization (este
+      // último para compatibilidad durante la migración a cookies).
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (req: Request) => extractAccessToken(req),
+      ]),
       ignoreExpiration: false,
       secretOrKey: jwtSecret,
+      passReqToCallback: true,
     });
   }
 
-  validate(payload: JwtPayload): AuthRequestUser {
+  validate(req: TenantRequest, payload: JwtPayload): AuthRequestUser {
+    if (req.tenant && payload.tenantSlug !== req.tenant.slug) {
+      throw new UnauthorizedException('Token not valid for requested company');
+    }
+
     return {
       userId: payload.sub,
       email: payload.email,
@@ -44,6 +57,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       vendorId: payload.vendorId ?? null,
       mfaVerified: payload.mfaVerified ?? false,
       mfaAt: payload.mfaAt ?? null,
+      tokenVersion: payload.tokenVersion,
     };
   }
 }

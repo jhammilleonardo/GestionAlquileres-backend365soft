@@ -9,15 +9,6 @@ export interface PublicCatalogAddress {
   country?: string | null;
 }
 
-export interface PublicCatalogOwner {
-  id: number;
-  name: string | null;
-  company_name: string | null;
-  email: string | null;
-  phone: string | null;
-  is_primary: boolean;
-}
-
 export interface PublicCatalogProperty {
   id: number;
   title: string;
@@ -69,7 +60,6 @@ export interface PublicCatalogUnit {
 
 export interface PublicCatalogPropertyDetail extends PublicCatalogProperty {
   addresses: PublicCatalogAddress[];
-  owners: PublicCatalogOwner[];
   units: PublicCatalogUnit[];
 }
 

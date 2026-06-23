@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
 import { TenantsService } from '../tenants/tenants.service';
+import { TenantConfigService } from '../tenant-config/tenant-config.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { Contract } from './entities/contract.entity';
 import { ContractStatus } from './enums/contract-status.enum';
@@ -19,6 +20,22 @@ export interface CreateContractOptions {
   skipSideEffects?: boolean;
 }
 
+/** Defaults regionales del tenant usados cuando el DTO no los especifica. */
+interface RegionalContractDefaults {
+  currency?: string;
+  lateFeePercentage?: number;
+  graceDays?: number;
+  jurisdiction?: string;
+}
+
+/** Jurisdicción legal por país del tenant (tenant_config.country). */
+const JURISDICTION_BY_COUNTRY: Record<string, string> = {
+  US: 'Estados Unidos',
+  BO: 'Bolivia',
+  GT: 'Guatemala',
+  HN: 'Honduras',
+};
+
 export type { ContractCreatedSideEffectsParams };
 
 @Injectable()
@@ -31,6 +48,7 @@ export class ContractCreationService {
     private readonly contractHistoryService: ContractHistoryService,
     private readonly contractCreationSideEffectsService: ContractCreationSideEffectsService,
     private readonly contractCreationValidationService: ContractCreationValidationService,
+    private readonly tenantConfigService: TenantConfigService,
   ) {}
 
   async create(
@@ -57,6 +75,8 @@ export class ContractCreationService {
       createContractDto.end_date,
     );
 
+    const regionalDefaults = await this.resolveRegionalDefaults(schemaName);
+
     const queryRunner =
       options.queryRunner ?? this.dataSource.createQueryRunner();
     const ownsQueryRunner = !options.queryRunner;
@@ -80,10 +100,14 @@ export class ContractCreationService {
         durationMonths,
         queryRunner,
         schemaPrefix,
+        regionalDefaults,
       });
 
+      // El contrato nace en BORRADOR: la propiedad queda RESERVADA, no OCUPADA.
+      // Sólo al firmar (ContractSigningService) pasa a OCUPADO. Así un borrador
+      // que nunca se firma no deja la propiedad ocupada de forma permanente.
       await queryRunner.query(
-        `UPDATE ${schemaPrefix}properties SET status = 'OCUPADO', updated_at = NOW() WHERE id = $1`,
+        `UPDATE ${schemaPrefix}properties SET status = 'RESERVADO', updated_at = NOW() WHERE id = $1`,
         [createContractDto.property_id],
       );
 
@@ -139,9 +163,15 @@ export class ContractCreationService {
     durationMonths: number;
     queryRunner: QueryRunner;
     schemaPrefix: string;
+    regionalDefaults: RegionalContractDefaults;
   }): Promise<Contract> {
-    const { createContractDto, contractNumber, durationMonths, queryRunner } =
-      params;
+    const {
+      createContractDto,
+      contractNumber,
+      durationMonths,
+      queryRunner,
+      regionalDefaults,
+    } = params;
 
     const insertResult = (await queryRunner.query(
       `INSERT INTO ${params.schemaPrefix}contracts
@@ -163,12 +193,14 @@ export class ContractCreationService {
         durationMonths,
         createContractDto.key_delivery_date || null,
         createContractDto.monthly_rent,
-        createContractDto.currency || 'BOB',
+        createContractDto.currency || regionalDefaults.currency || 'BOB',
         createContractDto.payment_day || 5,
         createContractDto.deposit_amount || 0,
         createContractDto.payment_method || null,
-        createContractDto.late_fee_percentage || 0,
-        createContractDto.grace_days || 0,
+        createContractDto.late_fee_percentage ??
+          regionalDefaults.lateFeePercentage ??
+          0,
+        createContractDto.grace_days ?? regionalDefaults.graceDays ?? 0,
         createContractDto.included_services
           ? JSON.stringify(createContractDto.included_services)
           : null,
@@ -178,7 +210,9 @@ export class ContractCreationService {
         createContractDto.coexistence_rules || null,
         createContractDto.renewal_terms || null,
         createContractDto.termination_terms || null,
-        createContractDto.jurisdiction || 'Bolivia',
+        createContractDto.jurisdiction ||
+          regionalDefaults.jurisdiction ||
+          'Bolivia',
         createContractDto.auto_renew || false,
         createContractDto.renewal_notice_days || 30,
         createContractDto.auto_increase_percentage || 0,
@@ -191,6 +225,37 @@ export class ContractCreationService {
     )) as unknown as Contract[];
 
     return insertResult[0];
+  }
+
+  /**
+   * Toma moneda, % de mora y días de gracia de la configuración regional del
+   * tenant para usarlos como defaults cuando el contrato no los especifica.
+   * Si no hay schema (sin slug) o el tenant aún no tiene config, se omiten y se
+   * cae a los defaults genéricos del INSERT.
+   */
+  private async resolveRegionalDefaults(
+    schemaName: string | null,
+  ): Promise<RegionalContractDefaults> {
+    if (!schemaName) {
+      return {};
+    }
+
+    try {
+      const config = await this.tenantConfigService.getConfig(schemaName);
+      return {
+        currency: config.currency,
+        lateFeePercentage:
+          config.late_fee_percentage != null
+            ? Number(config.late_fee_percentage)
+            : undefined,
+        graceDays: config.grace_days_late_fee ?? undefined,
+        jurisdiction: config.country
+          ? JURISDICTION_BY_COUNTRY[config.country]
+          : undefined,
+      };
+    } catch {
+      return {};
+    }
   }
 
   private calculateDurationMonths(

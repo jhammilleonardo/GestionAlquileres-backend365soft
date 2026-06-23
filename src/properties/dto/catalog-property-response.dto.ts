@@ -1,9 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CatalogPropertyAddressResponseDto {
-  @ApiProperty({ example: 'Av. Siempre Viva 123' })
-  street_address: string;
-
   @ApiProperty({ example: 'La Paz' })
   city: string;
 
@@ -12,9 +9,6 @@ export class CatalogPropertyAddressResponseDto {
 
   @ApiProperty({ example: 'Bolivia' })
   country: string;
-
-  @ApiProperty({ example: '0000' })
-  zip_code: string;
 }
 
 /**
@@ -226,17 +220,6 @@ export class CatalogPropertyDetailResponseDto {
     min_lease_months?: number;
     additional_rules?: string;
   };
-
-  // Información de contacto de dueños
-  @ApiProperty({ type: Object, isArray: true })
-  owners: Array<{
-    id: number;
-    name: string;
-    company_name?: string;
-    email: string;
-    phone: string;
-    is_primary: boolean;
-  }>;
 
   // Contadores
   @ApiProperty({ example: 12 })

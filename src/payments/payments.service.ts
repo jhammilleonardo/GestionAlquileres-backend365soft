@@ -322,7 +322,7 @@ export class PaymentsService {
   async handleWebhookResult(
     tenantSlug: string,
     result: WebhookResult,
-    processor: string = 'unknown',
+    processor: string,
   ): Promise<void> {
     return this.paymentWebhookService.handleWebhookResult(
       tenantSlug,

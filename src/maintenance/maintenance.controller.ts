@@ -16,10 +16,12 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import {
   maintenanceMulterConfig,
   stagePhotoMulterConfig,
 } from '../common/utils/multer.config';
+import { assertUploadedFilesMatchContent } from '../common/utils/upload-content-validation';
 import {
   ApiBadRequestResponse,
   ApiTags,
@@ -68,6 +70,24 @@ import type { TenantRequest } from '../common/middleware/tenant-context.middlewa
 export class AdminMaintenanceController {
   constructor(private readonly maintenanceService: MaintenanceService) {}
 
+  private async assertTechnicianAssignment(
+    requestId: number,
+    req: TenantRequest,
+  ) {
+    const request = await this.maintenanceService.findOne(requestId);
+
+    if (
+      req.user?.role === 'TECNICO' &&
+      request.assigned_to !== req.user.userId
+    ) {
+      throw new ForbiddenException(
+        'Esta solicitud no está asignada a tu cuenta',
+      );
+    }
+
+    return request;
+  }
+
   @Get()
   @Roles('ADMIN', 'TECNICO')
   @ApiOperation({ summary: 'Obtener todas las solicitudes' })
@@ -86,8 +106,13 @@ export class AdminMaintenanceController {
   async findAll(
     @Param('slug') _slug: string,
     @Query() filters: MaintenanceFiltersDto,
+    @Request() req: TenantRequest,
   ) {
-    return this.maintenanceService.findAll(filters);
+    const scopedFilters =
+      req.user?.role === 'TECNICO'
+        ? { ...filters, assigned_to: req.user.userId }
+        : filters;
+    return this.maintenanceService.findAll(scopedFilters);
   }
 
   @Get('stats')
@@ -160,8 +185,9 @@ export class AdminMaintenanceController {
   async findOne(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
   ) {
-    return this.maintenanceService.findOne(id);
+    return this.assertTechnicianAssignment(id, req);
   }
 
   @Patch(':id')
@@ -176,7 +202,9 @@ export class AdminMaintenanceController {
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
     @Body() updateMaintenanceDto: UpdateMaintenanceDto,
+    @Request() req: TenantRequest,
   ) {
+    await this.assertTechnicianAssignment(id, req);
     return this.maintenanceService.update(id, updateMaintenanceDto);
   }
 
@@ -203,11 +231,14 @@ export class AdminMaintenanceController {
   async getMessages(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
   ) {
+    await this.assertTechnicianAssignment(id, req);
     return this.maintenanceService.getMessages(id);
   }
 
   @Post(':id/messages')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Roles('ADMIN', 'TECNICO')
   @ApiOperation({ summary: 'Enviar mensaje a una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
@@ -221,6 +252,7 @@ export class AdminMaintenanceController {
     @Body() createMessageDto: CreateMessageDto,
     @Request() req: TenantRequest,
   ) {
+    await this.assertTechnicianAssignment(id, req);
     return this.maintenanceService.addMessage(
       id,
       createMessageDto,
@@ -229,6 +261,7 @@ export class AdminMaintenanceController {
   }
 
   @Post(':id/upload')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Roles('ADMIN', 'TECNICO')
   @ApiOperation({
     summary: 'Subir archivos adjuntos a una solicitud (máx. 3, 10MB c/u)',
@@ -261,9 +294,11 @@ export class AdminMaintenanceController {
     @UploadedFiles() files: Express.Multer.File[],
     @Request() req: TenantRequest,
   ) {
+    await this.assertTechnicianAssignment(id, req);
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron archivos');
     }
+    await assertUploadedFilesMatchContent(files);
     return this.maintenanceService.saveUploadedFiles(
       id,
       files,
@@ -281,7 +316,9 @@ export class AdminMaintenanceController {
   async getStageHistory(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
   ) {
+    await this.assertTechnicianAssignment(id, req);
     return this.maintenanceService.getStageHistory(id);
   }
 
@@ -426,6 +463,7 @@ export class TenantMaintenanceController {
   }
 
   @Post()
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Crear una nueva solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiBody({ type: CreateMaintenanceDto })
@@ -470,6 +508,7 @@ export class TenantMaintenanceController {
   }
 
   @Post(':id/messages')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @ApiOperation({ summary: 'Enviar mensaje a una solicitud' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -498,6 +537,7 @@ export class TenantMaintenanceController {
   }
 
   @Post(':id/upload')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({
     summary: 'Subir archivos adjuntos a una solicitud (máx. 3, 10MB c/u)',
   })
@@ -536,6 +576,7 @@ export class TenantMaintenanceController {
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron archivos');
     }
+    await assertUploadedFilesMatchContent(files);
     return this.maintenanceService.saveUploadedFiles(
       id,
       files,
@@ -552,6 +593,24 @@ export class TenantMaintenanceController {
 @Controller(':slug/tecnico/maintenance')
 export class TecnicoMaintenanceController {
   constructor(private readonly maintenanceService: MaintenanceService) {}
+
+  private async assertTechnicianAssignment(
+    requestId: number,
+    req: TenantRequest,
+  ) {
+    const request = await this.maintenanceService.findOne(requestId);
+
+    if (
+      req.user?.role === 'TECNICO' &&
+      request.assigned_to !== req.user.userId
+    ) {
+      throw new ForbiddenException(
+        'Esta solicitud no está asignada a tu cuenta',
+      );
+    }
+
+    return request;
+  }
 
   @Get()
   @ApiOperation({ summary: 'Solicitudes asignadas al técnico' })
@@ -575,8 +634,9 @@ export class TecnicoMaintenanceController {
   async findOne(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
   ) {
-    return this.maintenanceService.findOne(id);
+    return this.assertTechnicianAssignment(id, req);
   }
 
   @Get(':id/stage-history')
@@ -587,7 +647,9 @@ export class TecnicoMaintenanceController {
   async getStageHistory(
     @Param('slug') _slug: string,
     @Param('id', ParseIntPipe) id: number,
+    @Request() req: TenantRequest,
   ) {
+    await this.assertTechnicianAssignment(id, req);
     return this.maintenanceService.getStageHistory(id);
   }
 
@@ -608,6 +670,7 @@ export class TecnicoMaintenanceController {
     @Body() dto: UpdateStageDto,
     @Request() req: TenantRequest,
   ) {
+    await this.assertTechnicianAssignment(id, req);
     return this.maintenanceService.changeStageAsTechnician(
       id,
       dto.to_stage,
@@ -617,6 +680,7 @@ export class TecnicoMaintenanceController {
   }
 
   @Post(':id/photos')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Subir fotos del trabajo (máx. 5, solo imágenes)' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -646,9 +710,11 @@ export class TecnicoMaintenanceController {
     @UploadedFiles() files: Express.Multer.File[],
     @Request() req: TenantRequest,
   ) {
+    await this.assertTechnicianAssignment(id, req);
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron fotos');
     }
+    await assertUploadedFilesMatchContent(files);
     return this.maintenanceService.saveStagePhotos(
       id,
       files,
@@ -768,6 +834,7 @@ export class VendorMaintenanceController {
   }
 
   @Post(':id/messages')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @ApiOperation({ summary: 'Agregar un mensaje/nota a la orden' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -784,6 +851,7 @@ export class VendorMaintenanceController {
   }
 
   @Post(':id/upload')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Subir archivos adjuntos para un mensaje del chat' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -814,6 +882,7 @@ export class VendorMaintenanceController {
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron archivos');
     }
+    await assertUploadedFilesMatchContent(files);
     return this.maintenanceService.saveUploadedFiles(
       id,
       files,
@@ -823,6 +892,7 @@ export class VendorMaintenanceController {
   }
 
   @Post(':id/photos')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Subir fotos del trabajo (máx. 5, solo imágenes)' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -856,6 +926,7 @@ export class VendorMaintenanceController {
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron fotos');
     }
+    await assertUploadedFilesMatchContent(files);
     return this.maintenanceService.saveStagePhotos(
       id,
       files,

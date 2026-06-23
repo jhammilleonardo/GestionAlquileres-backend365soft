@@ -25,6 +25,7 @@ describe('PropertyPublicCatalogService', () => {
       service.findCatalogProperties(
         { page: 1, limit: 20, sort: 'price_asc' },
         'acme',
+        true,
       ),
     ).resolves.toMatchObject({
       data: [{ id: 15, title: 'Casa Norte' }],
@@ -80,6 +81,7 @@ describe('PropertyPublicCatalogService', () => {
           max_price: 120,
         },
         'acme',
+        true,
       ),
     ).resolves.toMatchObject({
       data: [
@@ -127,6 +129,7 @@ describe('PropertyPublicCatalogService', () => {
     await service.findCatalogProperties(
       { page: 1, limit: 20, country: 'Bolivia' },
       'acme',
+      true,
     );
 
     expect(dataSource.query).toHaveBeenNthCalledWith(
@@ -152,6 +155,7 @@ describe('PropertyPublicCatalogService', () => {
     await service.findCatalogProperties(
       { page: 1, limit: 20, sort: 'available' },
       'acme',
+      true,
     );
 
     expect(dataSource.query).toHaveBeenNthCalledWith(
@@ -168,12 +172,13 @@ describe('PropertyPublicCatalogService', () => {
     );
   });
 
-  it('finds public catalog detail and loads addresses and owners', async () => {
+  it('finds public catalog detail without owner contact information', async () => {
     dataSource.query
       .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
       .mockResolvedValueOnce([{ id: 15, title: 'Casa Norte' }])
-      .mockResolvedValueOnce([{ id: 1, street_address: 'Av. 1' }])
-      .mockResolvedValueOnce([{ id: 2, name: 'Owner' }])
+      .mockResolvedValueOnce([
+        { city: 'La Paz', state: 'La Paz', country: 'Bolivia' },
+      ])
       .mockResolvedValueOnce([{ id: 3, unit_number: '101' }]);
 
     const recordSpy = jest
@@ -181,12 +186,11 @@ describe('PropertyPublicCatalogService', () => {
       .mockResolvedValue(undefined);
 
     await expect(
-      service.findCatalogPropertyDetail(15, 'acme', '127.0.0.1'),
+      service.findCatalogPropertyDetail(15, 'acme', '127.0.0.1', true),
     ).resolves.toMatchObject({
       id: 15,
       title: 'Casa Norte',
-      addresses: [{ id: 1, street_address: 'Av. 1' }],
-      owners: [{ id: 2, name: 'Owner' }],
+      addresses: [{ city: 'La Paz', state: 'La Paz', country: 'Bolivia' }],
       units: [{ id: 3, unit_number: '101' }],
     });
 
@@ -196,6 +200,63 @@ describe('PropertyPublicCatalogService', () => {
       expect.stringContaining('FROM "tenant_acme".properties p'),
       [15],
     );
+    expect(dataSource.query).toHaveBeenCalledTimes(4);
+  });
+
+  it('uses an explicit public projection and only returns available properties', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ is_published: true }])
+      .mockResolvedValueOnce([
+        { id: 15, title: 'Casa Norte', status: 'DISPONIBLE' },
+      ])
+      .mockResolvedValueOnce([
+        { city: 'La Paz', state: 'La Paz', country: 'Bolivia' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 3, unit_number: '101', status: 'available' },
+      ]);
+    jest.spyOn(service, 'recordPropertyView').mockResolvedValue(undefined);
+
+    const detail = await service.findCatalogPropertyDetail(15, 'acme');
+    const propertyCall = dataSource.query.mock.calls[2] as [string, unknown[]];
+    const addressCall = dataSource.query.mock.calls[3] as [string, unknown[]];
+    const unitCall = dataSource.query.mock.calls[4] as [string, unknown[]];
+    const propertySql = propertyCall[0];
+    const addressSql = addressCall[0];
+    const unitSql = unitCall[0];
+
+    expect(detail).not.toHaveProperty('owners');
+    expect(propertySql).not.toContain('p.*');
+    expect(propertySql).not.toContain('account_number');
+    expect(propertySql).not.toContain('account_holder_name');
+    expect(propertySql).toContain("p.status = 'DISPONIBLE'");
+    expect(propertySql).toContain('ROUND(p.latitude::numeric, 2)');
+    expect(addressSql).toContain('SELECT city, state, country');
+    expect(addressSql).not.toContain('street_address');
+    expect(unitSql).toContain("status = 'available'");
+  });
+
+  it('ignores non-public status filters for anonymous catalog requests', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ is_published: true }])
+      .mockResolvedValueOnce([{ count: '0' }])
+      .mockResolvedValueOnce([]);
+
+    await service.findCatalogProperties(
+      { page: 1, limit: 20, status: 'OCUPADO' },
+      'acme',
+    );
+
+    expect(dataSource.query).toHaveBeenNthCalledWith(3, expect.any(String), [
+      'DISPONIBLE',
+    ]);
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('ROUND(p.latitude::numeric, 2)'),
+      ['DISPONIBLE', 20, 0],
+    );
   });
 
   it('throws NotFoundException when public detail does not exist', async () => {
@@ -204,8 +265,45 @@ describe('PropertyPublicCatalogService', () => {
       .mockResolvedValueOnce([]);
 
     await expect(
-      service.findCatalogPropertyDetail(999, 'acme'),
+      service.findCatalogPropertyDetail(999, 'acme', undefined, true),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  it('bloquea el listado de un sitio no publicado para anónimos (404)', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ is_published: false }]);
+
+    await expect(
+      service.findCatalogProperties({ page: 1, limit: 20 }, 'acme'),
+    ).rejects.toThrow(NotFoundException);
+
+    // No debe llegar a ejecutar el COUNT ni el SELECT de propiedades.
+    expect(dataSource.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('permite el listado de un sitio publicado para anónimos', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ is_published: true }])
+      .mockResolvedValueOnce([{ count: '0' }])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      service.findCatalogProperties({ page: 1, limit: 20 }, 'acme'),
+    ).resolves.toMatchObject({ total: 0 });
+  });
+
+  it('bloquea el detalle de un sitio no publicado para anónimos (404)', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ is_published: false }]);
+
+    await expect(service.findCatalogPropertyDetail(15, 'acme')).rejects.toThrow(
+      NotFoundException,
+    );
+
+    expect(dataSource.query).toHaveBeenCalledTimes(2);
   });
 
   it('records catalog views using schema-qualified tables', async () => {

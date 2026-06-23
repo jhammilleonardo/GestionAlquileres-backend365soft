@@ -17,6 +17,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiTags,
   ApiOperation,
@@ -37,9 +38,11 @@ import { UpdatePropertyDto } from './dto/update-property.dto';
 import { UpdatePropertyDetailsDto } from './dto/update-property-details.dto';
 import { FilterPropertiesDto } from './dto/filter-properties.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
+import { OptionalPositiveIntPipe } from '../common/pipes/optional-positive-int.pipe';
 import { multerConfig } from '../common/utils/multer.config';
+import { assertUploadedFilesMatchContent } from '../common/utils/upload-content-validation';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 import { StorageService } from '../common/storage/storage.service';
 import {
@@ -58,8 +61,7 @@ import {
 @ApiTags('Properties - Admin')
 @ApiBearerAuth()
 @Controller(':slug/admin')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'EMPLEADO')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminPropertiesController {
   constructor(
     private readonly propertiesService: PropertiesService,
@@ -71,6 +73,7 @@ export class AdminPropertiesController {
   // =============================================
 
   @Get('properties/stats')
+  @RequirePermission('properties', 'view')
   @ApiOperation({ summary: 'Obtener estadisticas de propiedades' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiOkResponse({ type: PropertyStatsResponseDto })
@@ -83,6 +86,7 @@ export class AdminPropertiesController {
   // =============================================
 
   @Post('properties')
+  @RequirePermission('properties', 'create')
   @ApiOperation({ summary: 'Crear una nueva propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiBody({ type: CreatePropertyDto })
@@ -95,6 +99,7 @@ export class AdminPropertiesController {
   }
 
   @Get('properties')
+  @RequirePermission('properties', 'view')
   @ApiOperation({ summary: 'Obtener todas las propiedades' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiQuery({ name: 'status', required: false })
@@ -116,6 +121,7 @@ export class AdminPropertiesController {
   }
 
   @Get('properties/:id')
+  @RequirePermission('properties', 'view')
   @ApiOperation({ summary: 'Obtener una propiedad por ID' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -129,6 +135,7 @@ export class AdminPropertiesController {
   }
 
   @Patch('properties/:id')
+  @RequirePermission('properties', 'edit')
   @ApiOperation({ summary: 'Actualizar una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -144,6 +151,7 @@ export class AdminPropertiesController {
   }
 
   @Delete('properties/:id')
+  @RequirePermission('properties', 'delete')
   @ApiOperation({ summary: 'Eliminar una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -161,6 +169,7 @@ export class AdminPropertiesController {
   // =============================================
 
   @Patch('properties/:id/details')
+  @RequirePermission('properties', 'edit')
   @ApiOperation({ summary: 'Actualizar detalles de una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -180,6 +189,8 @@ export class AdminPropertiesController {
   // =============================================
 
   @Post('properties/:id/images')
+  @RequirePermission('properties', 'edit')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Subir imagen de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -205,6 +216,8 @@ export class AdminPropertiesController {
       throw new BadRequestException('No file uploaded');
     }
 
+    await assertUploadedFilesMatchContent(file);
+
     const property = await this.propertiesService.findOne(id, slug);
     const images = Array.isArray(property.images) ? [...property.images] : [];
     const imageStoragePath = await this.storageService.persistUploadedFile(
@@ -224,6 +237,7 @@ export class AdminPropertiesController {
   }
 
   @Delete('properties/:id/images')
+  @RequirePermission('properties', 'edit')
   @ApiOperation({ summary: 'Eliminar imagen de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -251,6 +265,7 @@ export class AdminPropertiesController {
   // =============================================
 
   @Post('properties/:id/owners')
+  @RequirePermission('properties', 'edit')
   @ApiOperation({ summary: 'Asignar propietario a una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -266,6 +281,7 @@ export class AdminPropertiesController {
   }
 
   @Delete('properties/:id/owners/:ownerRelationId')
+  @RequirePermission('properties', 'edit')
   @ApiOperation({ summary: 'Desasociar propietario de una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
@@ -289,6 +305,7 @@ export class AdminPropertiesController {
   // =============================================
 
   @Get('property-types')
+  @RequirePermission('properties', 'view')
   @ApiOperation({ summary: 'Obtener tipos de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiOkResponse({ type: Object, isArray: true })
@@ -297,18 +314,16 @@ export class AdminPropertiesController {
   }
 
   @Get('property-subtypes')
+  @RequirePermission('properties', 'view')
   @ApiOperation({ summary: 'Obtener subtipos de propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiQuery({ name: 'typeId', required: false, type: Number })
   @ApiOkResponse({ type: Object, isArray: true })
   async getPropertySubtypes(
     @Param('slug') slug: string,
-    @Query('typeId') typeId?: number,
+    @Query('typeId', OptionalPositiveIntPipe) typeId?: number,
   ) {
-    return this.propertiesService.getPropertySubtypes(
-      slug,
-      typeId ? +typeId : undefined,
-    );
+    return this.propertiesService.getPropertySubtypes(slug, typeId);
   }
 }
 

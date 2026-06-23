@@ -205,7 +205,17 @@ export class ContractRenewalService {
 
   private resolveEndDate(startDate: Date, durationMonths: number): Date {
     const endDate = new Date(startDate);
+    const targetDay = endDate.getDate();
+    // Evita el desborde de JS (ej. 31-ene + 1 mes => 3-mar): se fija el día 1,
+    // se suman los meses y se recorta al último día real del mes destino.
+    endDate.setDate(1);
     endDate.setMonth(endDate.getMonth() + durationMonths);
+    const lastDayOfTargetMonth = new Date(
+      endDate.getFullYear(),
+      endDate.getMonth() + 1,
+      0,
+    ).getDate();
+    endDate.setDate(Math.min(targetDay, lastDayOfTargetMonth));
     return endDate;
   }
 

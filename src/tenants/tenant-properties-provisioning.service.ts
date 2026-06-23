@@ -231,6 +231,24 @@ export class TenantPropertiesProvisioningService {
     `);
   }
 
+  async ensurePropertyViewLogs(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.property_view_logs (
+        id SERIAL PRIMARY KEY,
+        property_id INT NOT NULL REFERENCES ${q}.properties(id) ON DELETE CASCADE,
+        user_ip VARCHAR(45),
+        viewed_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_property_view_logs_property_viewed_at
+        ON ${q}.property_view_logs(property_id, viewed_at DESC);
+    `);
+  }
+
   async ensureRentalOwnerBankFields(schemaName: string): Promise<void> {
     const columns: [string, string][] = [
       ['bank_name', 'VARCHAR(100) NULL'],
@@ -348,7 +366,7 @@ export class TenantPropertiesProvisioningService {
       `
       INSERT INTO ${q}.property_subtypes (property_type_id, name, code, is_active, created_at, updated_at)
       VALUES
-        ($1, 'Condominio/Townhouse', 'CONDO_TOWNHOME', true, NOW(), NOW()),
+        ($1, 'Condominio', 'CONDO_TOWNHOME', true, NOW(), NOW()),
         ($1, 'Multifamiliar',        'MULTI_FAMILY',   true, NOW(), NOW()),
         ($1, 'Unifamiliar',          'SINGLE_FAMILY',  true, NOW(), NOW()),
         ($2, 'Industrial',           'INDUSTRIAL',     true, NOW(), NOW()),

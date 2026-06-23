@@ -9,6 +9,7 @@ import { ConfigModule, ConfigService } from './common/config';
 import { HealthModule } from './common/health/health.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
+import { CsrfMiddleware } from './auth/csrf.middleware';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PropertiesModule } from './properties/properties.module';
@@ -33,6 +34,7 @@ import { OwnerPortalModule } from './owner-portal/owner-portal.module';
 import { ViolationsModule } from './violations/violations.module';
 import { MessagesModule } from './messages/messages.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { LifecycleNotificationsModule } from './lifecycle-notifications/lifecycle-notifications.module';
 import { BillingCronModule } from './billing-cron/billing-cron.module';
@@ -41,6 +43,7 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { TenantWebsiteModule } from './tenant-website/tenant-website.module';
 import { ReportsModule } from './reports/reports.module';
 import { ProductionReadinessService } from './common/production/production-readiness.service';
+import { AccountingModule } from './accounting/accounting.module';
 
 @Module({
   imports: [
@@ -123,6 +126,7 @@ import { ProductionReadinessService } from './common/production/production-readi
     ViolationsModule,
     MessagesModule,
     ReservationsModule,
+    ReviewsModule,
     VendorsModule,
     LifecycleNotificationsModule,
     BillingCronModule,
@@ -130,6 +134,7 @@ import { ProductionReadinessService } from './common/production/production-readi
     AuditLogsModule,
     TenantWebsiteModule,
     ReportsModule,
+    AccountingModule,
   ],
   controllers: [AppController],
   providers: [
@@ -144,6 +149,9 @@ import { ProductionReadinessService } from './common/production/production-readi
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
+    // CSRF (double-submit): solo afecta mutaciones autenticadas por cookie.
+    consumer.apply(CsrfMiddleware).forRoutes('*');
+
     consumer
       .apply(TenantContextMiddleware)
       .exclude(

@@ -9,6 +9,9 @@ import { AuthController } from './auth.controller';
 import { TenantsModule } from '../tenants/tenants.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { RefreshTokenService } from './refresh-token.service';
+import { AuthCookieInterceptor } from './auth-cookie.interceptor';
+import { accessTokenTtlSeconds } from './auth-cookie.util';
 
 @Module({
   imports: [
@@ -26,7 +29,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
         }
         return {
           secret,
-          signOptions: { expiresIn: '7d' },
+          signOptions: { expiresIn: accessTokenTtlSeconds() },
         };
       },
       global: true, // Hacer JwtModule disponible globalmente
@@ -34,8 +37,14 @@ import { NotificationsModule } from '../notifications/notifications.module';
     TypeOrmModule.forFeature([]),
     NotificationsModule,
   ],
-  providers: [AuthService, AuthSecurityService, JwtStrategy],
+  providers: [
+    AuthService,
+    AuthSecurityService,
+    JwtStrategy,
+    RefreshTokenService,
+    AuthCookieInterceptor,
+  ],
   controllers: [AuthController],
-  exports: [AuthService, AuthSecurityService],
+  exports: [AuthService, AuthSecurityService, RefreshTokenService],
 })
 export class AuthModule {}

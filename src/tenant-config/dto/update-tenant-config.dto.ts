@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsObject,
+  IsTimeZone,
   Min,
   Max,
   ValidateNested,
@@ -68,6 +69,7 @@ export class UpdateTenantConfigDto {
   @ApiPropertyOptional({ example: 'America/La_Paz' })
   @IsOptional()
   @IsString()
+  @IsTimeZone()
   timezone?: string;
 
   @ApiPropertyOptional({ example: 'DD/MM/YYYY' })

@@ -110,6 +110,7 @@ describe('TenantsService', () => {
     expect(tenantProvisioningService.provisionNewTenant).toHaveBeenCalledWith(
       savedTenant,
       TenantCountry.BO,
+      undefined,
     );
     expect(tenantRepository.update).toHaveBeenCalledWith(1, {
       is_active: true,

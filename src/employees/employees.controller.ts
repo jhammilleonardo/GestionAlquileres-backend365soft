@@ -10,6 +10,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  ParseIntPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -95,13 +96,13 @@ export class EmployeesController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', description: 'ID del empleado', type: Number })
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @CurrentTenant() tenant: CurrentTenantContext,
     @Body() updateEmployeeDto: UpdateEmployeeDto,
   ) {
     return this.employeesService.update(
       tenant.schema_name,
-      +id,
+      id,
       updateEmployeeDto,
     );
   }
@@ -111,7 +112,7 @@ export class EmployeesController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', description: 'ID del empleado', type: Number })
   async updatePermissions(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @CurrentTenant() tenant: CurrentTenantContext,
     @Body() updatePermissionsDto: UpdatePermissionsDto,
     @Request() req: EmployeeRequest,
@@ -119,7 +120,7 @@ export class EmployeesController {
     return this.employeesService.updatePermissions(
       tenant.schema_name,
       tenant.slug,
-      +id,
+      id,
       updatePermissionsDto.permissions,
       req.user?.userId ?? 0,
     );
@@ -131,14 +132,14 @@ export class EmployeesController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', description: 'ID del empleado', type: Number })
   async remove(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @CurrentTenant() tenant: CurrentTenantContext,
     @Request() req: EmployeeRequest,
   ) {
     return this.employeesService.remove(
       tenant.schema_name,
       tenant.slug,
-      +id,
+      id,
       req.user?.userId ?? 0,
     );
   }

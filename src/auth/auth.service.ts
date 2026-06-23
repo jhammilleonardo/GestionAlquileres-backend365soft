@@ -2,17 +2,20 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  ConflictException,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { TenantsService } from '../tenants/tenants.service';
 import { TenantAdminIndexService } from '../tenants/tenant-admin-index.service';
 import { Tenant } from '../tenants/metadata/tenant.entity';
 import { TenantCountry } from '../tenants/dto/create-tenant.dto';
+import { TENANT_DEFAULTS_BY_COUNTRY } from '../tenants/tenant-config-provisioning.service';
+import { RentalType } from '../units/enums/rental-type.enum';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import axios from 'axios';
 import { createHash, randomBytes, randomInt } from 'crypto';
 import { BCRYPT_SALT_ROUNDS } from '../common/constants/security.constants';
 import { generateSlug } from '../common/utils/slug-generator';
@@ -20,6 +23,7 @@ import { quoteIdent } from '../common/utils/sql-identifier';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { AuthLoginContext, AuthSecurityService } from './auth-security.service';
+import { nativeHttpClient } from '../common/http/safe-http-client.service';
 
 interface User {
   id: number;
@@ -29,12 +33,14 @@ interface User {
   phone?: string;
   role: string;
   is_active: boolean;
+  token_version: number;
   created_at: Date;
   updated_at: Date;
 }
 
 interface PasswordResetRecord {
   id: number;
+  tenant_slug: string;
   tenant_schema: string;
   user_id: number;
   expires_at: Date;
@@ -65,6 +71,7 @@ export interface AuthRequestUser {
   vendorId?: number | null;
   mfaVerified?: boolean;
   mfaAt?: number | null;
+  tokenVersion?: number;
 }
 
 export interface ContractSummary {
@@ -109,23 +116,31 @@ export class AuthService {
     private readonly authSecurityService: AuthSecurityService,
   ) {}
 
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
   async validateUser(
     email: string,
     password: string,
     tenantSlug: string,
   ): Promise<User> {
+    const normalizedEmail = this.normalizeEmail(email);
     const tenant = await this.tenantsService.findActiveBySlug(tenantSlug);
     await this.authSecurityService.assertLoginAllowed(
-      email,
+      normalizedEmail,
       tenant.slug,
       AuthLoginContext.TENANT,
     );
 
-    const user = await this.findUserByEmail(email, tenant.schema_name);
+    const user = await this.findUserByEmail(
+      normalizedEmail,
+      tenant.schema_name,
+    );
 
     if (!user) {
       await this.authSecurityService.recordFailure({
-        email,
+        email: normalizedEmail,
         tenantSlug: tenant.slug,
         context: AuthLoginContext.TENANT,
         reason: 'user_not_found',
@@ -136,7 +151,7 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       await this.authSecurityService.recordFailure({
-        email,
+        email: normalizedEmail,
         tenantSlug: tenant.slug,
         context: AuthLoginContext.TENANT,
         reason: 'invalid_password',
@@ -146,7 +161,7 @@ export class AuthService {
 
     if (!user.is_active) {
       await this.authSecurityService.recordInactiveUserAttempt({
-        email,
+        email: normalizedEmail,
         tenantSlug: tenant.slug,
         context: AuthLoginContext.TENANT,
         userId: user.id,
@@ -155,7 +170,7 @@ export class AuthService {
     }
 
     await this.authSecurityService.recordSuccess({
-      email,
+      email: normalizedEmail,
       tenantSlug: tenant.slug,
       context: AuthLoginContext.TENANT,
       userId: user.id,
@@ -168,19 +183,20 @@ export class AuthService {
     email: string,
     password: string,
   ): Promise<AdminLoginResponse> {
+    const normalizedEmail = this.normalizeEmail(email);
     const adminLoginScope = 'admin';
     await this.authSecurityService.assertLoginAllowed(
-      email,
+      normalizedEmail,
       adminLoginScope,
       AuthLoginContext.ADMIN,
     );
 
     // Buscar admin por email en todos los tenants
-    const result = await this.findAdminByEmailAcrossTenants(email);
+    const result = await this.findAdminByEmailAcrossTenants(normalizedEmail);
 
     if (!result) {
       await this.authSecurityService.recordFailure({
-        email,
+        email: normalizedEmail,
         tenantSlug: adminLoginScope,
         context: AuthLoginContext.ADMIN,
         reason: 'admin_not_found',
@@ -193,7 +209,7 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       await this.authSecurityService.recordFailure({
-        email,
+        email: normalizedEmail,
         tenantSlug: adminLoginScope,
         context: AuthLoginContext.ADMIN,
         reason: 'invalid_password',
@@ -203,7 +219,7 @@ export class AuthService {
 
     if (!user.is_active) {
       await this.authSecurityService.recordInactiveUserAttempt({
-        email,
+        email: normalizedEmail,
         tenantSlug: tenant.slug,
         context: AuthLoginContext.ADMIN,
         userId: user.id,
@@ -214,7 +230,7 @@ export class AuthService {
     // Verificar que sea admin
     if (user.role !== 'ADMIN') {
       await this.authSecurityService.recordFailure({
-        email,
+        email: normalizedEmail,
         tenantSlug: adminLoginScope,
         context: AuthLoginContext.ADMIN,
         reason: 'non_admin_role',
@@ -229,7 +245,7 @@ export class AuthService {
     const loginResponse = await this.login(user, tenant.slug);
 
     await this.authSecurityService.recordSuccess({
-      email,
+      email: normalizedEmail,
       tenantSlug: adminLoginScope,
       context: AuthLoginContext.ADMIN,
       userId: user.id,
@@ -315,7 +331,7 @@ export class AuthService {
   }
 
   async requestPasswordReset(email: string): Promise<{ message: string }> {
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = this.normalizeEmail(email);
     const genericResponse = {
       message:
         'Si el correo existe, se enviaran instrucciones de recuperacion.',
@@ -362,15 +378,68 @@ export class AuthService {
     return genericResponse;
   }
 
+  /**
+   * Genera un enlace de configuración de contraseña para un usuario existente
+   * (invitación de propietario/proveedor). Reusa la tabla de tokens de reset y,
+   * si SendGrid está configurado, también envía el correo. Devuelve la URL para
+   * que el admin pueda compartirla manualmente (clave en entornos sin correo).
+   *
+   * A diferencia de `requestPasswordReset`, exige que el usuario exista y
+   * devuelve la URL en claro — solo debe invocarse desde endpoints protegidos.
+   */
+  async createPasswordSetupLink(
+    email: string,
+    expiresInMs: number = 1000 * 60 * 60 * 24,
+  ): Promise<{ resetUrl: string; expiresAt: Date }> {
+    const normalizedEmail = this.normalizeEmail(email);
+    await this.ensurePasswordResetTable();
+
+    const result = await this.findUserForPasswordReset(normalizedEmail);
+    if (!result) {
+      throw new NotFoundException(
+        'No existe una cuenta de usuario para este correo.',
+      );
+    }
+
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = this.hashPasswordResetToken(rawToken);
+    const expiresAt = new Date(Date.now() + expiresInMs);
+
+    await this.dataSource.query(
+      `INSERT INTO public.password_reset_tokens
+        (email, tenant_slug, tenant_schema, user_id, token_hash, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      [
+        normalizedEmail,
+        result.tenant.slug,
+        result.tenant.schema_name,
+        result.user.id,
+        tokenHash,
+        expiresAt,
+      ],
+    );
+
+    const resetUrl = this.buildPasswordResetUrl(rawToken);
+    await this.sendPasswordResetEmail({
+      email: normalizedEmail,
+      name: result.user.name,
+      tenantSlug: result.tenant.slug,
+      resetUrl,
+      expiresAt,
+    });
+
+    return { resetUrl, expiresAt };
+  }
+
   async resetPassword(
     token: string,
     password: string,
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: string; role: string | null; tenantSlug: string }> {
     await this.ensurePasswordResetTable();
 
     const tokenHash = this.hashPasswordResetToken(token.trim());
     const records = await this.dataSource.query<PasswordResetRecord[]>(
-      `SELECT id, tenant_schema, user_id, expires_at, used_at
+      `SELECT id, tenant_slug, tenant_schema, user_id, expires_at, used_at
        FROM public.password_reset_tokens
        WHERE token_hash = $1
          AND used_at IS NULL
@@ -389,7 +458,7 @@ export class AuthService {
     await this.dataSource.transaction(async (manager) => {
       await manager.query(
         `UPDATE ${quoteIdent(record.tenant_schema)}."user"
-         SET password = $1, updated_at = NOW()
+         SET password = $1, token_version = token_version + 1, updated_at = NOW()
          WHERE id = $2`,
         [hashedPassword, record.user_id],
       );
@@ -399,9 +468,25 @@ export class AuthService {
          WHERE id = $1`,
         [record.id],
       );
+      await manager.query(
+        `UPDATE public.refresh_tokens
+            SET revoked_at = NOW()
+          WHERE user_id = $1 AND tenant_slug = $2 AND revoked_at IS NULL`,
+        [record.user_id, record.tenant_slug],
+      );
     });
 
-    return { message: 'Contrasena actualizada correctamente.' };
+    // Devolver rol y tenant para que el frontend redirija al login correcto.
+    const roleRows = await this.dataSource.query<{ role: string }[]>(
+      `SELECT role FROM ${quoteIdent(record.tenant_schema)}."user" WHERE id = $1`,
+      [record.user_id],
+    );
+
+    return {
+      message: 'Contrasena actualizada correctamente.',
+      role: roleRows[0]?.role ?? null,
+      tenantSlug: record.tenant_slug,
+    };
   }
 
   /**
@@ -488,6 +573,7 @@ export class AuthService {
       role: user.role,
       tenantSlug: tenant.slug,
       rentalOwnerId,
+      tokenVersion: user.token_version ?? 0,
     };
 
     const access_token = this.jwtService.sign(payload);
@@ -593,6 +679,7 @@ export class AuthService {
       role: user.role,
       tenantSlug: tenant.slug,
       vendorId,
+      tokenVersion: user.token_version ?? 0,
     };
 
     const access_token = this.jwtService.sign(payload);
@@ -628,6 +715,7 @@ export class AuthService {
       sub: user.id,
       role: user.role,
       tenantSlug: tenantSlug,
+      tokenVersion: user.token_version ?? 0,
       ...(options.mfaVerified
         ? { mfaVerified: true, mfaAt: Math.floor(Date.now() / 1000) }
         : {}),
@@ -788,6 +876,7 @@ export class AuthService {
     slug?: string;
     company_name: string;
     country: TenantCountry;
+    rental_type?: RentalType;
     name: string;
     email: string;
     password: string;
@@ -799,13 +888,19 @@ export class AuthService {
       slug: providedSlug,
       company_name,
       country,
+      rental_type,
       name,
       email,
       password,
-      currency = 'BOB',
+      currency,
       locale = 'es-BO',
       phone,
     } = data;
+
+    // La moneda de public.tenant debe coincidir con la región: si no se envía
+    // explícita, se deriva del país (mismo mapa que inicializa tenant_config).
+    const resolvedCurrency =
+      currency ?? TENANT_DEFAULTS_BY_COUNTRY[country]?.currency ?? 'BOB';
 
     // 1. Verificar que el email no exista en ningún tenant
     const emailExists = await this.checkEmailExistsAcrossTenants(email);
@@ -821,10 +916,12 @@ export class AuthService {
     // 3. Verificar si ya existe un tenant con ese slug
     try {
       await this.tenantsService.findBySlug(slug);
-      // Si no lanza error, ya existe, así que lanzamos excepción
-      throw new BadRequestException(
-        `Tenant with slug '${slug}' already exists. Please use a different company name or slug.`,
-      );
+      // Si no lanza error, ya existe. Código estable para que el frontend
+      // muestre un mensaje amigable y traducido (el usuario no conoce "slug").
+      throw new ConflictException({
+        code: 'COMPANY_NAME_TAKEN',
+        message: 'Ya existe una empresa con ese nombre. Elige otro nombre.',
+      });
     } catch (error) {
       // Si es NotFoundException, perfecto, no existe
       if (!this.isNotFoundError(error)) {
@@ -837,7 +934,8 @@ export class AuthService {
       slug,
       company_name,
       country,
-      currency,
+      rental_type,
+      currency: resolvedCurrency,
       locale,
       is_active: true,
     });
@@ -868,6 +966,7 @@ export class AuthService {
       sub: user.id,
       role: user.role,
       tenantSlug: tenant.slug,
+      tokenVersion: user.token_version ?? 0,
     };
 
     const access_token = this.jwtService.sign(payload);
@@ -1179,7 +1278,7 @@ export class AuthService {
     }
 
     try {
-      await axios.post(
+      await nativeHttpClient.post(
         'https://api.sendgrid.com/v3/mail/send',
         {
           personalizations: [{ to: [{ email: params.email }] }],
@@ -1252,13 +1351,13 @@ export class AuthService {
       this.logger.log(
         `[PASSWORD_RESET:stub] to=${this.maskEmail(
           params.email,
-        )} tenant=${params.tenantSlug} url=${params.resetUrl}`,
+        )} tenant=${params.tenantSlug} reset_link_generated=true`,
       );
       return;
     }
 
     try {
-      await axios.post(
+      await nativeHttpClient.post(
         'https://api.sendgrid.com/v3/mail/send',
         {
           personalizations: [{ to: [{ email: params.email }] }],

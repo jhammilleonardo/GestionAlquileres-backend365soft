@@ -1,7 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { BCRYPT_SALT_ROUNDS } from '../common/constants/security.constants';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 export interface User {
   id: number;
@@ -52,11 +60,157 @@ export interface TenantDirectoryRow extends UserWithoutPassword {
 export class UsersService {
   constructor(@InjectDataSource() private dataSource: DataSource) {}
 
+  async updateProfile(
+    schemaName: string,
+    id: number,
+    dto: UpdateUserProfileDto,
+    actor: { userId: number; role: string },
+  ): Promise<UserWithoutPassword> {
+    this.ensureCanManageUser(id, actor);
+
+    const patch: string[] = [];
+    const params: unknown[] = [];
+
+    if (dto.name !== undefined) {
+      params.push(dto.name.trim());
+      patch.push(`name = $${params.length}`);
+    }
+
+    if (dto.email !== undefined) {
+      params.push(dto.email.trim().toLowerCase());
+      patch.push(`email = $${params.length}`);
+    }
+
+    if (dto.phone !== undefined) {
+      params.push(dto.phone.trim() || null);
+      patch.push(`phone = $${params.length}`);
+    }
+
+    if (patch.length === 0) {
+      const existingUser = await this.findById(schemaName, id);
+      if (!existingUser) {
+        throw new NotFoundException('Usuario no encontrado');
+      }
+      return existingUser;
+    }
+
+    params.push(id);
+
+    try {
+      const rows = await this.dataSource.query<UserWithoutPassword[]>(
+        `UPDATE ${quoteIdent(schemaName)}."user"
+         SET ${patch.join(', ')}, updated_at = NOW()
+         WHERE id = $${params.length}
+         RETURNING id, email, name, phone, role, is_active, created_at, updated_at`,
+        params,
+      );
+
+      const user = rows[0];
+      if (!user) {
+        throw new NotFoundException('Usuario no encontrado');
+      }
+
+      return user;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        (error as { code?: string }).code === '23505'
+      ) {
+        throw new BadRequestException('El correo ya está registrado');
+      }
+      throw error;
+    }
+  }
+
+  async resetPassword(
+    schemaName: string,
+    id: number,
+    password: string,
+    currentPassword: string | undefined,
+    actor: { userId: number; role: string },
+  ): Promise<void> {
+    this.ensureCanManageUser(id, actor);
+
+    const rows = await this.dataSource.query<
+      Array<{ id: number; password: string }>
+    >(
+      `SELECT id, password
+       FROM ${quoteIdent(schemaName)}."user"
+       WHERE id = $1`,
+      [id],
+    );
+
+    const user = rows[0];
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (actor.userId === id) {
+      if (!currentPassword) {
+        throw new BadRequestException('La contraseña actual es requerida');
+      }
+
+      const matches = await bcrypt.compare(currentPassword, user.password);
+      if (!matches) {
+        throw new ForbiddenException('La contraseña actual no es correcta');
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `UPDATE ${quoteIdent(schemaName)}."user"
+         SET password = $1, token_version = token_version + 1, updated_at = NOW()
+         WHERE id = $2`,
+        [hashedPassword, id],
+      );
+      await manager.query(
+        `UPDATE public.refresh_tokens
+            SET revoked_at = NOW()
+          WHERE user_id = $1
+            AND tenant_slug = (
+              SELECT slug FROM public.tenant WHERE schema_name = $2 LIMIT 1
+            )
+            AND revoked_at IS NULL`,
+        [id, schemaName],
+      );
+    });
+  }
+
   async findAll(schemaName: string): Promise<UserWithoutPassword[]> {
     return this.dataSource.query<UserWithoutPassword[]>(
       `SELECT id, email, name, phone, role, is_active, created_at, updated_at
        FROM ${quoteIdent(schemaName)}."user"
        ORDER BY created_at DESC`,
+    );
+  }
+
+  async findById(
+    schemaName: string,
+    id: number,
+  ): Promise<UserWithoutPassword | null> {
+    const rows = await this.dataSource.query<UserWithoutPassword[]>(
+      `SELECT id, email, name, phone, role, is_active, created_at, updated_at
+       FROM ${quoteIdent(schemaName)}."user"
+       WHERE id = $1`,
+      [id],
+    );
+
+    return rows[0] ?? null;
+  }
+
+  private ensureCanManageUser(
+    targetUserId: number,
+    actor: { userId: number; role: string },
+  ): void {
+    const privilegedRoles = new Set(['ADMIN', 'SUPERADMIN']);
+    if (actor.userId === targetUserId || privilegedRoles.has(actor.role)) {
+      return;
+    }
+
+    throw new ForbiddenException(
+      'No tienes permiso para modificar este usuario',
     );
   }
 

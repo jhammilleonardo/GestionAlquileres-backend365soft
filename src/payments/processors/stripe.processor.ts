@@ -129,19 +129,36 @@ export class StripeProcessor implements IPaymentProcessor {
 
     switch (event.type) {
       case 'payment_intent.succeeded': {
-        const pi = event.data.object as { id: string };
+        const pi = event.data.object as {
+          id: string;
+          amount?: number;
+          amount_received?: number;
+          currency?: string;
+          metadata?: Record<string, string>;
+        };
         return Promise.resolve({
           event_id: event.id,
           transaction_id: pi.id,
+          reference_number: pi.metadata?.['reference_number'],
+          amount: this.fromMinorUnits(pi.amount_received ?? pi.amount),
+          currency: pi.currency?.toUpperCase(),
           status: 'APPROVED',
           raw_event: event,
         });
       }
       case 'payment_intent.payment_failed': {
-        const pi = event.data.object as { id: string };
+        const pi = event.data.object as {
+          id: string;
+          amount?: number;
+          currency?: string;
+          metadata?: Record<string, string>;
+        };
         return Promise.resolve({
           event_id: event.id,
           transaction_id: pi.id,
+          reference_number: pi.metadata?.['reference_number'],
+          amount: this.fromMinorUnits(pi.amount),
+          currency: pi.currency?.toUpperCase(),
           status: 'FAILED',
           raw_event: event,
         });
@@ -155,7 +172,7 @@ export class StripeProcessor implements IPaymentProcessor {
         return Promise.resolve({
           event_id: event.id,
           transaction_id: txnId,
-          status: 'APPROVED',
+          status: 'REFUNDED',
           raw_event: event,
         });
       }
@@ -163,9 +180,15 @@ export class StripeProcessor implements IPaymentProcessor {
         this.logger.debug(`Stripe webhook: evento no manejado — ${event.type}`);
         return Promise.resolve({
           event_id: event.id,
-          status: 'APPROVED',
+          status: 'IGNORED',
           raw_event: event,
         });
     }
+  }
+
+  private fromMinorUnits(value: number | undefined): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value)
+      ? value / 100
+      : undefined;
   }
 }

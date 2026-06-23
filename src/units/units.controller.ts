@@ -25,8 +25,8 @@ import { UnitsService } from './units.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import {
   UnitDeleteResponseDto,
   UnitResponseDto,
@@ -35,12 +35,12 @@ import {
 @ApiTags('Units - Admin')
 @ApiBearerAuth()
 @Controller(':slug/admin/properties/:propertyId/units')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'EMPLEADO')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminUnitsController {
   constructor(private readonly unitsService: UnitsService) {}
 
   @Get()
+  @RequirePermission('units', 'view')
   @ApiOperation({ summary: 'Listar unidades de una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
@@ -53,6 +53,7 @@ export class AdminUnitsController {
   }
 
   @Post()
+  @RequirePermission('units', 'create')
   @ApiOperation({ summary: 'Crear una unidad en una propiedad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
@@ -68,6 +69,7 @@ export class AdminUnitsController {
   }
 
   @Patch(':unitId')
+  @RequirePermission('units', 'edit')
   @ApiOperation({ summary: 'Actualizar una unidad' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'propertyId', type: Number })
@@ -85,6 +87,7 @@ export class AdminUnitsController {
   }
 
   @Delete(':unitId')
+  @RequirePermission('units', 'delete')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Eliminar una unidad (solo si no tiene contratos activos)',

@@ -1,6 +1,7 @@
 import {
   IsNotEmpty,
   IsNumber,
+  IsInt,
   IsEnum,
   IsOptional,
   IsString,
@@ -27,18 +28,21 @@ import {
  */
 export class CreatePaymentAsAdminDto {
   @ApiProperty({ example: 7 })
-  @IsNumber()
   @IsNotEmpty()
+  @IsInt()
+  @Min(1)
   tenant_id: number;
 
   @ApiProperty({ example: 22 })
-  @IsNumber()
   @IsNotEmpty()
+  @IsInt()
+  @Min(1)
   contract_id: number;
 
   @ApiProperty({ example: 12 })
-  @IsNumber()
   @IsNotEmpty()
+  @IsInt()
+  @Min(1)
   property_id: number;
 
   @ApiProperty({ example: 1250.5, minimum: 0.01 })
@@ -158,8 +162,9 @@ export class CreatePaymentAsAdminDto {
   is_partial_payment?: boolean = false;
 
   @ApiPropertyOptional({ example: 31 })
-  @IsNumber()
   @IsOptional()
+  @IsInt()
+  @Min(1)
   parent_payment_id?: number;
 
   @ApiPropertyOptional({ example: false })
@@ -168,7 +173,8 @@ export class CreatePaymentAsAdminDto {
   is_recurring?: boolean = false;
 
   @ApiPropertyOptional({ example: 2 })
-  @IsNumber()
   @IsOptional()
+  @IsInt()
+  @Min(1)
   recurring_schedule_id?: number;
 }

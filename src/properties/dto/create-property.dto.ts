@@ -7,10 +7,12 @@ import {
   Min,
   Max,
   IsEnum,
+  IsIn,
   IsBoolean,
   IsEmail,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { RentalType } from '../../units/enums/rental-type.enum';
 
 // DTO para crear dirección
 export class CreatePropertyAddressDto {
@@ -45,7 +47,7 @@ export class CreatePropertyAddressDto {
 }
 
 // DTO para crear dueño (si no existe)
-export class CreateRentalOwnerDto {
+export class CreatePropertyRentalOwnerDto {
   @ApiProperty({ example: 'Ana Perez' })
   @IsString()
   @IsNotEmpty()
@@ -176,10 +178,10 @@ export class CreatePropertyDto {
   @IsOptional()
   existing_owners?: AssignOwnerDto[]; // IDs de dueños existentes
 
-  @ApiPropertyOptional({ type: CreateRentalOwnerDto, isArray: true })
+  @ApiPropertyOptional({ type: CreatePropertyRentalOwnerDto, isArray: true })
   @IsArray()
   @IsOptional()
-  new_owners?: CreateRentalOwnerDto[]; // Crear nuevos dueños
+  new_owners?: CreatePropertyRentalOwnerDto[]; // Crear nuevos dueños
 
   // Optional fields
   @ApiPropertyOptional({ example: 'Departamento amplio y luminoso.' })
@@ -205,12 +207,134 @@ export class CreatePropertyDto {
   @IsString()
   account_holder_name?: string;
 
+  // Modo de alquiler de la propiedad. Si se omite, el backend usa LONG_TERM.
+  @ApiPropertyOptional({ enum: RentalType, example: RentalType.LONG_TERM })
+  @IsOptional()
+  @IsEnum(RentalType)
+  rental_type?: RentalType;
+
   // Financial fields
   @ApiPropertyOptional({ example: 3000, minimum: 0 })
   @IsOptional()
   @IsNumber()
   @Min(0)
   monthly_rent?: number;
+
+  // Precio por noche (corto plazo). Si se provee con rental_type SHORT_TERM/BOTH,
+  // se crea una unidad inicial con este precio para habilitar reservas.
+  @ApiPropertyOptional({ example: 250, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price_per_night?: number;
+
+  // ===== Configuración de corto plazo (alimenta la unidad por defecto al crear) =====
+  @ApiPropertyOptional({ example: 50, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  cleaning_fee?: number;
+
+  @ApiPropertyOptional({ example: 1, minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  min_nights?: number;
+
+  @ApiPropertyOptional({ example: 30, minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  max_nights?: number;
+
+  @ApiPropertyOptional({ example: '15:00' })
+  @IsOptional()
+  @IsString()
+  checkin_time?: string;
+
+  @ApiPropertyOptional({ example: '11:00' })
+  @IsOptional()
+  @IsString()
+  checkout_time?: string;
+
+  @ApiPropertyOptional({ example: 10, minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  weekly_discount_pct?: number;
+
+  @ApiPropertyOptional({ example: 20, minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  monthly_discount_pct?: number;
+
+  @ApiPropertyOptional({ example: 15, minimum: -100, maximum: 500 })
+  @IsOptional()
+  @IsNumber()
+  @Min(-100)
+  @Max(500)
+  weekend_adjustment_pct?: number;
+
+  @ApiPropertyOptional({ example: 30, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  early_bird_min_days?: number;
+
+  @ApiPropertyOptional({ example: 10, minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  early_bird_discount_pct?: number;
+
+  @ApiPropertyOptional({ example: 3, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  last_minute_max_days?: number;
+
+  @ApiPropertyOptional({ example: -10, minimum: -100, maximum: 500 })
+  @IsOptional()
+  @IsNumber()
+  @Min(-100)
+  @Max(500)
+  last_minute_adjustment_pct?: number;
+
+  @ApiPropertyOptional({ example: 1, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  advance_notice_days?: number;
+
+  @ApiPropertyOptional({ example: 365, minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  max_advance_days?: number;
+
+  @ApiPropertyOptional({ example: 'instant', enum: ['instant', 'request'] })
+  @IsOptional()
+  @IsIn(['instant', 'request'])
+  booking_mode?: string;
+
+  @ApiPropertyOptional({
+    example: 'moderate',
+    enum: ['flexible', 'moderate', 'strict', 'non_refundable'],
+  })
+  @IsOptional()
+  @IsIn(['flexible', 'moderate', 'strict', 'non_refundable'])
+  cancellation_policy?: string;
+
+  @ApiPropertyOptional({ example: 30, minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  deposit_to_confirm_pct?: number;
 
   @ApiPropertyOptional({ example: 'BOB' })
   @IsOptional()

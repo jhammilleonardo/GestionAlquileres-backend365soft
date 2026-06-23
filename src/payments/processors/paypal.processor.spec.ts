@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { of } from 'rxjs';
+import { firstValueFrom, of, type Observable } from 'rxjs';
 import { PayPalProcessor } from './paypal.processor';
 import { ProcessorPaymentInput } from './payment-processor.interface';
+import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
 
 const TOKEN_RESP = { data: { access_token: 'mock_token' } };
 
@@ -38,7 +38,13 @@ describe('PayPalProcessor', () => {
       providers: [
         PayPalProcessor,
         { provide: ConfigService, useValue: { get: mockConfig } },
-        { provide: HttpService, useValue: { post: httpPost } },
+        {
+          provide: SafeHttpClientService,
+          useValue: {
+            post: (...args: unknown[]) =>
+              firstValueFrom(httpPost(...args) as Observable<unknown>),
+          },
+        },
       ],
     }).compile();
 
@@ -154,7 +160,7 @@ describe('PayPalProcessor', () => {
       expect(result.status).toBe('FAILED');
     });
 
-    it('debe devolver APPROVED para PAYMENT.CAPTURE.REFUNDED', async () => {
+    it('debe devolver REFUNDED para PAYMENT.CAPTURE.REFUNDED', async () => {
       const payload = {
         event_type: 'PAYMENT.CAPTURE.REFUNDED',
         resource: { id: 'REFUND_XYZ' },
@@ -162,7 +168,7 @@ describe('PayPalProcessor', () => {
 
       const result = await processor.handleWebhook(payload);
 
-      expect(result.status).toBe('APPROVED');
+      expect(result.status).toBe('REFUNDED');
     });
 
     it('debe manejar eventos desconocidos sin error', async () => {
@@ -173,7 +179,46 @@ describe('PayPalProcessor', () => {
 
       const result = await processor.handleWebhook(payload);
 
-      expect(result.status).toBe('APPROVED');
+      expect(result.status).toBe('IGNORED');
+    });
+
+    it('rechaza en producción un webhook sin firma ni webhookId', async () => {
+      const prodConfig = {
+        get: (key: string, def = '') =>
+          key === 'NODE_ENV' ? 'production' : mockConfig(key, def),
+      };
+      const prodProcessor = new PayPalProcessor(
+        prodConfig as never,
+        { post: httpPost } as never,
+      );
+      const payload = {
+        event_type: 'PAYMENT.CAPTURE.COMPLETED',
+        resource: { id: 'X' },
+      };
+
+      await expect(prodProcessor.handleWebhook(payload)).rejects.toThrow();
+    });
+
+    it('rechaza el webhook si verification_status != SUCCESS', async () => {
+      const verifyConfig = {
+        get: (key: string, def = '') =>
+          key === 'PAYPAL_WEBHOOK_ID' ? 'WH-123' : mockConfig(key, def),
+      };
+      const verifyProcessor = new PayPalProcessor(
+        verifyConfig as never,
+        { post: httpPost } as never,
+      );
+      httpPost
+        .mockReturnValueOnce(of(TOKEN_RESP)) // getAccessToken
+        .mockReturnValueOnce(of({ data: { verification_status: 'FAILURE' } }));
+      const payload = {
+        event_type: 'PAYMENT.CAPTURE.COMPLETED',
+        resource: { id: 'X' },
+      };
+
+      await expect(
+        verifyProcessor.handleWebhook(payload, JSON.stringify({})),
+      ).rejects.toThrow();
     });
   });
 });

@@ -133,7 +133,46 @@ export class DevSeedService implements OnModuleInit {
     const applications = await this.countRows(schema, 'rental_applications');
     if (applications === 0) await this.seedApplications(schema);
 
+    await this.seedVendorAccount(schema);
+
     this.logger.log('  ✔ Dev seed: datos faltantes verificados');
+  }
+
+  /**
+   * Proveedor demo con cuenta de acceso (rol VENDOR), para que el portal del
+   * proveedor sea probable en E2E sin credenciales externas. Idempotente: la
+   * fila en `vendors` se vincula por email y el usuario usa ON CONFLICT.
+   * Credenciales: proveedor.demo@gmail.com / Proveedor365!
+   */
+  private async seedVendorAccount(schema: string) {
+    const q = quoteIdent(schema);
+    const email = 'proveedor.demo@gmail.com';
+
+    const existing: Array<{ id: number }> = await this.dataSource.query(
+      `SELECT id FROM ${q}.vendors WHERE email = $1 LIMIT 1`,
+      [email],
+    );
+    if (existing.length === 0) {
+      await this.dataSource.query(
+        `INSERT INTO ${q}.vendors
+           (name, specialty, phone, email, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, true, NOW(), NOW())`,
+        ['Servicios Demo SRL', 'plomeria', '70066666', email],
+      );
+    }
+
+    await this.dataSource.query(
+      `INSERT INTO ${q}."user"
+         (email, password, name, phone, role, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'VENDOR', true, NOW(), NOW())
+       ON CONFLICT (email) DO NOTHING`,
+      [
+        email,
+        await bcrypt.hash('Proveedor365!', BCRYPT_SALT_ROUNDS),
+        'Servicios Demo SRL',
+        '70066666',
+      ],
+    );
   }
 
   private async ensureDemoConfig(schema: string) {

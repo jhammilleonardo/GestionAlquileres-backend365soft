@@ -28,6 +28,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { OptionalPositiveIntPipe } from '../../common/pipes/optional-positive-int.pipe';
 import { QrPaymentService } from './qr-payment.service';
 import {
   GenerateQrDto,
@@ -39,8 +40,8 @@ import {
   QrProviderStatusResponseDto,
 } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 interface AuthenticatedTenantRequest {
   user: {
@@ -51,8 +52,7 @@ interface AuthenticatedTenantRequest {
 // ============================================================
 // ADMIN – endpoints de gestión de QR
 // ============================================================
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiTags('QR Payments - Admin')
 @ApiBearerAuth()
 @ApiExtraModels(QrPaymentResponseDto, QrProviderStatusResponseDto)
@@ -65,6 +65,7 @@ export class AdminQrPaymentController {
    * Generar QR dinámico de pago para un inquilino
    */
   @Post()
+  @RequirePermission('payments', 'create')
   @ApiOperation({
     summary: 'Generar QR dinámico como administrador',
     description:
@@ -85,6 +86,7 @@ export class AdminQrPaymentController {
    * Verificar el estado actual de un QR (consulta la API MC4)
    */
   @Post('verificar')
+  @RequirePermission('payments', 'edit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Verificar estado de QR como administrador',
@@ -114,6 +116,7 @@ export class AdminQrPaymentController {
    * Listar todos los QRs del tenant (opcionalmente filtrados por inquilino)
    */
   @Get()
+  @RequirePermission('payments', 'view')
   @ApiOperation({ summary: 'Listar QRs del tenant' })
   @ApiParam({ name: 'slug', example: 'mi-empresa' })
   @ApiQuery({
@@ -125,12 +128,9 @@ export class AdminQrPaymentController {
   @ApiOkResponse({ type: QrPaymentResponseDto, isArray: true })
   async listarQrs(
     @Param('slug') slug: string,
-    @Query('tenant_id') tenantId?: string,
+    @Query('tenant_id', OptionalPositiveIntPipe) tenantId?: number,
   ) {
-    return this.qrPaymentService.listarQrs(
-      slug,
-      tenantId ? parseInt(tenantId, 10) : undefined,
-    );
+    return this.qrPaymentService.listarQrs(slug, tenantId);
   }
 
   /**
@@ -138,6 +138,7 @@ export class AdminQrPaymentController {
    * Cancelar un QR pendiente
    */
   @Post(':id/cancelar')
+  @RequirePermission('payments', 'edit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancelar QR pendiente como administrador' })
   @ApiParam({ name: 'slug', example: 'mi-empresa' })
@@ -317,6 +318,7 @@ export class PublicQrPaymentController {
     const tokenBuf = Buffer.from(token ?? '');
     const expectedBuf = Buffer.from(expectedSecret);
     const isValid =
+      expectedSecret.length >= 16 &&
       tokenBuf.length === expectedBuf.length &&
       timingSafeEqual(tokenBuf, expectedBuf);
 

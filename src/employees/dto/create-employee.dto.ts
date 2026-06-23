@@ -8,9 +8,15 @@ import {
   ValidateNested,
   MinLength,
   IsIn,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_STRENGTH_MESSAGE,
+  PASSWORD_STRENGTH_REGEX,
+} from '../../common/constants/security.constants';
 
 export const AVAILABLE_MODULES = [
   'properties',
@@ -29,6 +35,7 @@ export const AVAILABLE_MODULES = [
   'vendors',
   'messages',
   'reservations',
+  'accounting',
 ] as const;
 
 export type AvailableModule = (typeof AVAILABLE_MODULES)[number];
@@ -75,9 +82,10 @@ export class CreateEmployeeDto {
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'Contraseña123', minLength: 6 })
+  @ApiProperty({ example: 'Contraseña123', minLength: PASSWORD_MIN_LENGTH })
   @IsString()
-  @MinLength(6)
+  @MinLength(PASSWORD_MIN_LENGTH)
+  @Matches(PASSWORD_STRENGTH_REGEX, { message: PASSWORD_STRENGTH_MESSAGE })
   password: string;
 
   @ApiPropertyOptional({ example: '+591 70000000' })

@@ -131,14 +131,18 @@ export class PdfService {
       'El Arrendador cede en arrendamiento al Arrendatario la propiedad descrita anteriormente para uso exclusivamente residencial.',
     );
 
-    const startDate = new Date(contract.start_date);
-    const endDate = new Date(contract.end_date);
+    // Fechas date-only en UTC: preserva el día calendario sin importar el
+    // timezone del servidor (evita el off-by-one).
+    const dateOnly = (value: string | Date): string =>
+      new Date(value).toLocaleDateString(undefined, { timeZone: 'UTC' });
+    const startDate = dateOnly(contract.start_date);
+    const endDate = dateOnly(contract.end_date);
     const durationMonths = contract.duration_months ?? 12;
 
     this.addClause(
       doc,
       'SEGUNDA. DURACIÓN',
-      `El presente contrato tendrá una duración de ${durationMonths} meses, iniciando el ${startDate.toLocaleDateString()} y finalizando el ${endDate.toLocaleDateString()}.`,
+      `El presente contrato tendrá una duración de ${durationMonths} meses, iniciando el ${startDate} y finalizando el ${endDate}.`,
     );
 
     const monthlyRent = contract.monthly_rent;

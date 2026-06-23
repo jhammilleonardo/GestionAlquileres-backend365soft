@@ -57,6 +57,12 @@ export class OwnerPropertyResponseDto {
   @ApiPropertyOptional({ example: 'luis@example.com', nullable: true })
   current_tenant_email: string | null;
 
+  @ApiPropertyOptional({ example: '+59171234567', nullable: true })
+  current_tenant_phone: string | null;
+
+  @ApiPropertyOptional({ example: 'CTR-2026-0001', nullable: true })
+  contract_number: string | null;
+
   @ApiPropertyOptional({ example: 'ACTIVO', nullable: true })
   contract_status: string | null;
 
@@ -135,6 +141,21 @@ export class OwnerMaintenanceResponseDto {
 
   @ApiProperty({ example: 'Departamento Centro' })
   property_title: string;
+
+  @ApiPropertyOptional({ example: 'PLUMBING', nullable: true })
+  category: string | null;
+
+  @ApiPropertyOptional({ example: 'Juan Técnico', nullable: true })
+  technician_name: string | null;
+
+  @ApiPropertyOptional({ example: '2026-06-20', nullable: true })
+  due_date: string | null;
+
+  @ApiPropertyOptional({ example: null, nullable: true })
+  completed_at: Date | null;
+
+  @ApiProperty({ example: '2026-06-01T10:00:00.000Z' })
+  created_at: Date;
 }
 
 export class OwnerContractResponseDto {
@@ -171,8 +192,11 @@ export class OwnerContractResponseDto {
   @ApiProperty({ example: true })
   is_signed: boolean;
 
-  @ApiProperty({ example: '/storage/contracts/mi-empresa/1/contract.pdf' })
-  pdf_url: string;
+  @ApiPropertyOptional({
+    example: '/storage/contracts/mi-empresa/1/contract.pdf',
+    nullable: true,
+  })
+  pdf_url: string | null;
 }
 
 export class OwnerMaintenanceAuthorizationResponseDto {

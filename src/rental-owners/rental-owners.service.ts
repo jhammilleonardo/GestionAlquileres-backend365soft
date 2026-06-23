@@ -12,6 +12,7 @@ import { randomBytes } from 'crypto';
 import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
 import { AssignOwnerPropertyDto } from './dto/assign-owner-property.dto';
+import { AuthService } from '../auth/auth.service';
 
 /** Estados de contrato que implican una propiedad "activa" para el propietario. */
 const ACTIVE_PROPERTY_STATUSES = [
@@ -28,6 +29,7 @@ export class RentalOwnersService {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly authService: AuthService,
   ) {}
 
   // ─── Listado ─────────────────────────────────────────────────────────────
@@ -45,7 +47,11 @@ export class RentalOwnersService {
         COALESCE(SUM(p.amount) FILTER (
           WHERE p.status = 'CONFIRMED'
             AND DATE_TRUNC('month', p.payment_date) = DATE_TRUNC('month', CURRENT_DATE)
-        ), 0)::numeric                            AS pending_balance
+        ), 0)::numeric                            AS pending_balance,
+        EXISTS (
+          SELECT 1 FROM "user" u
+          WHERE u.email = ro.primary_email AND u.role = 'PROPIETARIO'
+        )                                         AS has_account
       FROM rental_owners ro
       LEFT JOIN property_owners po ON po.rental_owner_id = ro.id
       LEFT JOIN payments p
@@ -410,38 +416,30 @@ export class RentalOwnersService {
   }
 
   /**
-   * Crea una cuenta de usuario para el propietario.
-   * Genera una contraseña aleatoria, crea el usuario con role = 'PROPIETARIO'
-   * y devuelve las credenciales temporales al admin.
+   * Asegura que el propietario tenga un usuario de portal (role = PROPIETARIO).
+   * Si no existe, lo crea con una contraseña aleatoria que nunca se entrega: el
+   * propietario define la suya mediante el enlace de invitación.
+   * Devuelve true si se creó la cuenta, false si ya existía.
    */
-  async createOwnerAccount(
-    ownerId: number,
-    tenantSlug: string,
-  ): Promise<{ email: string; temporaryPassword: string }> {
-    const owner = await this.findOne(ownerId);
-
+  private async ensureOwnerUser(owner: RentalOwnerRow): Promise<boolean> {
     if (!owner.is_active) {
       throw new BadRequestException(
-        'El propietario debe estar activo para tener una cuenta.',
+        'El propietario debe estar activo para tener acceso al portal.',
       );
     }
 
-    // Verificar si ya existe un usuario con su email
     const existingUser = await this.dataSource.query<{ id: number }[]>(
       `SELECT id FROM "user" WHERE email = $1`,
       [owner.primary_email],
     );
 
     if (existingUser.length > 0) {
-      throw new ConflictException(
-        'Ya existe una cuenta de usuario con el email de este propietario.',
-      );
+      return false;
     }
 
-    // Generar contraseña temporal
-    const temporaryPassword = randomBytes(5).toString('hex');
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(temporaryPassword, saltRounds);
+    // Contraseña aleatoria de relleno: el dueño la reemplaza vía el enlace.
+    const placeholderPassword = randomBytes(24).toString('hex');
+    const hashedPassword = await bcrypt.hash(placeholderPassword, 10);
 
     await this.dataSource.query(
       `INSERT INTO "user" (email, password, name, phone, role, is_active, created_at, updated_at)
@@ -449,13 +447,38 @@ export class RentalOwnersService {
       [owner.primary_email, hashedPassword, owner.name, owner.phone_number],
     );
 
+    return true;
+  }
+
+  /**
+   * Invita al propietario a su portal: asegura su cuenta y genera un enlace de
+   * un solo uso para que defina su propia contraseña. El admin nunca ve ni
+   * maneja la contraseña. En producción el enlace también se envía por correo.
+   */
+  async inviteOwner(
+    ownerId: number,
+    tenantSlug: string,
+  ): Promise<{
+    email: string;
+    inviteUrl: string;
+    expiresAt: Date;
+    created: boolean;
+  }> {
+    const owner = await this.findOne(ownerId);
+    const created = await this.ensureOwnerUser(owner);
+
+    const { resetUrl, expiresAt } =
+      await this.authService.createPasswordSetupLink(owner.primary_email);
+
     this.logger.log(
-      `Cuenta de PROPIETARIO creada: ${owner.primary_email} (tenant ${tenantSlug})`,
+      `Invitación de PROPIETARIO generada: ${owner.primary_email} (tenant ${tenantSlug}, created=${created})`,
     );
 
     return {
       email: owner.primary_email,
-      temporaryPassword,
+      inviteUrl: resetUrl,
+      expiresAt,
+      created,
     };
   }
 
@@ -478,6 +501,7 @@ export class RentalOwnersService {
       cbu_iban: row.cbu_iban,
       property_count: row.property_count ?? 0,
       pending_balance: Number(row.pending_balance ?? 0),
+      has_account: row.has_account ?? false,
       created_at: row.created_at,
       updated_at: row.updated_at,
     };
@@ -504,6 +528,7 @@ export interface RentalOwnerRow {
   cbu_iban: string;
   property_count?: number;
   pending_balance?: string | number;
+  has_account?: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -514,6 +539,7 @@ export interface RentalOwnerSummary extends Omit<
 > {
   property_count: number;
   pending_balance: number;
+  has_account: boolean;
 }
 
 export interface OwnerPropertyRow {

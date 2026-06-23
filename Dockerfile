@@ -5,7 +5,7 @@ FROM node:22.21.1-alpine3.21 AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit
 
 COPY . .
 RUN npm run build
@@ -17,7 +17,7 @@ FROM node:22.21.1-alpine3.21 AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --no-audit && npm cache clean --force
 
 # ─── Etapa 3: Imagen de producción ────────────────────────────────────────────
 FROM node:22.21.1-alpine3.21 AS production

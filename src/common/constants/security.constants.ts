@@ -8,7 +8,7 @@ export const BCRYPT_SALT_ROUNDS = 12;
  * Longitud mínima de contraseña para todos los roles.
  * Los DTOs la aplican con @MinLength.
  */
-export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_MIN_LENGTH = 8;
 
 /**
  * Regex de política de contraseña:

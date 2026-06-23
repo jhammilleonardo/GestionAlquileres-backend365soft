@@ -167,8 +167,14 @@ export class MessagesService {
     tenantSlug?: string,
   ): Promise<MessageRow> {
     const normalizedBody = (body ?? '').trim();
+    const normalizedFiles = files.map((file) => file.trim()).filter(Boolean);
+    const uniqueFiles = [...new Set(normalizedFiles)];
 
-    if (!normalizedBody && files.length === 0) {
+    if (uniqueFiles.length !== normalizedFiles.length) {
+      throw new BadRequestException('No se permiten adjuntos duplicados');
+    }
+
+    if (!normalizedBody && uniqueFiles.length === 0) {
       throw new BadRequestException('El mensaje o un adjunto es obligatorio');
     }
 
@@ -177,14 +183,27 @@ export class MessagesService {
     const messageId = await runTenantTransaction(
       this.dataSource,
       async (queryRunner) => {
+        if (uniqueFiles.length > 0) {
+          await this.assertPendingFilesBelongToUser(
+            queryRunner,
+            senderId,
+            uniqueFiles,
+          );
+        }
+
         const [row] = (await queryRunner.query(
           `INSERT INTO internal_messages (sender_id, recipient_id, body)
            VALUES ($1, $2, $3) RETURNING id`,
           [senderId, recipientId, normalizedBody],
         )) as { id: number }[];
 
-        if (files.length > 0) {
-          await this.linkMessageFiles(queryRunner, row.id, senderId, files);
+        if (uniqueFiles.length > 0) {
+          await this.linkMessageFiles(
+            queryRunner,
+            row.id,
+            senderId,
+            uniqueFiles,
+          );
         }
 
         return row.id;
@@ -253,6 +272,25 @@ export class MessagesService {
          AND file_url = ANY($3)`,
       [messageId, userId, files],
     );
+  }
+
+  private async assertPendingFilesBelongToUser(
+    queryRunner: QueryRunner,
+    userId: number,
+    files: string[],
+  ): Promise<void> {
+    const [row] = (await queryRunner.query(
+      `SELECT COUNT(*)::int AS count
+       FROM internal_message_attachments
+       WHERE message_id IS NULL
+         AND uploaded_by = $1
+         AND file_url = ANY($2)`,
+      [userId, files],
+    )) as Array<{ count: number }>;
+
+    if ((row?.count ?? 0) !== files.length) {
+      throw new BadRequestException('Adjunto inválido o no disponible');
+    }
   }
 
   private async findMessageWithAttachments(

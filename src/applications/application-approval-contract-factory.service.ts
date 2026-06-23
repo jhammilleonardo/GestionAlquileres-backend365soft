@@ -30,7 +30,8 @@ export class ApplicationApprovalContractFactoryService {
       start_date: startDate.toISOString(),
       end_date: endDate.toISOString(),
       monthly_rent: approveDto.monthly_rent,
-      currency: approveDto.currency || 'BOB',
+      // currency se omite si no viene: ContractCreationService la resuelve desde
+      // la configuración regional del tenant (US=USD, BO=BOB, GT=GTQ, HN=HNL).
       payment_day: approveDto.payment_day || 5,
       deposit_amount: depositAmount,
       application_id: applicationId,
@@ -44,6 +45,9 @@ export class ApplicationApprovalContractFactoryService {
     contractData: CreateContractDto,
     approveDto: ApproveApplicationDto,
   ): void {
+    if (approveDto.currency) {
+      contractData.currency = approveDto.currency;
+    }
     if (approveDto.payment_method) {
       contractData.payment_method = approveDto.payment_method;
     }

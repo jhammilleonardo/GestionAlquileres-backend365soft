@@ -11,6 +11,7 @@ import { DataSource } from 'typeorm';
 import { ApplicationStatus } from './enums/application-status.enum';
 import { ScreeningFinalStatus } from './enums/screening-final-status.enum';
 import { UpdateScreeningDto } from './dto/update-screening.dto';
+import { CreateApplicationDto } from './dto/create-application.dto';
 import { ApplicationApprovalContractFactoryService } from './application-approval-contract-factory.service';
 import { ApplicationApprovalSideEffectsService } from './application-approval-side-effects.service';
 import { ApplicationApprovalService } from './application-approval.service';
@@ -146,6 +147,41 @@ describe('ApplicationsService — screening', () => {
       expect(dataSource.query).not.toHaveBeenCalledWith(
         expect.stringContaining('SET search_path'),
       );
+    });
+  });
+
+  describe('create', () => {
+    it('rechaza documentos inline antes de tocar base de datos', async () => {
+      const dto = {
+        property_id: 10,
+        personal_data: {
+          full_name: 'Juan Perez',
+          phone: '+59170000000',
+          identity_document: 'CI-1234567',
+          current_address: 'Av. Siempre Viva 123',
+        },
+        employment_data: {
+          employer_name: 'Empresa Demo',
+          position: 'Analista',
+          monthly_income: 8500,
+          employment_duration: '3 anios',
+          employer_phone: '+59170000001',
+        },
+        rental_history: [],
+        references: [],
+        documents: [
+          {
+            type: 'carnet',
+            url: 'https://example.com/carnet.jpg',
+            name: 'carnet.jpg',
+          },
+        ],
+      } satisfies CreateApplicationDto;
+
+      await expect(
+        service.create(dto, APPLICANT_ID, TENANT_SLUG),
+      ).rejects.toThrow(BadRequestException);
+      expect(dataSource.query).not.toHaveBeenCalled();
     });
   });
 

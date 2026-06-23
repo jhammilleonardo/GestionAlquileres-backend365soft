@@ -130,20 +130,46 @@ export class ContractCreationValidationService {
     }
   }
 
+  /**
+   * Estados "en proceso" que impiden crear otro contrato para el mismo
+   * inquilino: un borrador/pendiente/firmado o vigente ya ocupa al inquilino.
+   * Los estados terminales (VENCIDO, RENOVADO, FINALIZADO, CANCELADO,
+   * SUSPENDIDO) sí permiten un contrato nuevo.
+   */
+  private static readonly IN_FLIGHT_STATUSES: ContractStatus[] = [
+    ContractStatus.BORRADOR,
+    ContractStatus.PENDIENTE,
+    ContractStatus.FIRMADO,
+    ContractStatus.ACTIVO,
+    ContractStatus.POR_VENCER,
+  ];
+
   private async validateNoActiveContract(
     executor: SqlExecutor,
     schemaPrefix: string,
     createContractDto: CreateContractDto,
   ): Promise<void> {
-    const activeContract = await this.queryRows<{ id: number }>(
+    // status::text = ANY($2): comparar el enum de Postgres directamente con un
+    // array de strings de JS provoca error de tipos (500); el cast lo evita.
+    const existingContract = await this.queryRows<{
+      id: number;
+      status: string;
+    }>(
       executor,
-      `SELECT id FROM ${schemaPrefix}contracts WHERE tenant_id = $1 AND status = $2`,
-      [createContractDto.tenant_id, ContractStatus.ACTIVO],
+      `SELECT id, status FROM ${schemaPrefix}contracts
+       WHERE tenant_id = $1 AND status::text = ANY($2)
+       LIMIT 1`,
+      [
+        createContractDto.tenant_id,
+        ContractCreationValidationService.IN_FLIGHT_STATUSES,
+      ],
     );
 
-    if (activeContract.length > 0) {
+    if (existingContract.length > 0) {
       throw new BadRequestException(
-        `El inquilino ya tiene un contrato activo (ID: ${activeContract[0].id}). No se puede crear otro contrato mientras exista uno activo.`,
+        `El inquilino ya tiene un contrato vigente o en proceso ` +
+          `(ID: ${existingContract[0].id}, estado: ${existingContract[0].status}). ` +
+          `No se puede crear otro hasta finalizar o cancelar el existente.`,
       );
     }
   }

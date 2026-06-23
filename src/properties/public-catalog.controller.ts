@@ -6,6 +6,7 @@ import {
   Param,
   Query,
   Req,
+  UseGuards,
   BadRequestException,
   ParseIntPipe,
 } from '@nestjs/common';
@@ -21,6 +22,9 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
+import { isStaffOfTenant } from '../common/utils/tenant-access';
+import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 import { PropertiesService } from './properties.service';
 import { FilterCatalogPropertiesDto } from './dto/filter-catalog-properties.dto';
 import {
@@ -41,6 +45,10 @@ const PUBLIC_CATALOG_THROTTLE = {
   default: { limit: 600, ttl: 60000 },
 } as const;
 
+const PUBLIC_CONTACT_THROTTLE = {
+  default: { limit: 10, ttl: 60000 },
+} as const;
+
 /**
  * Controlador público del catálogo de propiedades
  * NO requiere autenticación
@@ -48,6 +56,7 @@ const PUBLIC_CATALOG_THROTTLE = {
  */
 @ApiTags('Properties - Public Catalog')
 @Controller(':slug/catalog')
+@UseGuards(OptionalJwtAuthGuard)
 export class PublicCatalogController {
   constructor(private readonly propertiesService: PropertiesService) {}
 
@@ -144,9 +153,15 @@ export class PublicCatalogController {
   async findCatalogProperties(
     @Param('slug') slug: string,
     @Query() filters: FilterCatalogPropertiesDto,
+    @Req() req: TenantRequest,
   ) {
+    const allowUnpublished = isStaffOfTenant(req.user, slug);
     try {
-      return await this.propertiesService.findCatalogProperties(filters, slug);
+      return await this.propertiesService.findCatalogProperties(
+        filters,
+        slug,
+        allowUnpublished,
+      );
     } catch (error) {
       if (error instanceof Error && error.message.includes('Tenant')) {
         throw new BadRequestException('Invalid tenant slug');
@@ -185,13 +200,15 @@ export class PublicCatalogController {
   async findCatalogPropertyDetail(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @Req() req: TenantRequest,
   ) {
+    const allowUnpublished = isStaffOfTenant(req.user, slug);
     try {
       return await this.propertiesService.findCatalogPropertyDetail(
         id,
         slug,
         getClientIp(req),
+        allowUnpublished,
       );
     } catch (error) {
       if (error instanceof Error && error.message.includes('Tenant')) {
@@ -211,6 +228,7 @@ export class PublicCatalogController {
    * - Asigna: El lead para seguimiento posterior
    */
   @Post('properties/:id/contact')
+  @Throttle(PUBLIC_CONTACT_THROTTLE)
   @ApiOperation({
     summary: 'Registrar contacto/lead para una propiedad',
     description:

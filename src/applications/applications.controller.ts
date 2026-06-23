@@ -12,8 +12,10 @@ import {
   UploadedFiles,
   UseInterceptors,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -40,6 +42,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ApplicationStatus } from './enums/application-status.enum';
 import { applicationDocumentMulterConfig } from '../common/utils/multer.config';
+import { assertUploadedFilesMatchContent } from '../common/utils/upload-content-validation';
 import type { ApplicationApprovalResult } from './application-approval.types';
 import type { ApplicationDocumentRef } from './application-documents.service';
 import type { ApplicationScreeningResult } from './application-screening.types';
@@ -64,6 +67,7 @@ export class ApplicationsController {
   constructor(private readonly applicationsService: ApplicationsService) {}
 
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UseGuards(RolesGuard)
   @Roles('INQUILINO')
   @ApiOperation({
@@ -129,8 +133,19 @@ export class ApplicationsController {
   async findOne(
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: ApplicationRequestUser,
   ): Promise<ApplicationResult> {
-    return this.applicationsService.findOne(id, slug);
+    const application = await this.applicationsService.findOne(id, slug);
+    const canViewAny =
+      user?.role === 'ADMIN' ||
+      user?.role === 'SUPERADMIN' ||
+      user?.role === 'EMPLEADO';
+
+    if (!canViewAny && application.applicant_id !== user?.userId) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    return application;
   }
 
   @Patch(':id/approve')
@@ -182,6 +197,7 @@ export class ApplicationsController {
   }
 
   @Post(':id/documents')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @HttpCode(200)
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'SUPERADMIN')
@@ -232,6 +248,7 @@ export class ApplicationsController {
     if (!files || files.length === 0) {
       throw new BadRequestException('Se requiere al menos un archivo');
     }
+    await assertUploadedFilesMatchContent(files);
     const types = Array.isArray(rawTypes)
       ? rawTypes
       : rawTypes

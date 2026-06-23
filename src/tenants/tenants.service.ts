@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -45,9 +46,12 @@ export class TenantsService implements OnModuleInit {
     });
 
     if (existingSlug) {
-      throw new BadRequestException(
-        `Tenant with slug '${createTenantDto.slug}' already exists`,
-      );
+      // Código estable para que el frontend muestre un mensaje amigable y
+      // traducido; el usuario final no entiende el concepto de "slug".
+      throw new ConflictException({
+        code: 'COMPANY_NAME_TAKEN',
+        message: 'Ya existe una empresa con ese nombre. Elige otro nombre.',
+      });
     }
 
     // Generar schema_name a partir del slug (usa el derivador canónico)
@@ -62,7 +66,9 @@ export class TenantsService implements OnModuleInit {
       throw new BadRequestException(`Schema '${schema_name}' already exists`);
     }
 
-    const { country, ...tenantMetadata } = createTenantDto;
+    // rental_type no es columna de la entidad Tenant (vive en tenant_config),
+    // se extrae para no propagarlo al repository.create.
+    const { country, rental_type, ...tenantMetadata } = createTenantDto;
     const tenant = this.tenantRepository.create({
       ...tenantMetadata,
       schema_name,
@@ -78,6 +84,7 @@ export class TenantsService implements OnModuleInit {
       await this.tenantProvisioningService.provisionNewTenant(
         savedTenant,
         country,
+        rental_type,
       );
       await this.tenantRepository.update(savedTenant.id, {
         is_active: createTenantDto.is_active ?? true,

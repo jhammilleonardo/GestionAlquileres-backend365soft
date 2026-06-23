@@ -25,14 +25,35 @@ interface SocketJwtPayload {
   tenantSlug: string;
 }
 
+function getAllowedSocketOrigins(): string[] {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const origins = (
+    process.env.FRONTEND_URLS ??
+    (isProduction ? '' : 'http://localhost:4200,http://localhost:4201')
+  )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (
+    isProduction &&
+    (origins.length === 0 ||
+      origins.some(
+        (origin) => origin.includes('*') || origin.includes('localhost'),
+      ))
+  ) {
+    throw new Error(
+      'FRONTEND_URLS debe listar dominios reales para WebSocket en producción',
+    );
+  }
+
+  return origins;
+}
+
 @WebSocketGateway({
   namespace: '/notifications',
   cors: {
-    origin: (
-      process.env.FRONTEND_URLS ?? 'http://localhost:4200,http://localhost:4201'
-    )
-      .split(',')
-      .map((u) => u.trim()),
+    origin: getAllowedSocketOrigins(),
     credentials: true,
   },
 })

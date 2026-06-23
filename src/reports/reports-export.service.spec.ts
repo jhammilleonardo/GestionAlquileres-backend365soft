@@ -66,10 +66,21 @@ describe('ReportsExportService', () => {
       availableUnits: 2,
       monthlyIncome: 10000,
       monthlyIncomePrevious: 9000,
+      monthlyExpected: 12000,
       pendingPaymentsCount: 2,
       delinquentCount: 1,
       activeMaintenanceCount: 1,
       expiringContracts: 0,
+      recentMaintenance: [],
+      expiringContractsList: [],
+      delinquentList: [],
+      pendingApplicationsList: [],
+      openViolationsCount: 0,
+      openViolationsList: [],
+      upcomingInspectionsCount: 0,
+      upcomingInspectionsList: [],
+      monthlyExpenses: 0,
+      recentExpensesList: [],
     };
 
     const buffer = await service.toExcel(kpis, 'KPIs');
@@ -94,10 +105,21 @@ describe('ReportsExportService', () => {
       availableUnits: 0,
       monthlyIncome: 1000,
       monthlyIncomePrevious: 800,
+      monthlyExpected: 1000,
       pendingPaymentsCount: 0,
       delinquentCount: 0,
       activeMaintenanceCount: 0,
       expiringContracts: 0,
+      recentMaintenance: [],
+      expiringContractsList: [],
+      delinquentList: [],
+      pendingApplicationsList: [],
+      openViolationsCount: 0,
+      openViolationsList: [],
+      upcomingInspectionsCount: 0,
+      upcomingInspectionsList: [],
+      monthlyExpenses: 0,
+      recentExpensesList: [],
     };
 
     const tablePdf = await service.toPdf(rows, 'Rent_Roll');

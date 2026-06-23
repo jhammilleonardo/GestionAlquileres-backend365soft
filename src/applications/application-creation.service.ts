@@ -50,6 +50,8 @@ export class ApplicationCreationService {
     userId: number,
     tenantSlug: string,
   ): Promise<ApplicationResult> {
+    this.assertNoInlineDocuments(createApplicationDto);
+
     const schemaName = await this.getTenantSchemaName(tenantSlug);
     const schemaPrefix = this.schemaPrefix(schemaName);
 
@@ -84,6 +86,14 @@ export class ApplicationCreationService {
     });
 
     return application;
+  }
+
+  private assertNoInlineDocuments(dto: CreateApplicationDto): void {
+    if (dto.documents && dto.documents.length > 0) {
+      throw new BadRequestException(
+        'Los documentos deben subirse desde el endpoint de documentos de la solicitud',
+      );
+    }
   }
 
   private async ensureApplicantCanApply(

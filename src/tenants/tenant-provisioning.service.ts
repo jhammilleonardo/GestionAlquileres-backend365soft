@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { TenantCountry } from './dto/create-tenant.dto';
 import { Tenant } from './metadata/tenant.entity';
+import { TenantAccountingProvisioningService } from './tenant-accounting-provisioning.service';
 import { TenantApplicationsProvisioningService } from './tenant-applications-provisioning.service';
 import { TenantAuditComplianceProvisioningService } from './tenant-audit-compliance-provisioning.service';
 import { TenantConfigProvisioningService } from './tenant-config-provisioning.service';
@@ -37,10 +38,15 @@ export class TenantProvisioningService {
     private readonly tenantEmployeesProvisioningService: TenantEmployeesProvisioningService,
     private readonly tenantAuditComplianceProvisioningService: TenantAuditComplianceProvisioningService,
     private readonly tenantWebsiteProvisioningService: TenantWebsiteProvisioningService,
+    private readonly tenantAccountingProvisioningService: TenantAccountingProvisioningService,
   ) {}
 
   async runStartupUpgrades(): Promise<void> {
     await this.tenantStartupUpgradeService.run((schemaName) => [
+      [
+        'ensureUserInfrastructure',
+        () => this.tenantSchemaService.createUserInfrastructure(schemaName),
+      ],
       [
         'ensurePropertyColumns',
         () =>
@@ -87,6 +93,13 @@ export class TenantProvisioningService {
         'ensurePropertyLeads',
         () =>
           this.tenantPropertiesProvisioningService.ensurePropertyLeads(
+            schemaName,
+          ),
+      ],
+      [
+        'ensurePropertyViewLogs',
+        () =>
+          this.tenantPropertiesProvisioningService.ensurePropertyViewLogs(
             schemaName,
           ),
       ],
@@ -216,6 +229,40 @@ export class TenantProvisioningService {
           this.tenantUnitsProvisioningService.ensureReservations(schemaName),
       ],
       [
+        'ensureReservationOverlapGuard',
+        () =>
+          this.tenantUnitsProvisioningService.ensureReservationOverlapGuard(
+            schemaName,
+          ),
+      ],
+      [
+        'ensureReservationPaymentSupport',
+        () =>
+          this.tenantPaymentsProvisioningService.ensureReservationPaymentSupport(
+            schemaName,
+          ),
+      ],
+      [
+        'ensureReviews',
+        () => this.tenantUnitsProvisioningService.ensureReviews(schemaName),
+      ],
+      [
+        'ensureSeasonRules',
+        () => this.tenantUnitsProvisioningService.ensureSeasonRules(schemaName),
+      ],
+      [
+        'ensureHousekeepingTasks',
+        () =>
+          this.tenantUnitsProvisioningService.ensureHousekeepingTasks(
+            schemaName,
+          ),
+      ],
+      [
+        'ensureCalendarSync',
+        () =>
+          this.tenantUnitsProvisioningService.ensureCalendarSync(schemaName),
+      ],
+      [
         'ensureLifecycleNotificationLog',
         () =>
           this.tenantNotificationsProvisioningService.ensureLifecycleNotificationLog(
@@ -262,12 +309,18 @@ export class TenantProvisioningService {
             schemaName,
           ),
       ],
+      [
+        'ensureAccounting',
+        () =>
+          this.tenantAccountingProvisioningService.ensureAccounting(schemaName),
+      ],
     ]);
   }
 
   async provisionNewTenant(
     tenant: Tenant,
     country: TenantCountry = TenantCountry.BO,
+    rentalType?: string,
   ): Promise<void> {
     try {
       await this.tenantSchemaService.createSchemaIfMissing(tenant.schema_name);
@@ -308,8 +361,12 @@ export class TenantProvisioningService {
       await this.tenantConfigProvisioningService.ensureTenantConfig(
         tenant.schema_name,
         country,
+        rentalType,
       );
       await this.tenantPropertiesProvisioningService.ensurePropertyLeads(
+        tenant.schema_name,
+      );
+      await this.tenantPropertiesProvisioningService.ensurePropertyViewLogs(
         tenant.schema_name,
       );
       await this.tenantApplicationsProvisioningService.ensureScreeningChecklist(
@@ -326,6 +383,24 @@ export class TenantProvisioningService {
         tenant.schema_name,
       );
       await this.tenantUnitsProvisioningService.ensureReservations(
+        tenant.schema_name,
+      );
+      await this.tenantUnitsProvisioningService.ensureReservationOverlapGuard(
+        tenant.schema_name,
+      );
+      await this.tenantPaymentsProvisioningService.ensureReservationPaymentSupport(
+        tenant.schema_name,
+      );
+      await this.tenantUnitsProvisioningService.ensureReviews(
+        tenant.schema_name,
+      );
+      await this.tenantUnitsProvisioningService.ensureSeasonRules(
+        tenant.schema_name,
+      );
+      await this.tenantUnitsProvisioningService.ensureHousekeepingTasks(
+        tenant.schema_name,
+      );
+      await this.tenantUnitsProvisioningService.ensureCalendarSync(
         tenant.schema_name,
       );
       await this.tenantPaymentsProvisioningService.ensureOwnerStatements(
@@ -353,6 +428,9 @@ export class TenantProvisioningService {
         tenant.schema_name,
       );
       await this.tenantWebsiteProvisioningService.ensureWebsiteContacts(
+        tenant.schema_name,
+      );
+      await this.tenantAccountingProvisioningService.ensureAccounting(
         tenant.schema_name,
       );
       await this.tenantPropertiesProvisioningService.seedPropertyTypesAndSubtypes(

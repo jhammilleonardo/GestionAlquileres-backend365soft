@@ -71,6 +71,15 @@ export class PaymentStatusService {
     adminId: number,
     schemaName?: string,
   ): Promise<Payment> {
+    if (dto.status === PaymentStatus.APPROVED) {
+      return this.paymentApprovalService.approvePayment(
+        id,
+        { admin_notes: dto.admin_notes },
+        adminId,
+        schemaName || 'public',
+      );
+    }
+
     const table = paymentTable(schemaName);
 
     try {
@@ -93,14 +102,13 @@ export class PaymentStatusService {
         );
       }
 
-      const isApproved = dto.status === PaymentStatus.APPROVED;
       const updated = await this.dataSource.query<Payment[]>(
         `UPDATE ${table}
          SET status = $1,
              admin_notes = $2,
              rejection_reason = $3,
              approved_by = $4,
-             approved_at = CASE WHEN $6 THEN NOW() ELSE approved_at END,
+             approved_at = approved_at,
              updated_at = NOW()
          WHERE id = $5
          RETURNING *`,
@@ -110,7 +118,6 @@ export class PaymentStatusService {
           dto.rejection_reason || payment.rejection_reason,
           adminId,
           id,
-          isApproved,
         ],
       );
 

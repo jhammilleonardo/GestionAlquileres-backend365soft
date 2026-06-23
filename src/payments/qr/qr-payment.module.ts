@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { HttpModule } from '@nestjs/axios';
 import { QrPaymentService } from './qr-payment.service';
 import { QrPaymentProcessingService } from './qr-payment-processing.service';
 import { QrProviderService } from './qr-provider.service';
@@ -10,6 +9,7 @@ import {
   PublicQrPaymentController,
 } from './qr-payment.controller';
 import { TenantsModule } from '../../tenants/tenants.module';
+import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
 
 /**
  * QrPaymentModule
@@ -18,13 +18,7 @@ import { TenantsModule } from '../../tenants/tenants.module';
  * Incluye endpoints para Admin, Inquilino y el callback público del banco.
  */
 @Module({
-  imports: [
-    TenantsModule,
-    HttpModule.register({
-      timeout: 30000,
-      maxRedirects: 3,
-    }),
-  ],
+  imports: [TenantsModule],
   controllers: [
     AdminQrPaymentController,
     TenantQrPaymentController,
@@ -35,6 +29,7 @@ import { TenantsModule } from '../../tenants/tenants.module';
     QrPaymentProcessingService,
     QrProviderService,
     QrPaymentPersistenceService,
+    SafeHttpClientService,
   ],
   exports: [QrPaymentService],
 })

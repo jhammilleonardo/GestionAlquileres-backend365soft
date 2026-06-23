@@ -7,8 +7,13 @@ import {
   HttpStatus,
   Get,
   Request,
+  Res,
+  UnauthorizedException,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import type { Request as ExpressRequest, Response } from 'express';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -30,6 +35,16 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyAdminMfaDto } from './dto/verify-admin-mfa.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AuthCookieInterceptor } from './auth-cookie.interceptor';
+import {
+  ACCESS_TOKEN_COOKIE,
+  CSRF_COOKIE,
+  REFRESH_TOKEN_COOKIE,
+  authCookieOptions,
+  csrfCookieOptions,
+  refreshCookieOptions,
+} from './auth-cookie.util';
+import { RefreshTokenService } from './refresh-token.service';
 import {
   AdminMfaRequiredResponseDto,
   AuthMeResponseDto,
@@ -40,8 +55,72 @@ import {
 
 @ApiTags('Auth')
 @Controller('auth')
+@UseInterceptors(AuthCookieInterceptor)
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private readonly jwtService: JwtService,
+    private readonly refreshTokenService: RefreshTokenService,
+  ) {}
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Renueva el access token usando el refresh token (cookie)',
+  })
+  @ApiOkResponse({ description: 'Sesión renovada mediante cookies seguras' })
+  @ApiUnauthorizedResponse({ description: 'Refresh token ausente o inválido' })
+  async refresh(
+    @Request() req: ExpressRequest,
+  ): Promise<{ access_token: string; success: true }> {
+    const raw = req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined;
+    if (!raw) {
+      throw new UnauthorizedException('Falta el refresh token');
+    }
+
+    // consume() rota (revoca el actual); el interceptor emite el nuevo par.
+    const claims = await this.refreshTokenService.consume(raw);
+    const access_token = this.jwtService.sign({
+      sub: claims.sub,
+      email: claims.email,
+      role: claims.role,
+      tenantSlug: claims.tenantSlug,
+      rentalOwnerId: claims.rentalOwnerId ?? null,
+      vendorId: claims.vendorId ?? null,
+      mfaVerified: claims.mfaVerified ?? false,
+      tokenVersion: claims.tokenVersion,
+    });
+    return { access_token, success: true };
+  }
+
+  @Public()
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cierra la sesión: revoca el refresh y limpia cookies',
+  })
+  @ApiOkResponse({ description: 'Sesión cerrada' })
+  async logout(
+    @Request() req: ExpressRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ success: boolean }> {
+    const raw = req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined;
+    if (raw) {
+      await this.refreshTokenService.revoke(raw);
+    }
+
+    const { maxAge: _a, ...clearAccess } = authCookieOptions();
+    const { maxAge: _r, ...clearRefresh } = refreshCookieOptions();
+    const { maxAge: _c, ...clearCsrf } = csrfCookieOptions();
+    void _a;
+    void _r;
+    void _c;
+    res.clearCookie(ACCESS_TOKEN_COOKIE, clearAccess);
+    res.clearCookie(REFRESH_TOKEN_COOKIE, clearRefresh);
+    res.clearCookie(CSRF_COOKIE, clearCsrf);
+    return { success: true };
+  }
 
   @Public()
   @Throttle({ default: { limit: 3, ttl: 3600000 } }) // 3 registros por hora

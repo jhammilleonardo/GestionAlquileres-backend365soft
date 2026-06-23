@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
 import { ExpensesService } from './expenses.service';
 import { Expense } from './entities/expense.entity';
 import { ExpenseCategoryEnum } from './enums/expense-category.enum';
@@ -44,6 +45,12 @@ describe('ExpensesService', () => {
         {
           provide: DataSource,
           useValue: makeDataSource(),
+        },
+        {
+          provide: AccountingOutboxService,
+          useValue: {
+            enqueue: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();

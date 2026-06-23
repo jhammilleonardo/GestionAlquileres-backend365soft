@@ -178,7 +178,7 @@ describe('E2E #10 - Payment webhook idempotency', () => {
       `SELECT COUNT(*)::text AS total
        FROM "${schema}".webhook_events
        WHERE event_id = $1`,
-      [WEBHOOK_EVENT_ID],
+      [`stripe:${WEBHOOK_EVENT_ID}`],
     );
     expect(Number(eventRows[0].total)).toBe(1);
   });

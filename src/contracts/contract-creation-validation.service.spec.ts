@@ -51,8 +51,17 @@ describe('ContractCreationValidationService', () => {
     );
     expect(executor.query).toHaveBeenNthCalledWith(
       3,
-      'SELECT id FROM "tenant_acme".contracts WHERE tenant_id = $1 AND status = $2',
-      [10, ContractStatus.ACTIVO],
+      expect.stringContaining('status::text = ANY($2)'),
+      [
+        10,
+        [
+          ContractStatus.BORRADOR,
+          ContractStatus.PENDIENTE,
+          ContractStatus.FIRMADO,
+          ContractStatus.ACTIVO,
+          ContractStatus.POR_VENCER,
+        ],
+      ],
     );
   });
 

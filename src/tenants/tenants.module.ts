@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantsService } from './tenants.service';
 import { TenantsController } from './tenants.controller';
 import { Tenant } from './metadata/tenant.entity';
+import { TenantAccountingProvisioningService } from './tenant-accounting-provisioning.service';
 import { TenantPublicSchemaService } from './tenant-public-schema.service';
 import { TenantAdminIndexService } from './tenant-admin-index.service';
 import { TenantMaintenanceService } from './tenant-maintenance.service';
@@ -47,6 +48,7 @@ import { TenantProvisioningService } from './tenant-provisioning.service';
     TenantEmployeesProvisioningService,
     TenantAuditComplianceProvisioningService,
     TenantWebsiteProvisioningService,
+    TenantAccountingProvisioningService,
     TenantProvisioningService,
   ],
   controllers: [TenantsController],

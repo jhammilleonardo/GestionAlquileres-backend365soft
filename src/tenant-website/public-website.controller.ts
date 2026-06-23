@@ -19,7 +19,7 @@ export class PublicWebsiteController {
   }
 
   @Post(':subdomain/contact')
-  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({
     summary: 'Enviar formulario de contacto desde el sitio público',
   })

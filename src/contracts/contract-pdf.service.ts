@@ -136,8 +136,14 @@ export class ContractPdfService {
       unit_number: unitNumber,
       rent_amount: String(contract.monthly_rent ?? 0),
       currency: contract.currency ?? '',
-      start_date: new Date(contract.start_date).toLocaleDateString(),
-      end_date: new Date(contract.end_date).toLocaleDateString(),
+      // Fechas date-only: se formatean en UTC para preservar el día calendario
+      // sin importar el timezone del servidor (evita el off-by-one).
+      start_date: new Date(contract.start_date).toLocaleDateString(undefined, {
+        timeZone: 'UTC',
+      }),
+      end_date: new Date(contract.end_date).toLocaleDateString(undefined, {
+        timeZone: 'UTC',
+      }),
       payment_day: String(contract.payment_day ?? 5),
       deposit_amount: String(contract.deposit_amount ?? 0),
       late_fee_percentage: String(contract.late_fee_percentage ?? 0),

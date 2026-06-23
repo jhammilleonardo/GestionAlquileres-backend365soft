@@ -1,5 +1,4 @@
 import { diskStorage } from 'multer';
-import { extname } from 'path';
 import { Request } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -13,10 +12,23 @@ const ensureDirExists = (dir: string) => {
   }
 };
 
-// Genera un nombre de archivo seguro usando el PRNG criptográfico del sistema
-const generateSecureFilename = (originalName: string): string => {
+const MIME_EXTENSION: Readonly<Record<string, string>> = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/quicktime': '.mov',
+  'application/pdf': '.pdf',
+};
+
+// Genera un nombre seguro. La extensión sale del MIME permitido, no del nombre
+// del usuario, para evitar subir HTML/JS disfrazado con extensión ejecutable.
+const generateSecureFilename = (file: Express.Multer.File): string => {
   const randomName = randomBytes(16).toString('hex'); // 32 chars hex
-  return `${randomName}${extname(originalName)}`;
+  return `${randomName}${MIME_EXTENSION[file.mimetype] ?? '.bin'}`;
 };
 
 const getTenantSlug = (req: Request): string =>
@@ -47,7 +59,30 @@ export const propertyImageStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    cb(null, generateSecureFilename(file.originalname));
+    cb(null, generateSecureFilename(file));
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+// Branding del portal (logo / imagen de fondo) — solo imágenes, máx 5 MB
+// Almacenado en: storage/branding/{slug}/
+// ──────────────────────────────────────────────────────────────
+export const brandingFileStorage = diskStorage({
+  destination: (req: Request, file: Express.Multer.File, cb) => {
+    const tenantSlug = getTenantSlug(req);
+
+    const uploadPath = path.join(
+      process.cwd(),
+      'storage',
+      'branding',
+      tenantSlug,
+    );
+    ensureDirExists(uploadPath);
+
+    cb(null, uploadPath);
+  },
+  filename: (req: Request, file: Express.Multer.File, cb) => {
+    cb(null, generateSecureFilename(file));
   },
 });
 
@@ -81,6 +116,15 @@ export const multerConfig = {
   },
 };
 
+// Configuración de Multer para branding (logo / portada)
+export const brandingMulterConfig = {
+  storage: brandingFileStorage,
+  fileFilter: imageFileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max
+  },
+};
+
 // Configuración de Multer para mantenimiento
 export const maintenanceFileStorage = diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
@@ -99,7 +143,7 @@ export const maintenanceFileStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    cb(null, generateSecureFilename(file.originalname));
+    cb(null, generateSecureFilename(file));
   },
 });
 
@@ -157,7 +201,7 @@ export const violationFileStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    cb(null, generateSecureFilename(file.originalname));
+    cb(null, generateSecureFilename(file));
   },
 });
 
@@ -188,7 +232,7 @@ export const receiptFileStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    cb(null, generateSecureFilename(file.originalname));
+    cb(null, generateSecureFilename(file));
   },
 });
 
@@ -244,7 +288,7 @@ export const applicationDocumentStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    cb(null, generateSecureFilename(file.originalname));
+    cb(null, generateSecureFilename(file));
   },
 });
 
@@ -302,7 +346,7 @@ export const stagePhotoStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    cb(null, generateSecureFilename(file.originalname));
+    cb(null, generateSecureFilename(file));
   },
 });
 
@@ -345,7 +389,7 @@ export const inspectionPhotoStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (_req: Request, file: Express.Multer.File, cb) => {
-    cb(null, generateSecureFilename(file.originalname));
+    cb(null, generateSecureFilename(file));
   },
 });
 
@@ -393,7 +437,7 @@ export const messageFileStorage = diskStorage({
     cb(null, uploadPath);
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
-    cb(null, generateSecureFilename(file.originalname));
+    cb(null, generateSecureFilename(file));
   },
 });
 

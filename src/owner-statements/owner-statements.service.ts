@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
+import { tenantConnectionStore } from '../common/tenant/tenant-connection.store';
 import {
   CreateOwnerStatementDto,
   UpdateOwnerStatementDto,
@@ -78,6 +80,7 @@ export class OwnerStatementsService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly pdfService: OwnerStatementPdfService,
+    private readonly accountingOutboxService: AccountingOutboxService,
   ) {}
 
   /**
@@ -113,6 +116,7 @@ export class OwnerStatementsService {
         query,
         values,
       );
+      await this.enqueueGeneratedStatement(result[0].id);
       return this.toDto(result[0]);
     } catch (error: unknown) {
       if (isDatabaseErrorWithCode(error, '23505')) {
@@ -422,8 +426,60 @@ export class OwnerStatementsService {
       [id],
     );
 
+    await this.enqueueTransferredStatement(id);
+
     this.logger.log(`Estado de cuenta #${id} marcado como transferido`);
     return this.toDto(result[0]);
+  }
+
+  private async enqueueGeneratedStatement(statementId: number): Promise<void> {
+    const schemaName = tenantConnectionStore.getStore()?.schemaName;
+    if (!schemaName) {
+      return;
+    }
+
+    await this.dataSource.query(
+      `UPDATE owner_statements
+       SET accounting_status = 'pending_posting',
+           journal_entry_id = NULL,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [statementId],
+    );
+
+    await this.accountingOutboxService.enqueue({
+      schemaName,
+      eventType: 'owner_statement.generated',
+      aggregateType: 'owner_statement',
+      aggregateId: `generated:${statementId}`,
+      payload: { statementId },
+    });
+  }
+
+  private async enqueueTransferredStatement(
+    statementId: number,
+  ): Promise<void> {
+    const schemaName = tenantConnectionStore.getStore()?.schemaName;
+    if (!schemaName) {
+      return;
+    }
+
+    await this.dataSource.query(
+      `UPDATE owner_statements
+       SET accounting_status = 'transfer_pending_posting',
+           transfer_journal_entry_id = NULL,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [statementId],
+    );
+
+    await this.accountingOutboxService.enqueue({
+      schemaName,
+      eventType: 'owner_statement.transferred',
+      aggregateType: 'owner_statement',
+      aggregateId: `transferred:${statementId}`,
+      payload: { statementId },
+    });
   }
 
   private toDto(row: OwnerStatementRow): OwnerStatementResponseDto {

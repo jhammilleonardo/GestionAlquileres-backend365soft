@@ -110,6 +110,53 @@ describe('PropertyCreationService', () => {
     expect(propertyLookupService.findOne).not.toHaveBeenCalled();
   });
 
+  it('does not create a unit for long-term properties', async () => {
+    const dto = buildCreatePropertyDto(); // sin rental_type → LONG_TERM
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockResolvedValueOnce([{ id: 2, property_type_id: 1 }]);
+    queryRunner.query.mockResolvedValueOnce([{ id: 55 }]);
+
+    await service.create('acme', dto);
+
+    // Sólo el INSERT de la propiedad: ningún INSERT en units.
+    expect(queryRunner.query).toHaveBeenCalledTimes(1);
+    expect(queryRunner.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO "tenant_acme".units'),
+      expect.any(Array),
+    );
+  });
+
+  it('creates an initial unit carrying the nightly price for short-term properties', async () => {
+    const dto = {
+      ...buildCreatePropertyDto(),
+      rental_type: 'SHORT_TERM',
+      price_per_night: 250,
+      security_deposit_amount: 500,
+    } as CreatePropertyDto;
+    dataSource.query
+      .mockResolvedValueOnce([{ schema_name: 'tenant_acme' }])
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockResolvedValueOnce([{ id: 2, property_type_id: 1 }]);
+    queryRunner.query
+      .mockResolvedValueOnce([{ id: 55 }]) // INSERT properties
+      .mockResolvedValueOnce(undefined); // INSERT units
+
+    await service.create('acme', dto);
+
+    const calls = queryRunner.query.mock.calls as Array<[unknown, unknown?]>;
+    const unitInsert = calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO "tenant_acme".units'),
+    );
+    expect(unitInsert).toBeDefined();
+    const params = unitInsert?.[1];
+    expect(Array.isArray(params)).toBe(true);
+    expect(params).toEqual(
+      expect.arrayContaining([55, 'SHORT_TERM', 250, 500]),
+    );
+  });
+
   it('rejects subtype that does not belong to the property type', async () => {
     const dto = buildCreatePropertyDto();
     dataSource.query

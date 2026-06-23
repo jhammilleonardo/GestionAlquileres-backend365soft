@@ -6,7 +6,6 @@ import { FilterCatalogPropertiesDto } from './dto/filter-catalog-properties.dto'
 import { PropertyPublicCatalogQueryService } from './property-public-catalog-query.service';
 import {
   PublicCatalogAddress,
-  PublicCatalogOwner,
   PublicCatalogProperty,
   PublicCatalogPropertyDetail,
   PublicCatalogResult,
@@ -30,13 +29,16 @@ export class PropertyPublicCatalogService {
   async findCatalogProperties(
     filters: FilterCatalogPropertiesDto,
     tenantSlug: string,
+    allowUnpublished = false,
   ): Promise<PublicCatalogResult> {
     const schemaName = await this.getTenantSchemaName(tenantSlug);
+    await this.assertSitePublished(schemaName, allowUnpublished);
     const schemaPrefix = this.schemaPrefix(schemaName);
 
     const whereClause = this.propertyPublicCatalogQueryService.buildWhereClause(
       filters,
       schemaPrefix,
+      allowUnpublished,
     );
     const params = [...whereClause.params];
     const unitMetricsSql = this.buildUnitMetricsLateralSql(schemaPrefix);
@@ -69,11 +71,13 @@ export class PropertyPublicCatalogService {
       SELECT
         p.id, p.title, p.description,
         p.property_type_id, p.property_subtype_id,
-        p.status, p.latitude, p.longitude,
+        p.status,
+        ROUND(p.latitude::numeric, 2) AS latitude,
+        ROUND(p.longitude::numeric, 2) AS longitude,
         p.monthly_rent, p.currency, p.rental_type,
         p.bedrooms, p.bathrooms, p.square_meters, p.parking_spaces,
         p.is_furnished, p.images, p.amenities, p.included_items,
-        p.view_count, p.last_viewed_at,
+        p.view_count,
         p.created_at, p.updated_at,
         pt.name as property_type_name, pt.code as property_type_code,
         pst.name as property_subtype_name, pst.code as property_subtype_code,
@@ -88,7 +92,7 @@ export class PropertyPublicCatalogService {
       LEFT JOIN ${schemaPrefix}property_subtypes pst ON p.property_subtype_id = pst.id
       ${unitMetricsSql}
       LEFT JOIN LATERAL (
-        SELECT *
+        SELECT pa_first.city, pa_first.state, pa_first.country
         FROM ${schemaPrefix}property_addresses pa_first
         WHERE pa_first.property_id = p.id
           AND pa_first.address_type = 'address_1'
@@ -120,18 +124,33 @@ export class PropertyPublicCatalogService {
     id: number,
     tenantSlug: string,
     userIP?: string,
+    allowUnpublished = false,
   ): Promise<PublicCatalogPropertyDetail> {
     const schemaName = await this.getTenantSchemaName(tenantSlug);
+    await this.assertSitePublished(schemaName, allowUnpublished);
     const schemaPrefix = this.schemaPrefix(schemaName);
 
+    const publicStatusSql = allowUnpublished
+      ? ''
+      : `AND p.status = 'DISPONIBLE'`;
     const properties = await this.dataSource.query<PublicCatalogProperty[]>(
-      `SELECT p.*,
+      `SELECT
+        p.id, p.title, p.description,
+        p.property_type_id, p.property_subtype_id, p.status,
+        ROUND(p.latitude::numeric, 2) AS latitude,
+        ROUND(p.longitude::numeric, 2) AS longitude,
+        p.monthly_rent, p.security_deposit_amount, p.currency, p.rental_type,
+        p.bedrooms, p.bathrooms, p.square_meters, p.parking_spaces,
+        p.year_built, p.is_furnished, p.images, p.amenities,
+        p.included_items, p.property_rules, p.view_count,
+        p.created_at, p.updated_at,
         pt.name as property_type_name, pt.code as property_type_code,
         pst.name as property_subtype_name, pst.code as property_subtype_code
        FROM ${schemaPrefix}properties p
        LEFT JOIN ${schemaPrefix}property_types pt ON p.property_type_id = pt.id
        LEFT JOIN ${schemaPrefix}property_subtypes pst ON p.property_subtype_id = pst.id
-       WHERE p.id = $1`,
+       WHERE p.id = $1
+         ${publicStatusSql}`,
       [id],
     );
 
@@ -150,26 +169,24 @@ export class PropertyPublicCatalogService {
     });
 
     const addresses = await this.dataSource.query<PublicCatalogAddress[]>(
-      `SELECT * FROM ${schemaPrefix}property_addresses WHERE property_id = $1 ORDER BY id`,
-      [id],
-    );
-
-    const owners = await this.dataSource.query<PublicCatalogOwner[]>(
-      `SELECT ro.id, ro.name, ro.company_name, ro.primary_email as email,
-        ro.phone_number as phone, po.is_primary
-       FROM ${schemaPrefix}property_owners po
-       LEFT JOIN ${schemaPrefix}rental_owners ro ON po.rental_owner_id = ro.id
-       WHERE po.property_id = $1`,
+      `SELECT city, state, country
+       FROM ${schemaPrefix}property_addresses
+       WHERE property_id = $1
+       ORDER BY id`,
       [id],
     );
 
     // Unidades con su configuración de alquiler (incl. corto plazo) para el catálogo público
+    const publicUnitStatusSql = allowUnpublished
+      ? ''
+      : `AND status = 'available'`;
     const units = await this.dataSource.query<PublicCatalogUnit[]>(
       `SELECT id, unit_number, rental_type, status,
               price_per_night, cleaning_fee, min_nights, max_nights,
               checkin_time, checkout_time
        FROM ${schemaPrefix}units
        WHERE property_id = $1
+         ${publicUnitStatusSql}
        ORDER BY unit_number`,
       [id],
     );
@@ -177,7 +194,6 @@ export class PropertyPublicCatalogService {
     return {
       ...property,
       addresses,
-      owners,
       units,
     };
   }
@@ -217,6 +233,26 @@ export class PropertyPublicCatalogService {
         'Error in recordPropertyView',
         error instanceof Error ? error.stack : undefined,
       );
+    }
+  }
+
+  /**
+   * Bloquea el catálogo de un sitio no publicado. El portal público no debe
+   * exponer propiedades de un tenant que despublicó su sitio; el staff
+   * autenticado del propio tenant sí puede verlas (preview).
+   */
+  private async assertSitePublished(
+    schemaName: string,
+    allowUnpublished: boolean,
+  ): Promise<void> {
+    if (allowUnpublished) {
+      return;
+    }
+    const rows = await this.dataSource.query<Array<{ is_published: boolean }>>(
+      `SELECT is_published FROM ${quoteIdent(schemaName)}.tenant_website LIMIT 1`,
+    );
+    if (!rows[0]?.is_published) {
+      throw new NotFoundException('Sitio no disponible');
     }
   }
 

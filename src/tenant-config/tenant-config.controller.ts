@@ -19,20 +19,20 @@ import {
 import { TenantConfigService } from './tenant-config.service';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
 import { TenantConfigResponseDto } from './dto/tenant-config-response.dto';
 
 @ApiTags('Tenant Config')
 @ApiBearerAuth()
 @Controller(':slug/admin/config')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TenantConfigController {
   constructor(private readonly tenantConfigService: TenantConfigService) {}
 
   @Get()
+  @RequirePermission('config', 'view')
   @ApiOperation({ summary: 'Obtener configuración actual del tenant' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiOkResponse({ type: TenantConfigResponseDto })
@@ -44,6 +44,7 @@ export class TenantConfigController {
   }
 
   @Patch()
+  @RequirePermission('config', 'edit')
   @ApiOperation({ summary: 'Actualizar configuración del tenant' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiBody({ type: UpdateTenantConfigDto })
@@ -60,6 +61,7 @@ export class TenantConfigController {
   }
 
   @Patch('setup-complete')
+  @RequirePermission('config', 'edit')
   @ApiOperation({ summary: 'Marcar wizard de configuración como completado' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiOkResponse({ type: TenantConfigResponseDto })

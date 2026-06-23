@@ -4,8 +4,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
+import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
 
 interface Mc4Config {
   authUrl: string;
@@ -56,7 +55,7 @@ export interface GenerateMc4QrParams {
 export class QrProviderService {
   private readonly logger = new Logger(QrProviderService.name);
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(private readonly httpService: SafeHttpClientService) {}
 
   async generarQr(params: GenerateMc4QrParams): Promise<Mc4QrResponse> {
     const token = await this.generarToken();
@@ -140,12 +139,10 @@ export class QrProviderService {
     errorPrefix: string,
   ): Promise<TResponse> {
     try {
-      const response = await firstValueFrom(
-        this.httpService.post<TResponse>(url, body, {
-          headers,
-          timeout,
-        }),
-      );
+      const response = await this.httpService.post<TResponse>(url, body, {
+        headers,
+        timeout,
+      });
 
       return response.data;
     } catch (error: unknown) {

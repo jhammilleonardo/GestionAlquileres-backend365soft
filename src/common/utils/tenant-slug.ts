@@ -30,6 +30,7 @@ export const RESERVED_TENANT_SLUGS: ReadonlySet<string> = new Set([
   'register',
   'static',
   'storage',
+  'tenants',
   'uploads',
   'www',
 ]);

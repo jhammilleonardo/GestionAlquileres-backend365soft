@@ -10,7 +10,6 @@ import {
   Query,
   HttpCode,
   HttpStatus,
-  BadRequestException,
   ParseIntPipe,
 } from '@nestjs/common';
 import {
@@ -32,6 +31,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { OptionalPositiveIntPipe } from '../common/pipes/optional-positive-int.pipe';
 import { Expense } from './entities/expense.entity';
 import {
   ExpenseResponseDto,
@@ -89,14 +89,11 @@ export class AdminExpensesController {
   @ApiQuery({ name: 'to', required: false })
   @ApiOkResponse({ type: ExpenseSummaryResponseDto })
   async getSummary(
-    @Query('property_id') propertyId: string,
+    @Query('property_id', ParseIntPipe) propertyId: number,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<ExpenseSummary> {
-    if (!propertyId) {
-      throw new BadRequestException('property_id es requerido');
-    }
-    return this.expensesService.getSummary(+propertyId, from, to);
+    return this.expensesService.getSummary(propertyId, from, to);
   }
 
   @Get('monthly-balance')
@@ -107,11 +104,9 @@ export class AdminExpensesController {
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiQuery({ name: 'property_id', required: false })
   async getMonthlyBalance(
-    @Query('property_id') propertyId?: string,
+    @Query('property_id', OptionalPositiveIntPipe) propertyId?: number,
   ): Promise<Array<{ month: string; income: number; expenses: number }>> {
-    return this.expensesService.getMonthlyBalance(
-      propertyId ? +propertyId : undefined,
-    );
+    return this.expensesService.getMonthlyBalance(propertyId);
   }
 
   @Get(':id')

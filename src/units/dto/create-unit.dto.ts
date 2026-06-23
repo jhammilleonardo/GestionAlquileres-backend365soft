@@ -9,6 +9,7 @@ import {
   Min,
   Max,
   IsObject,
+  IsIn,
   Matches,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -133,6 +134,128 @@ export class CreateUnitDto {
   @IsNumber()
   @Min(0)
   cleaning_fee?: number;
+
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'Descuento (%) para estadías de 7+ noches',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  weekly_discount_pct?: number;
+
+  @ApiPropertyOptional({
+    example: 20,
+    description: 'Descuento (%) para estadías de 28+ noches',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  monthly_discount_pct?: number;
+
+  @ApiPropertyOptional({
+    example: 15,
+    description:
+      'Ajuste (%) para noches de viernes y sábado; negativo descuenta',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-100)
+  @Max(500)
+  weekend_adjustment_pct?: number;
+
+  @ApiPropertyOptional({
+    example: 60,
+    description: 'Días mínimos para descuento anticipado',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(730)
+  early_bird_min_days?: number;
+
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'Descuento (%) por reserva anticipada',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  early_bird_discount_pct?: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    description: 'Máximo de días para aplicar última hora',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(90)
+  last_minute_max_days?: number;
+
+  @ApiPropertyOptional({
+    example: 20,
+    description:
+      'Ajuste (%) de última hora; positivo recarga, negativo descuenta',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-100)
+  @Max(500)
+  last_minute_adjustment_pct?: number;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'Anticipación mínima para reservar',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  advance_notice_days?: number;
+
+  @ApiPropertyOptional({
+    example: 365,
+    description: 'Máximo de días de anticipación',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(730)
+  max_advance_days?: number;
+
+  @ApiPropertyOptional({
+    example: 'instant',
+    enum: ['instant', 'request'],
+    description:
+      "Modo de reserva OTA: 'instant' auto-confirma, 'request' requiere aprobación del admin",
+  })
+  @IsOptional()
+  @IsIn(['instant', 'request'])
+  booking_mode?: string;
+
+  @ApiPropertyOptional({
+    example: 'moderate',
+    enum: ['flexible', 'moderate', 'strict', 'non_refundable'],
+    description: 'Política de cancelación que define el reembolso al cancelar',
+  })
+  @IsOptional()
+  @IsIn(['flexible', 'moderate', 'strict', 'non_refundable'])
+  cancellation_policy?: string;
+
+  @ApiPropertyOptional({
+    example: 30,
+    description:
+      'Adelanto requerido para confirmar la reserva, como % del total (0-100). Vacío = pago completo. El saldo restante se cobra después (p. ej. al check-in).',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  deposit_to_confirm_pct?: number;
 
   @ApiPropertyOptional({
     example: { has_balcony: true, has_parking: false, view: 'city' },

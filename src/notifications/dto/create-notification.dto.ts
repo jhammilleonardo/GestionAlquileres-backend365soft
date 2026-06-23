@@ -46,6 +46,11 @@ export enum NotificationEventType {
   // Facturación automática
   PAYMENT_REMINDER = 'payment.reminder',
   LATE_FEE_APPLIED = 'payment.late_fee_applied',
+  // Reservas de corto plazo (OTA)
+  RESERVATION_REQUESTED = 'reservation.requested',
+  RESERVATION_CONFIRMED = 'reservation.confirmed',
+  RESERVATION_DECLINED = 'reservation.declined',
+  RESERVATION_EXPIRED = 'reservation.expired',
 }
 
 export class CreateNotificationDto {

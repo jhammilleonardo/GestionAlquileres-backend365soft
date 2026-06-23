@@ -8,6 +8,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TenantCountry } from '../../tenants/dto/create-tenant.dto';
+import { RentalType } from '../../units/enums/rental-type.enum';
 import { TENANT_SLUG_REGEX } from '../../common/utils/tenant-slug';
 import {
   PASSWORD_MIN_LENGTH,
@@ -36,6 +37,16 @@ export class RegisterAdminDto {
   @ApiProperty({ enum: TenantCountry, example: TenantCountry.BO })
   @IsEnum(TenantCountry)
   country: TenantCountry;
+
+  @ApiPropertyOptional({
+    enum: RentalType,
+    example: RentalType.BOTH,
+    description:
+      'Modo de operación del tenant: corto plazo, largo plazo o ambos. Si se omite, se usa el default del país.',
+  })
+  @IsOptional()
+  @IsEnum(RentalType)
+  rental_type?: RentalType;
 
   @ApiPropertyOptional({ example: 'BOB' })
   @IsOptional()

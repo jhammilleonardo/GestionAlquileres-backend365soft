@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { RentalOwnersService } from './rental-owners.service';
+import { AuthService } from '../auth/auth.service';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,15 @@ describe('RentalOwnersService', () => {
       providers: [
         RentalOwnersService,
         { provide: getDataSourceToken(), useValue: mockDataSource },
+        {
+          provide: AuthService,
+          useValue: {
+            createPasswordSetupLink: jest.fn().mockResolvedValue({
+              resetUrl: 'https://app.test/setup-token',
+              expiresAt: new Date('2026-01-01T00:00:00.000Z'),
+            }),
+          },
+        },
       ],
     }).compile();
 

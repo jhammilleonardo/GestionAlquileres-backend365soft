@@ -18,6 +18,7 @@ tiene un proposito concreto para evitar READMEs enormes y contradictorios.
 - [ADR-002 Monolito modular](adr/ADR-002-monolito-modular.md)
 - [ADR-003 Stack NestJS](adr/ADR-003-nestjs-stack.md)
 - [ADR-004 Multer local y S3](adr/ADR-004-multer-local-s3.md)
+- [ADR-005 Ledger contable por tenant](adr/ADR-005-accounting-ledger.md)
 
 ## Modulos
 

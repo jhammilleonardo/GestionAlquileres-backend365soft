@@ -18,7 +18,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_DATABASE}
     volumes:
-      - postgres_prod_data:/var/lib/postgresql/data
+      # PostgreSQL 18+ requiere el mount en /var/lib/postgresql (los datos van
+      # a un subdirectorio versionado dentro). Montar en /data rompe el arranque.
+      - postgres_prod_data:/var/lib/postgresql
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - gestion-network

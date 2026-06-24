@@ -3,9 +3,10 @@ import { Cron } from '@nestjs/schedule';
 import { ReservationExpiryService } from './reservation-expiry.service';
 
 /**
- * Dispara la expiración de reservas PENDING vencidas. Cada 15 minutos es
- * suficiente: el TTL es de horas, no de minutos, y mantiene la latencia baja
- * para liberar fechas sin cargar la BD.
+ * Dispara la expiración de reservas vencidas (PENDING y PENDING_PAYMENT) y libera
+ * sus fechas. Corre cada minuto porque el hold de pago QR es de 10 minutos: así
+ * las fechas vuelven a estar disponibles para otros casi de inmediato al vencer.
+ * La sentencia es un UPDATE indexado por estado/expires_at, barato de ejecutar.
  */
 @Injectable()
 export class ReservationExpiryScheduler {
@@ -13,7 +14,7 @@ export class ReservationExpiryScheduler {
 
   constructor(private readonly expiryService: ReservationExpiryService) {}
 
-  @Cron('*/15 * * * *')
+  @Cron('* * * * *')
   async run(): Promise<void> {
     await this.expiryService.expireStalePendingReservations();
   }

@@ -102,7 +102,7 @@ export class ReservationsService {
       ReservationStatus.CONFIRMED,
     ];
 
-  private static readonly PAYMENT_HOLD_MINUTES = 15;
+  private static readonly PAYMENT_HOLD_MINUTES = 10;
   private static readonly REQUEST_HOLD_HOURS = 24;
   private static readonly MAX_ACTIVE_HOLDS_PER_GUEST = 3;
 

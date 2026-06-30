@@ -418,6 +418,7 @@ describe('ExpensesService', () => {
           eventType: 'expense.paid',
           aggregateType: 'expense',
           aggregateId: '2',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           payload: expect.objectContaining({ expenseId: 2 }),
         }),
       );

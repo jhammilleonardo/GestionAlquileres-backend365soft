@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { runTenantTransaction } from '../common/tenant/tenant-transaction';
 import { quoteIdent } from '../common/utils/sql-identifier';
@@ -55,7 +59,9 @@ export class AccountingBankReconciliationService {
     const schema = quoteIdent(schemaName);
     const boundedLimit = Math.max(1, Math.min(limit, 100));
     const rows = await this.dataSource.query<
-      Array<Omit<BankTransactionReviewRow, 'amount'> & { amount: string | number }>
+      Array<
+        Omit<BankTransactionReviewRow, 'amount'> & { amount: string | number }
+      >
     >(
       `
         SELECT
@@ -93,12 +99,17 @@ export class AccountingBankReconciliationService {
     const schema = quoteIdent(schemaName);
     const boundedLimit = Math.max(1, Math.min(limit, 25));
     const rows = await this.dataSource.query<
-      Array<Omit<BankMatchCandidateRow, 'debit' | 'credit' | 'amount' | 'days_distance'> & {
-        debit: string | number;
-        credit: string | number;
-        amount: string | number;
-        days_distance: string | number;
-      }>
+      Array<
+        Omit<
+          BankMatchCandidateRow,
+          'debit' | 'credit' | 'amount' | 'days_distance'
+        > & {
+          debit: string | number;
+          credit: string | number;
+          amount: string | number;
+          days_distance: string | number;
+        }
+      >
     >(
       `
         WITH target AS (
@@ -185,7 +196,9 @@ export class AccountingBankReconciliationService {
       }
 
       if (row.bank_status === 'matched' || row.matched_journal_line_id) {
-        throw new BadRequestException('La transaccion bancaria ya fue conciliada.');
+        throw new BadRequestException(
+          'La transaccion bancaria ya fue conciliada.',
+        );
       }
 
       if (row.line_account_id !== row.gl_account_id) {
@@ -195,7 +208,9 @@ export class AccountingBankReconciliationService {
       }
 
       const bankAbs = Math.abs(this.toCents(row.bank_amount));
-      const lineAbs = Math.abs(this.toCents(Number(row.debit) - Number(row.credit)));
+      const lineAbs = Math.abs(
+        this.toCents(Number(row.debit) - Number(row.credit)),
+      );
       if (bankAbs !== lineAbs) {
         throw new BadRequestException(
           'El monto bancario no coincide con la linea contable.',

@@ -10,6 +10,7 @@ import { DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { CreateVendorDto, UpdateVendorDto, VendorFiltersDto } from './dto';
+import { VendorSpecialty } from './enums/vendor-specialty.enum';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 import { AuthService } from '../auth/auth.service';
@@ -243,7 +244,9 @@ export class VendorsService {
       [
         dto.name,
         dto.specialty,
-        dto.specialty === 'other' ? (dto.specialty_other ?? null) : null,
+        dto.specialty === VendorSpecialty.OTHER
+          ? (dto.specialty_other ?? null)
+          : null,
         dto.phone ?? null,
         dto.email ?? null,
         dto.address ?? null,
@@ -302,7 +305,11 @@ export class VendorsService {
     // a otra especialidad se limpia para no dejar un nombre personalizado huérfano.
     if (dto.specialty !== undefined) {
       fields.push(`specialty_other = $${idx++}`);
-      params.push(dto.specialty === 'other' ? (dto.specialty_other ?? null) : null);
+      params.push(
+        dto.specialty === VendorSpecialty.OTHER
+          ? (dto.specialty_other ?? null)
+          : null,
+      );
     } else if (dto.specialty_other !== undefined) {
       fields.push(`specialty_other = $${idx++}`);
       params.push(dto.specialty_other);

@@ -175,13 +175,18 @@ describe('PropertyUpdateService', () => {
       'acme',
     );
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const unitUpdate = queryRunner.query.mock.calls.find(([sql]) =>
       String(sql).includes('UPDATE "tenant_acme".units'),
     );
     expect(unitUpdate).toBeDefined();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(unitUpdate?.[0]).toContain('deposit_amount = $1');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(unitUpdate?.[0]).toContain('deposit_to_confirm_pct = $2');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(unitUpdate?.[0]).toContain("rental_type IN ('SHORT_TERM', 'BOTH')");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(unitUpdate?.[1]).toEqual([100, 30, '14:00', '10:00', 10]);
   });
 

@@ -153,11 +153,10 @@ describe('ReservationPaymentService', () => {
     );
 
     expect(result.id).toBe(101);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const committedSql = mockQueryRunner.query.mock.calls[1][0];
     expect(committedSql).toContain('payment_refunds pr');
-    expect(committedSql).toContain(
-      "WHEN p.status = 'APPROVED'",
-    );
+    expect(committedSql).toContain("WHEN p.status = 'APPROVED'");
     expect(committedSql).toContain(
       'GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))',
     );

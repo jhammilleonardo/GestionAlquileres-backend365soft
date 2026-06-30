@@ -80,7 +80,12 @@ describe('RefreshTokenService', () => {
     query
       .mockResolvedValueOnce([[], 0])
       .mockResolvedValueOnce([
-        { user_id: 5, tenant_slug: 'demo', role: 'ADMIN', revoked_at: new Date() },
+        {
+          user_id: 5,
+          tenant_slug: 'demo',
+          role: 'ADMIN',
+          revoked_at: new Date(),
+        },
       ])
       .mockResolvedValueOnce([]);
 

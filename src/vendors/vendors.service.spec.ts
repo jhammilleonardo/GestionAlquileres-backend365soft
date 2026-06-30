@@ -132,6 +132,7 @@ describe('VendorsService', () => {
         1,
       );
 
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       const params = mockDataSource.query.mock.calls[0][1] as unknown[];
       expect(params[1]).toBe(VendorSpecialty.OTHER);
       expect(params[2]).toBe('Jardinería');
@@ -149,6 +150,7 @@ describe('VendorsService', () => {
         1,
       );
 
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       const params = mockDataSource.query.mock.calls[0][1] as unknown[];
       expect(params[2]).toBeNull();
     });

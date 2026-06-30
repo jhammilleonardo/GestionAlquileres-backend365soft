@@ -35,12 +35,18 @@ export class CreateMaintenanceExpenseDto {
   @IsOptional()
   due_date?: string;
 
-  @ApiPropertyOptional({ enum: ExpensePaymentStatusEnum, default: ExpensePaymentStatusEnum.PENDING })
+  @ApiPropertyOptional({
+    enum: ExpensePaymentStatusEnum,
+    default: ExpensePaymentStatusEnum.PENDING,
+  })
   @IsEnum(ExpensePaymentStatusEnum)
   @IsOptional()
   payment_status?: ExpensePaymentStatusEnum = ExpensePaymentStatusEnum.PENDING;
 
-  @ApiPropertyOptional({ enum: ExpenseResponsibilityEnum, default: ExpenseResponsibilityEnum.OWNER })
+  @ApiPropertyOptional({
+    enum: ExpenseResponsibilityEnum,
+    default: ExpenseResponsibilityEnum.OWNER,
+  })
   @IsEnum(ExpenseResponsibilityEnum)
   @IsOptional()
   responsibility?: ExpenseResponsibilityEnum = ExpenseResponsibilityEnum.OWNER;

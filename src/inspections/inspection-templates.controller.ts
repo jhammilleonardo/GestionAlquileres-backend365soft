@@ -51,10 +51,7 @@ export class InspectionTemplatesController {
   @ApiOperation({ summary: 'Crear plantilla de inspección' })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiCreatedResponse({ description: 'Plantilla creada' })
-  create(
-    @Req() req: TenantRequest,
-    @Body() dto: CreateInspectionTemplateDto,
-  ) {
+  create(@Req() req: TenantRequest, @Body() dto: CreateInspectionTemplateDto) {
     return this.templatesService.create(
       req.tenant!.schema_name,
       dto,

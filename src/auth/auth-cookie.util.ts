@@ -114,7 +114,9 @@ export function authCookieContextFromRole(
 export function authCookieContextFromRequest(
   req: Request,
 ): AuthCookieContext | null {
-  const headerContext = normalizeAuthCookieContext(req.headers[AUTH_CONTEXT_HEADER]);
+  const headerContext = normalizeAuthCookieContext(
+    req.headers[AUTH_CONTEXT_HEADER],
+  );
   if (headerContext) return headerContext;
 
   const path = (req.originalUrl || req.url || '').split(/[?#]/, 1)[0];
@@ -154,7 +156,7 @@ export function clearAuthCookies(
 }
 
 function normalizeAuthCookieContext(value: unknown): AuthCookieContext | null {
-  const raw = Array.isArray(value) ? value[0] : value;
+  const raw: unknown = Array.isArray(value) ? (value as unknown[])[0] : value;
   if (typeof raw !== 'string') return null;
   return ['admin', 'tenant', 'owner', 'vendor'].includes(raw)
     ? (raw as AuthCookieContext)

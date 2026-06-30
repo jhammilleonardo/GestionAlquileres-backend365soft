@@ -1,4 +1,11 @@
-import { IsBooleanString, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsBooleanString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  Max,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ViolationTypeEnum } from '../enums/violation-type.enum';
 import { ViolationStatusEnum } from '../enums/violation-status.enum';

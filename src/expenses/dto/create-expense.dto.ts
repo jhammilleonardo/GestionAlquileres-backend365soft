@@ -58,7 +58,8 @@ export class CreateExpenseDto {
   })
   @IsEnum(ExpenseResponsibilityEnum)
   @IsOptional()
-  responsibility?: ExpenseResponsibilityEnum = ExpenseResponsibilityEnum.COMPANY;
+  responsibility?: ExpenseResponsibilityEnum =
+    ExpenseResponsibilityEnum.COMPANY;
 
   @ApiPropertyOptional({
     description: 'Estado de pago del gasto',

@@ -96,7 +96,9 @@ describe('PaymentQueriesService', () => {
     );
     const firstSql = dataSource.query.mock.calls[0][0];
     expect(firstSql).toContain('ORDER BY p.amount ASC');
-    expect(firstSql).toContain('LEFT JOIN "tenant_acme".reservations r ON p.reservation_id = r.id');
+    expect(firstSql).toContain(
+      'LEFT JOIN "tenant_acme".reservations r ON p.reservation_id = r.id',
+    );
     expect(firstSql).toContain('payment_refunds pr');
     expect(firstSql).toContain(
       'SUM(GREATEST(0, rp.amount - COALESCE(ref.total_refunded, 0)))',
@@ -125,7 +127,7 @@ describe('PaymentQueriesService', () => {
     const sql = dataSource.query.mock.calls[0][0];
     expect(sql).toContain('payment_refunds pr');
     expect(sql).toContain(
-      'SUM(GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))) FILTER (WHERE p.status = \'APPROVED\')',
+      "SUM(GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))) FILTER (WHERE p.status = 'APPROVED')",
     );
     expect(sql).toContain('WHERE p.tenant_id = $1');
   });
@@ -151,7 +153,7 @@ describe('PaymentQueriesService', () => {
     expect(sql).toContain('FROM "tenant_acme".payments p');
     expect(sql).toContain('payment_refunds pr');
     expect(sql).toContain(
-      'SUM(GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))) FILTER (WHERE p.status = \'APPROVED\')',
+      "SUM(GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))) FILTER (WHERE p.status = 'APPROVED')",
     );
   });
 

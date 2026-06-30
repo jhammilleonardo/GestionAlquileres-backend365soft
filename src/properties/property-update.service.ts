@@ -269,7 +269,10 @@ export class PropertyUpdateService {
     const unitValues: unknown[] = [];
     let paramIndex = 1;
 
-    const assignIfPresent = (dtoKey: keyof UpdatePropertyDto, column: string) => {
+    const assignIfPresent = (
+      dtoKey: keyof UpdatePropertyDto,
+      column: string,
+    ) => {
       if (!(dtoKey in updatePropertyDto)) return;
       unitFields.push(`${column} = $${paramIndex++}`);
       unitValues.push(updatePropertyDto[dtoKey] ?? null);

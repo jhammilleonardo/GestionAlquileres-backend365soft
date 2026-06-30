@@ -116,11 +116,7 @@ export class AdminExpensesController {
     await assertUploadedFilesMatchContent(receipt);
     const storagePath = await this.storageService.persistUploadedFile(
       receipt,
-      this.storageService.buildStoragePath(
-        'receipts',
-        slug,
-        receipt.filename,
-      ),
+      this.storageService.buildStoragePath('receipts', slug, receipt.filename),
       'private',
     );
 

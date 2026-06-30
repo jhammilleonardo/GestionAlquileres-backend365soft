@@ -50,7 +50,9 @@ describe('AccountingBankReconciliationService', () => {
     ]);
     runner.query.mockResolvedValueOnce([]);
 
-    await expect(service.matchBankTransaction('tenant_alpha', 4, 9)).resolves.toEqual({
+    await expect(
+      service.matchBankTransaction('tenant_alpha', 4, 9),
+    ).resolves.toEqual({
       matched: true,
     });
 
@@ -77,9 +79,9 @@ describe('AccountingBankReconciliationService', () => {
       },
     ]);
 
-    await expect(service.matchBankTransaction('tenant_alpha', 4, 9)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.matchBankTransaction('tenant_alpha', 4, 9),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(runner.rollbackTransaction).toHaveBeenCalled();
   });
 

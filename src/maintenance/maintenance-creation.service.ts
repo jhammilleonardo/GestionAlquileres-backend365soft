@@ -212,7 +212,9 @@ export class MaintenanceCreationService {
     reservationId: number,
     tenantId: number,
   ): Promise<MaintenanceReservationRow> {
-    const reservations = await this.dataSource.query<MaintenanceReservationRow[]>(
+    const reservations = await this.dataSource.query<
+      MaintenanceReservationRow[]
+    >(
       `SELECT id, tenant_id, property_id, unit_id, checkin_date, checkout_date, status
        FROM reservations
        WHERE id = $1`,

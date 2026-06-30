@@ -14,7 +14,8 @@ export class ChangeVendorPasswordDto {
   @ApiProperty({
     example: 'NuevaClaveSegura123',
     minLength: PASSWORD_MIN_LENGTH,
-    description: 'Nueva contraseña (mínimo 8, con mayúscula, minúscula y número).',
+    description:
+      'Nueva contraseña (mínimo 8, con mayúscula, minúscula y número).',
   })
   @IsString()
   @MinLength(PASSWORD_MIN_LENGTH)

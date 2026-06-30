@@ -263,7 +263,12 @@ describe('PaymentCreationService', () => {
         { id: 10, tenant_id: 7, property_id: 20, status: 'ACTIVO' },
       ])
       .mockResolvedValueOnce([
-        { id: 44, tenant_id: 7, property_id: 20, status: PaymentStatus.APPROVED },
+        {
+          id: 44,
+          tenant_id: 7,
+          property_id: 20,
+          status: PaymentStatus.APPROVED,
+        },
       ]);
     splitPaymentService.executeSplit.mockRejectedValueOnce(
       new Error('split failed'),

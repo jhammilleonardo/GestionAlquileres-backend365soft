@@ -67,7 +67,8 @@ export class CreateVendorDto {
 
   @ApiPropertyOptional({
     example: 'NIT 123456789',
-    description: 'Identificación fiscal del proveedor para reportes y retenciones',
+    description:
+      'Identificación fiscal del proveedor para reportes y retenciones',
   })
   @IsOptional()
   @IsString()

@@ -94,6 +94,7 @@ describe('AccountingPaymentPostingService', () => {
 
     expect(ledger.postEntry).toHaveBeenCalledWith(
       expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         metadata: expect.objectContaining({
           paymentId: 35,
           contractId: null,

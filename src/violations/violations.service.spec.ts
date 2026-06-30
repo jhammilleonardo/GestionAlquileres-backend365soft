@@ -129,6 +129,7 @@ describe('ViolationsService', () => {
       const result = await service.create(dto, USER_ID);
 
       expect(result.fine_amount).toBe(150);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const fineEvent = dataSource.query.mock.calls.find(
         ([sql, params]) =>
           (sql as string).includes('INSERT INTO violation_events') &&
@@ -275,6 +276,7 @@ describe('ViolationsService', () => {
       const result = await service.updateStatus(VIOLATION_ID, dto, USER_ID);
 
       expect(result.status).toBe(ViolationStatusEnum.NOTIFIED);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const statusEvent = dataSource.query.mock.calls.find(
         ([sql, params]) =>
           (sql as string).includes('INSERT INTO violation_events') &&

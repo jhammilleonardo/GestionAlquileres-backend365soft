@@ -126,7 +126,9 @@ export class AdminMaintenanceController {
 
   @Post(':id/expense')
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Crear gasto/factura desde una orden de mantenimiento' })
+  @ApiOperation({
+    summary: 'Crear gasto/factura desde una orden de mantenimiento',
+  })
   @ApiParam({ name: 'slug', description: 'Tenant slug' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: CreateMaintenanceExpenseDto })

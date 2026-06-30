@@ -43,7 +43,7 @@ describe('PaymentMethodsService', () => {
       'SELECT payment_methods FROM "tenant_acme".tenant_config LIMIT 1',
     );
     expect(methods).toEqual([
-      { method: 'qr_accl', label: 'QR MC4 (Bolivia)'},
+      { method: 'qr_accl', label: 'QR MC4 (Bolivia)' },
       { method: 'transferencia', label: 'Transferencia bancaria' },
     ]);
   });
@@ -51,7 +51,11 @@ describe('PaymentMethodsService', () => {
   it('etiqueta códigos legados del enum y humaniza los desconocidos sin descartarlos', async () => {
     dataSource.query.mockResolvedValueOnce([
       {
-        payment_methods: [PaymentMethod.CASH, PaymentMethod.QR_MC4, 'mi_metodo'],
+        payment_methods: [
+          PaymentMethod.CASH,
+          PaymentMethod.QR_MC4,
+          'mi_metodo',
+        ],
       },
     ]);
 
@@ -59,7 +63,7 @@ describe('PaymentMethodsService', () => {
 
     expect(methods).toEqual([
       { method: PaymentMethod.CASH, label: 'Efectivo' },
-      { method: PaymentMethod.QR_MC4, label: 'QR MC4 (Bolivia)'},
+      { method: PaymentMethod.QR_MC4, label: 'QR MC4 (Bolivia)' },
       { method: 'mi_metodo', label: 'Mi metodo' },
     ]);
   });

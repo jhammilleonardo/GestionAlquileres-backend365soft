@@ -78,10 +78,7 @@ export class AccountingExpensePostingService {
           memo: expense.description ?? `Gasto ${expense.category}`,
         },
         {
-          accountCode:
-            expense.payment_status === 'PENDING'
-              ? '2300'
-              : '1100',
+          accountCode: expense.payment_status === 'PENDING' ? '2300' : '1100',
           credit: amount,
           propertyId: expense.property_id,
           unitId: expense.unit_id,
@@ -156,7 +153,12 @@ export class AccountingExpensePostingService {
       ],
     });
 
-    await this.markExpensePosted(schemaName, expense.id, result.id, 'paid_posted');
+    await this.markExpensePosted(
+      schemaName,
+      expense.id,
+      result.id,
+      'paid_posted',
+    );
 
     return result;
   }

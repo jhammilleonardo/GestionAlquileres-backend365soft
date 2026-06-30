@@ -99,6 +99,7 @@ describe('AccountingFinancialIntegrityService', () => {
         eventType: 'payment.approved',
         aggregateType: 'payment',
         aggregateId: '10',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         payload: expect.objectContaining({ paymentId: 10 }),
       }),
     );
@@ -135,6 +136,7 @@ describe('AccountingFinancialIntegrityService', () => {
         eventType: 'expense.created',
         aggregateType: 'expense',
         aggregateId: '20',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         payload: expect.objectContaining({ expenseId: 20 }),
       }),
     );
@@ -145,6 +147,7 @@ describe('AccountingFinancialIntegrityService', () => {
         eventType: 'expense.payment.created',
         aggregateType: 'expense',
         aggregateId: '20',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         payload: expect.objectContaining({
           expenseId: 20,
           expensePaymentId: 70,

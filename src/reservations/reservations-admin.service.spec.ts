@@ -240,6 +240,7 @@ describe('ReservationsAdminService', () => {
         'security_deposit_return',
       );
       // y se crea una orden de trabajo de limpieza (turnover) tipo CLEANING
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const insertCall = mockQueryRunner.query.mock.calls.find(
         ([sql]) =>
           typeof sql === 'string' &&

@@ -83,7 +83,11 @@ export class AuthCookieInterceptor implements NestInterceptor {
         tokenVersion: decoded.tokenVersion ?? 0,
       });
       res.cookie(REFRESH_TOKEN_COOKIE, refresh, refreshCookieOptions());
-      res.cookie(refreshTokenCookieName(context), refresh, refreshCookieOptions());
+      res.cookie(
+        refreshTokenCookieName(context),
+        refresh,
+        refreshCookieOptions(),
+      );
     }
 
     if (this.exposeAccessTokenInResponse()) {

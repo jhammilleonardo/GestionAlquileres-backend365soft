@@ -84,7 +84,10 @@ describe('CsrfMiddleware', () => {
     run({
       method: 'POST',
       headers: { 'x-csrf-token': 'match' },
-      cookies: { [refreshTokenCookieName('admin')]: 'refresh', [CSRF_COOKIE]: 'match' },
+      cookies: {
+        [refreshTokenCookieName('admin')]: 'refresh',
+        [CSRF_COOKIE]: 'match',
+      },
     });
 
     expect(next).toHaveBeenCalledTimes(1);

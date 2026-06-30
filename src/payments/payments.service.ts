@@ -26,6 +26,7 @@ import { PaymentRefundsService } from './payment-refunds.service';
 import { PaymentWebhookService } from './payment-webhook.service';
 import { PaymentCreationService } from './payment-creation.service';
 import { PaymentMethodsService } from './payment-methods.service';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
 @Injectable()
 export class PaymentsService {
@@ -217,8 +218,12 @@ export class PaymentsService {
     graceDays = 0,
   ): number {
     if (daysLate <= graceDays) return 0;
-    const fee = (monthlyRent * lateFeePct) / 100;
-    return Math.round(fee * 100) / 100; // redondeo a 2 decimales
+    // Decimal exacto (sin float), redondeo a 2 decimales con política central.
+    return new MoneyDecimal(monthlyRent)
+      .times(lateFeePct)
+      .div(100)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
   }
 
   /**
@@ -231,8 +236,14 @@ export class PaymentsService {
   applyDiscount(amount: number, discountPct: number): number {
     if (discountPct <= 0) return amount;
     if (discountPct >= 100) return 0;
-    const discounted = amount * (1 - discountPct / 100);
-    return Math.round(discounted * 100) / 100;
+    // Decimal exacto: amount * (1 - pct/100), redondeo a 2 decimales.
+    const factor = new MoneyDecimal(1).minus(
+      new MoneyDecimal(discountPct).div(100),
+    );
+    return new MoneyDecimal(amount)
+      .times(factor)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
   }
 
   /**

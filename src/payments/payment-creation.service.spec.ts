@@ -6,6 +6,8 @@ import { PaymentStatus } from './enums';
 import { PaymentCreationNotificationService } from './payment-creation-notification.service';
 import { PaymentCreationService } from './payment-creation.service';
 import { PaymentCreationValidationService } from './payment-creation-validation.service';
+import { SplitPaymentService } from '../split-payment/split-payment.service';
+import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
 
 describe('PaymentCreationService', () => {
   let service: PaymentCreationService;
@@ -30,6 +32,12 @@ describe('PaymentCreationService', () => {
   };
   let paymentCreationNotificationService: PaymentCreationNotificationService;
   let paymentCreationValidationService: PaymentCreationValidationService;
+  let splitPaymentService: {
+    executeSplit: jest.Mock<Promise<void>, unknown[]>;
+  };
+  let accountingOutboxService: {
+    enqueue: jest.Mock<Promise<void>, unknown[]>;
+  };
 
   beforeEach(() => {
     queryRunner = {
@@ -68,12 +76,22 @@ describe('PaymentCreationService', () => {
       notificationsService as unknown as NotificationsService,
     );
     paymentCreationValidationService = new PaymentCreationValidationService();
+    splitPaymentService = {
+      executeSplit: jest
+        .fn<Promise<void>, unknown[]>()
+        .mockResolvedValue(undefined),
+    };
+    accountingOutboxService = {
+      enqueue: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
+    };
 
     service = new PaymentCreationService(
       dataSource as unknown as DataSource,
       tenantsService as unknown as TenantsService,
       paymentCreationValidationService,
       paymentCreationNotificationService,
+      splitPaymentService as unknown as SplitPaymentService,
+      accountingOutboxService as unknown as AccountingOutboxService,
     );
   });
 
@@ -173,7 +191,105 @@ describe('PaymentCreationService', () => {
     expect(queryRunner.query).not.toHaveBeenCalledWith(
       expect.stringContaining('SET search_path'),
     );
+    expect(splitPaymentService.executeSplit).not.toHaveBeenCalled();
+    expect(accountingOutboxService.enqueue).not.toHaveBeenCalled();
     expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('createPaymentAsAdmin aprobado ejecuta split y outbox contable en la misma transacción', async () => {
+    const payment = {
+      id: 44,
+      tenant_id: 7,
+      property_id: 20,
+      amount: 100,
+      currency: 'BOB',
+      status: PaymentStatus.APPROVED,
+    };
+    queryRunner.query
+      .mockResolvedValueOnce([
+        { id: 10, tenant_id: 7, property_id: 20, status: 'ACTIVO' },
+      ])
+      .mockResolvedValueOnce([payment]);
+
+    await expect(
+      service.createPaymentAsAdmin(
+        {
+          tenant_id: 7,
+          contract_id: 10,
+          property_id: 20,
+          amount: 100,
+          currency: 'BOB',
+          payment_type: 'RENT',
+          payment_method: 'CASH',
+          status: PaymentStatus.APPROVED,
+          payment_date: '2026-05-17',
+        },
+        99,
+        'tenant_acme',
+      ),
+    ).resolves.toBe(payment);
+
+    const insertParams = queryRunner.query.mock.calls[1][1] as unknown[];
+    expect(insertParams).toContain('pending_posting');
+    expect(splitPaymentService.executeSplit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: 44,
+        totalAmount: 100,
+        propertyId: 20,
+        currency: 'BOB',
+        schemaName: 'tenant_acme',
+      }),
+      queryRunner,
+    );
+    expect(accountingOutboxService.enqueue).toHaveBeenCalledWith(
+      {
+        schemaName: 'tenant_acme',
+        eventType: 'payment.approved',
+        aggregateType: 'payment',
+        aggregateId: '44',
+        payload: {
+          paymentId: 44,
+          approvedBy: 99,
+        },
+      },
+      { queryRunner },
+    );
+    expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('createPaymentAsAdmin aprobado hace rollback si falla el split financiero', async () => {
+    queryRunner.query
+      .mockResolvedValueOnce([
+        { id: 10, tenant_id: 7, property_id: 20, status: 'ACTIVO' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 44, tenant_id: 7, property_id: 20, status: PaymentStatus.APPROVED },
+      ]);
+    splitPaymentService.executeSplit.mockRejectedValueOnce(
+      new Error('split failed'),
+    );
+
+    await expect(
+      service.createPaymentAsAdmin(
+        {
+          tenant_id: 7,
+          contract_id: 10,
+          property_id: 20,
+          amount: 100,
+          payment_type: 'RENT',
+          payment_method: 'CASH',
+          status: PaymentStatus.APPROVED,
+          payment_date: '2026-05-17',
+        },
+        99,
+        'tenant_acme',
+      ),
+    ).rejects.toThrow('split failed');
+
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+    expect(accountingOutboxService.enqueue).not.toHaveBeenCalled();
+    expect(notificationsService.createForUserInSchema).not.toHaveBeenCalled();
   });
 
   it('createPaymentAsAdmin rechaza contrato inexistente', async () => {

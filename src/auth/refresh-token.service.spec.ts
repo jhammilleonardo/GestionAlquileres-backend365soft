@@ -80,13 +80,15 @@ describe('RefreshTokenService', () => {
     query
       .mockResolvedValueOnce([[], 0])
       .mockResolvedValueOnce([
-        { user_id: 5, tenant_slug: 'demo', revoked_at: new Date() },
+        { user_id: 5, tenant_slug: 'demo', role: 'ADMIN', revoked_at: new Date() },
       ])
       .mockResolvedValueOnce([]);
 
     await expect(service.consume('raw')).rejects.toThrow(UnauthorizedException);
     const revokeCall = query.mock.calls[2] as [string, unknown[]];
     expect(revokeCall[0]).toContain('tenant_slug = $2');
+    expect(revokeCall[0]).toContain('role = $3');
+    expect(revokeCall[1]).toEqual([5, 'demo', 'ADMIN']);
   });
 
   it('consume() rechaza un token inexistente', async () => {

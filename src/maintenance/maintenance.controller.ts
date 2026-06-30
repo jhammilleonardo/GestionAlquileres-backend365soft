@@ -45,6 +45,7 @@ import { UpdateStageDto } from './dto/update-stage.dto';
 import { MaintenanceStage } from './enums/maintenance-stage.enum';
 import { AssignVendorDto } from './dto/assign-vendor.dto';
 import { RateVendorDto } from './dto/rate-vendor.dto';
+import { CreateMaintenanceExpenseDto } from './dto/create-maintenance-expense.dto';
 import { MaintenanceFiltersDto } from './dto/maintenance-filters.dto';
 import {
   MaintenanceActionMessageResponseDto,
@@ -61,6 +62,11 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { VendorPortalGuard } from '../common/guards/vendor-portal.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { TenantRequest } from '../common/middleware/tenant-context.middleware';
+import { ExpensesService } from '../expenses/expenses.service';
+import {
+  ExpenseCategoryEnum,
+  ExpenseScopeEnum,
+} from '../expenses/enums/expense-category.enum';
 
 @ApiTags('Maintenance - Admin')
 @ApiBearerAuth()
@@ -68,7 +74,10 @@ import type { TenantRequest } from '../common/middleware/tenant-context.middlewa
 @Roles('ADMIN')
 @Controller(':slug/admin/maintenance')
 export class AdminMaintenanceController {
-  constructor(private readonly maintenanceService: MaintenanceService) {}
+  constructor(
+    private readonly maintenanceService: MaintenanceService,
+    private readonly expensesService: ExpensesService,
+  ) {}
 
   private async assertTechnicianAssignment(
     requestId: number,
@@ -113,6 +122,52 @@ export class AdminMaintenanceController {
         ? { ...filters, assigned_to: req.user.userId }
         : filters;
     return this.maintenanceService.findAll(scopedFilters);
+  }
+
+  @Post(':id/expense')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Crear gasto/factura desde una orden de mantenimiento' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: CreateMaintenanceExpenseDto })
+  async createExpenseFromMaintenance(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateMaintenanceExpenseDto,
+    @Request() req: TenantRequest,
+  ) {
+    const request = await this.maintenanceService.findOne(id);
+    const userId = req.user?.userId;
+    const expenseScope = request.reservation_id
+      ? ExpenseScopeEnum.SHORT_TERM
+      : request.contract_id
+        ? ExpenseScopeEnum.LONG_TERM
+        : ExpenseScopeEnum.GENERAL;
+
+    return this.expensesService.createExpense(
+      {
+        property_id: request.property_id,
+        contract_id: request.contract_id ?? undefined,
+        reservation_id: request.reservation_id ?? undefined,
+        maintenance_request_id: request.id,
+        vendor_id: request.vendor_id ?? undefined,
+        category:
+          String(request.request_type) === 'CLEANING'
+            ? ExpenseCategoryEnum.CLEANING
+            : ExpenseCategoryEnum.MAINTENANCE,
+        expense_scope: expenseScope,
+        responsibility: dto.responsibility,
+        payment_status: dto.payment_status,
+        amount: dto.amount,
+        currency: dto.currency,
+        date: dto.date,
+        due_date: dto.due_date,
+        invoice_number: dto.invoice_number,
+        description: dto.description ?? request.title,
+        affects_owner_statement: dto.affects_owner_statement,
+        notes: `Mantenimiento ${request.ticket_number}`,
+      },
+      userId,
+    );
   }
 
   @Get('stats')

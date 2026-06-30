@@ -22,6 +22,8 @@ import { MaintenanceStageHistory } from './entities/maintenance-stage-history.en
 import { Contract } from '../contracts/entities/contract.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { StorageModule } from '../common/storage/storage.module';
+import { ExpensesModule } from '../expenses/expenses.module';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { StorageModule } from '../common/storage/storage.module';
     ]),
     NotificationsModule,
     StorageModule,
+    ExpensesModule,
+    AuditLogsModule,
   ],
   controllers: [
     AdminMaintenanceController,

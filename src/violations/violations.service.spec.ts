@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { ViolationsService } from './violations.service';
@@ -7,6 +8,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../common/storage/storage.service';
 import { ViolationTypeEnum } from './enums/violation-type.enum';
 import { ViolationStatusEnum } from './enums/violation-status.enum';
+import { ViolationSeverityEnum } from './enums/violation-severity.enum';
+import { ViolationFineStatusEnum } from './enums/violation-fine-status.enum';
 import {
   CreateViolationDto,
   UpdateViolationStatusDto,
@@ -23,9 +26,16 @@ const mockViolationRow = {
   unit_id: null,
   tenant_id: TENANT_ID,
   type: ViolationTypeEnum.NOISE,
+  severity: ViolationSeverityEnum.MEDIUM,
   description: 'Música a alto volumen después de las 11pm',
   status: ViolationStatusEnum.OPEN,
+  due_date: null,
   evidence_photos: [],
+  fine_amount: null,
+  fine_currency: null,
+  fine_status: ViolationFineStatusEnum.NONE,
+  fine_paid_at: null,
+  notice_sent_at: null,
   created_at: new Date('2024-05-01'),
   resolved_at: null,
   resolved_notes: null,
@@ -43,7 +53,7 @@ describe('ViolationsService', () => {
   let pdfService: { generateNotificationLetter: jest.Mock };
 
   beforeEach(async () => {
-    dataSource = { query: jest.fn() };
+    dataSource = { query: jest.fn().mockResolvedValue([]) };
     notificationsService = { createForUser: jest.fn().mockResolvedValue({}) };
     pdfService = {
       generateNotificationLetter: jest
@@ -54,6 +64,7 @@ describe('ViolationsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ViolationsService,
+        { provide: AuditLogsService, useValue: { log: jest.fn() } },
         { provide: getDataSourceToken(), useValue: dataSource },
         { provide: NotificationsService, useValue: notificationsService },
         { provide: ViolationsPdfService, useValue: pdfService },
@@ -84,6 +95,7 @@ describe('ViolationsService', () => {
 
       dataSource.query
         .mockResolvedValueOnce([{ id: VIOLATION_ID }]) // INSERT
+        .mockResolvedValueOnce([]) // logEvent CREATED
         .mockResolvedValueOnce([mockViolationRow]); // findOne SELECT
 
       const result = await service.create(dto, USER_ID);
@@ -94,6 +106,36 @@ describe('ViolationsService', () => {
         expect.stringContaining('INSERT INTO violations'),
         expect.arrayContaining([1, null, TENANT_ID, ViolationTypeEnum.NOISE]),
       );
+    });
+
+    it('debe registrar el evento de multa cuando se crea con fine_amount', async () => {
+      const dto: CreateViolationDto = {
+        property_id: 1,
+        tenant_id: TENANT_ID,
+        type: ViolationTypeEnum.DAMAGE,
+        description: 'Daño a la pared',
+        fine_amount: 150,
+      };
+
+      dataSource.query
+        .mockResolvedValueOnce([{ currency: 'BOB' }]) // resolveCurrency
+        .mockResolvedValueOnce([{ id: VIOLATION_ID }]) // INSERT
+        .mockResolvedValueOnce([]) // logEvent CREATED
+        .mockResolvedValueOnce([]) // logEvent FINE_CHARGED
+        .mockResolvedValueOnce([
+          { ...mockViolationRow, fine_amount: 150, fine_currency: 'BOB' },
+        ]); // findOne
+
+      const result = await service.create(dto, USER_ID);
+
+      expect(result.fine_amount).toBe(150);
+      const fineEvent = dataSource.query.mock.calls.find(
+        ([sql, params]) =>
+          (sql as string).includes('INSERT INTO violation_events') &&
+          Array.isArray(params) &&
+          params.includes('fine_charged'),
+      );
+      expect(fineEvent).toBeDefined();
     });
   });
 
@@ -135,38 +177,40 @@ describe('ViolationsService', () => {
       );
     });
 
-    it('debe filtrar por tipo', async () => {
-      const filters: ViolationFiltersDto = { type: ViolationTypeEnum.DAMAGE };
+    it('debe filtrar por severidad', async () => {
+      const filters: ViolationFiltersDto = {
+        severity: ViolationSeverityEnum.HIGH,
+      };
 
       dataSource.query
-        .mockResolvedValueOnce([{ count: '0' }])
-        .mockResolvedValueOnce([]);
-
-      await service.findAll(filters);
-
-      expect(dataSource.query).toHaveBeenCalledWith(
-        expect.stringContaining('v.type = $'),
-        expect.arrayContaining([ViolationTypeEnum.DAMAGE]),
-      );
-    });
-
-    it('debe filtrar por inquilino', async () => {
-      const filters: ViolationFiltersDto = { tenant_id: TENANT_ID };
-
-      dataSource.query
-        .mockResolvedValueOnce([{ count: '3' }])
+        .mockResolvedValueOnce([{ count: '1' }])
         .mockResolvedValueOnce([mockViolationRow]);
 
       await service.findAll(filters);
 
       expect(dataSource.query).toHaveBeenCalledWith(
-        expect.stringContaining('v.tenant_id = $'),
-        expect.arrayContaining([TENANT_ID]),
+        expect.stringContaining('v.severity = $'),
+        expect.arrayContaining([ViolationSeverityEnum.HIGH]),
+      );
+    });
+
+    it('debe filtrar solo vencidas cuando overdue=true', async () => {
+      const filters: ViolationFiltersDto = { overdue: 'true' };
+
+      dataSource.query
+        .mockResolvedValueOnce([{ count: '1' }])
+        .mockResolvedValueOnce([mockViolationRow]);
+
+      await service.findAll(filters);
+
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('v.due_date < CURRENT_DATE'),
+        expect.any(Array),
       );
     });
   });
 
-  // ─── findOne ──────────────────────────────────────────────────────────────
+  // ─── findOne / findDetail ───────────────────────────────────────────────────
 
   describe('findOne', () => {
     it('debe retornar la violación si existe', async () => {
@@ -185,10 +229,35 @@ describe('ViolationsService', () => {
     });
   });
 
+  describe('findDetail', () => {
+    it('debe retornar la violación con su línea de tiempo', async () => {
+      const events = [
+        {
+          id: 1,
+          event_type: 'created',
+          note: null,
+          metadata: {},
+          created_by: USER_ID,
+          created_by_name: 'Admin',
+          created_at: new Date(),
+        },
+      ];
+      dataSource.query
+        .mockResolvedValueOnce([mockViolationRow]) // findOne
+        .mockResolvedValueOnce(events); // getEvents
+
+      const result = await service.findDetail(VIOLATION_ID);
+
+      expect(result.id).toBe(VIOLATION_ID);
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0].event_type).toBe('created');
+    });
+  });
+
   // ─── updateStatus ─────────────────────────────────────────────────────────
 
   describe('updateStatus', () => {
-    it('debe actualizar el estado correctamente', async () => {
+    it('debe actualizar el estado y registrar el evento', async () => {
       const dto: UpdateViolationStatusDto = {
         status: ViolationStatusEnum.NOTIFIED,
       };
@@ -200,15 +269,19 @@ describe('ViolationsService', () => {
       dataSource.query
         .mockResolvedValueOnce([mockViolationRow]) // findOne (validación)
         .mockResolvedValueOnce([]) // UPDATE
+        .mockResolvedValueOnce([]) // logEvent STATUS_CHANGED
         .mockResolvedValueOnce([updated]); // findOne (resultado)
 
       const result = await service.updateStatus(VIOLATION_ID, dto, USER_ID);
 
       expect(result.status).toBe(ViolationStatusEnum.NOTIFIED);
-      expect(dataSource.query).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE violations'),
-        expect.arrayContaining([ViolationStatusEnum.NOTIFIED]),
+      const statusEvent = dataSource.query.mock.calls.find(
+        ([sql, params]) =>
+          (sql as string).includes('INSERT INTO violation_events') &&
+          Array.isArray(params) &&
+          params.includes('status_changed'),
       );
+      expect(statusEvent).toBeDefined();
     });
 
     it('debe marcar resolved_at cuando el estado es resolved', async () => {
@@ -225,6 +298,7 @@ describe('ViolationsService', () => {
       dataSource.query
         .mockResolvedValueOnce([mockViolationRow])
         .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([updated]);
 
       const result = await service.updateStatus(VIOLATION_ID, dto, USER_ID);
@@ -236,7 +310,7 @@ describe('ViolationsService', () => {
       );
     });
 
-    it('debe lanzar BadRequestException si se intenta reabrir una violación resuelta', async () => {
+    it('debe lanzar BadRequestException si se intenta reabrir una violación cerrada', async () => {
       const resolvedViolation = {
         ...mockViolationRow,
         status: ViolationStatusEnum.RESOLVED,
@@ -253,15 +327,158 @@ describe('ViolationsService', () => {
     });
   });
 
+  // ─── fines ──────────────────────────────────────────────────────────────────
+
+  describe('chargeFine', () => {
+    it('debe aplicar la multa y notificar al inquilino', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([mockViolationRow]) // findOne
+        .mockResolvedValueOnce([{ currency: 'BOB' }]) // resolveCurrency
+        .mockResolvedValueOnce([]) // UPDATE
+        .mockResolvedValueOnce([]) // logEvent FINE_CHARGED
+        .mockResolvedValueOnce([
+          {
+            ...mockViolationRow,
+            fine_amount: 200,
+            fine_status: ViolationFineStatusEnum.CHARGED,
+          },
+        ]); // findOne
+
+      const result = await service.chargeFine(
+        VIOLATION_ID,
+        { amount: 200 },
+        USER_ID,
+      );
+
+      expect(result.fine_status).toBe(ViolationFineStatusEnum.CHARGED);
+      expect(notificationsService.createForUser).toHaveBeenCalled();
+    });
+
+    it('debe rechazar si la multa ya fue pagada', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { ...mockViolationRow, fine_status: ViolationFineStatusEnum.PAID },
+      ]);
+
+      await expect(
+        service.chargeFine(VIOLATION_ID, { amount: 50 }, USER_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('waiveFine', () => {
+    it('debe condonar una multa pendiente', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          { ...mockViolationRow, fine_status: ViolationFineStatusEnum.CHARGED },
+        ]) // findOne
+        .mockResolvedValueOnce([]) // UPDATE
+        .mockResolvedValueOnce([]) // logEvent
+        .mockResolvedValueOnce([
+          { ...mockViolationRow, fine_status: ViolationFineStatusEnum.WAIVED },
+        ]);
+
+      const result = await service.waiveFine(VIOLATION_ID, USER_ID);
+
+      expect(result.fine_status).toBe(ViolationFineStatusEnum.WAIVED);
+    });
+
+    it('debe rechazar si no hay multa pendiente', async () => {
+      dataSource.query.mockResolvedValueOnce([mockViolationRow]);
+
+      await expect(service.waiveFine(VIOLATION_ID, USER_ID)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('payFine', () => {
+    it('debe marcar la multa como pagada', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          { ...mockViolationRow, fine_status: ViolationFineStatusEnum.CHARGED },
+        ]) // findOne
+        .mockResolvedValueOnce([]) // UPDATE
+        .mockResolvedValueOnce([]) // logEvent
+        .mockResolvedValueOnce([
+          {
+            ...mockViolationRow,
+            fine_status: ViolationFineStatusEnum.PAID,
+            fine_paid_at: new Date(),
+          },
+        ]);
+
+      const result = await service.payFine(VIOLATION_ID, USER_ID);
+
+      expect(result.fine_status).toBe(ViolationFineStatusEnum.PAID);
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining("fine_status = 'paid'"),
+        [VIOLATION_ID],
+      );
+    });
+  });
+
+  // ─── addNote ────────────────────────────────────────────────────────────────
+
+  describe('addNote', () => {
+    it('debe agregar una nota y devolver la línea de tiempo', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([mockViolationRow]) // findOne
+        .mockResolvedValueOnce([]) // logEvent NOTE
+        .mockResolvedValueOnce([
+          {
+            id: 1,
+            event_type: 'note',
+            note: 'Llamé al inquilino',
+            metadata: {},
+            created_by: USER_ID,
+            created_by_name: 'Admin',
+            created_at: new Date(),
+          },
+        ]); // getEvents
+
+      const events = await service.addNote(
+        VIOLATION_ID,
+        { note: 'Llamé al inquilino' },
+        USER_ID,
+      );
+
+      expect(events).toHaveLength(1);
+      expect(events[0].note).toBe('Llamé al inquilino');
+    });
+  });
+
+  // ─── getStats ─────────────────────────────────────────────────────────────
+
+  describe('getStats', () => {
+    it('debe retornar métricas resumen', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          total: 12,
+          open: 4,
+          overdue: 2,
+          escalated: 1,
+          fines_outstanding: '450.00',
+        },
+      ]);
+
+      const stats = await service.getStats();
+
+      expect(stats.total).toBe(12);
+      expect(stats.overdue).toBe(2);
+      expect(stats.fines_outstanding).toBe(450);
+    });
+  });
+
   // ─── notifyTenant ─────────────────────────────────────────────────────────
 
   describe('notifyTenant', () => {
-    it('debe enviar notificación y cambiar estado a notified', async () => {
+    it('debe enviar notificación, fijar notice_sent_at y pasar a notified', async () => {
       dataSource.query
         .mockResolvedValueOnce([mockViolationRow]) // findOne
-        .mockResolvedValueOnce([]); // UPDATE status → notified
+        .mockResolvedValueOnce([]) // UPDATE status/notice_sent_at
+        .mockResolvedValueOnce([]); // logEvent NOTIFIED
 
-      await service.notifyTenant(VIOLATION_ID);
+      await service.notifyTenant(VIOLATION_ID, USER_ID);
 
       expect(notificationsService.createForUser).toHaveBeenCalledWith(
         TENANT_ID,
@@ -271,8 +488,8 @@ describe('ViolationsService', () => {
         expect.objectContaining({ violation_id: VIOLATION_ID }),
       );
       expect(dataSource.query).toHaveBeenCalledWith(
-        expect.stringContaining("status = 'notified'"),
-        [VIOLATION_ID],
+        expect.stringContaining('notice_sent_at = NOW()'),
+        [ViolationStatusEnum.NOTIFIED, VIOLATION_ID],
       );
     });
 
@@ -284,19 +501,19 @@ describe('ViolationsService', () => {
       );
     });
 
-    it('no debe cambiar estado si ya estaba notified', async () => {
+    it('mantiene el estado si ya estaba notificada', async () => {
       const notifiedViolation = {
         ...mockViolationRow,
         status: ViolationStatusEnum.NOTIFIED,
       };
       dataSource.query.mockResolvedValueOnce([notifiedViolation]);
 
-      await service.notifyTenant(VIOLATION_ID);
+      await service.notifyTenant(VIOLATION_ID, USER_ID);
 
-      const updateCalls = dataSource.query.mock.calls.filter(([sql]) =>
-        (sql as string).includes("status = 'notified'"),
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('notice_sent_at = NOW()'),
+        [ViolationStatusEnum.NOTIFIED, VIOLATION_ID],
       );
-      expect(updateCalls).toHaveLength(0);
     });
   });
 

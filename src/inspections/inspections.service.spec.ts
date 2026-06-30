@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { InspectionsService } from './inspections.service';
@@ -61,6 +62,7 @@ describe('InspectionsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InspectionsService,
+        { provide: AuditLogsService, useValue: { log: jest.fn() } },
         InspectionPhotosService,
         InspectionPdfService,
         { provide: getDataSourceToken(), useValue: mockDataSource },

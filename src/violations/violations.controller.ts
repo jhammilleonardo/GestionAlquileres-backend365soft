@@ -39,6 +39,8 @@ import { RequirePermission } from '../common/decorators/require-permission.decor
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ViolationsService } from './violations.service';
 import {
+  AddViolationNoteDto,
+  ChargeFineDto,
   CreateViolationDto,
   UpdateViolationStatusDto,
   ViolationFiltersDto,
@@ -47,6 +49,7 @@ import {
   PaginatedViolationsResponseDto,
   ViolationMessageResponseDto,
   ViolationResponseDto,
+  ViolationStatsResponseDto,
 } from './dto/violation-response.dto';
 
 interface JwtUser {
@@ -83,6 +86,26 @@ export class ViolationsController {
     return this.violationsService.findAll(filters);
   }
 
+  @Get('stats')
+  @RequirePermission('violations', 'view')
+  @ApiOperation({ summary: 'Métricas resumen de infracciones' })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiOkResponse({ type: ViolationStatsResponseDto })
+  async getStats() {
+    return this.violationsService.getStats();
+  }
+
+  @Get(':id')
+  @RequirePermission('violations', 'view')
+  @ApiOperation({ summary: 'Detalle de una infracción con su línea de tiempo' })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: ViolationResponseDto })
+  @ApiNotFoundResponse({ description: 'Infracción no encontrada' })
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.violationsService.findDetail(id);
+  }
+
   @Patch(':id/status')
   @RequirePermission('violations', 'edit')
   @ApiOperation({ summary: 'Cambiar el estado de una infracción' })
@@ -100,6 +123,69 @@ export class ViolationsController {
     return this.violationsService.updateStatus(id, dto, user.userId);
   }
 
+  @Post(':id/notes')
+  @RequirePermission('violations', 'edit')
+  @ApiOperation({ summary: 'Agregar una nota interna a la línea de tiempo' })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: AddViolationNoteDto })
+  @ApiCreatedResponse({ description: 'Línea de tiempo actualizada' })
+  @ApiNotFoundResponse({ description: 'Infracción no encontrada' })
+  async addNote(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddViolationNoteDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.violationsService.addNote(id, dto, user.userId);
+  }
+
+  @Post(':id/fine')
+  @RequirePermission('violations', 'edit')
+  @ApiOperation({ summary: 'Aplicar o actualizar una multa' })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: ChargeFineDto })
+  @ApiOkResponse({ type: ViolationResponseDto })
+  @ApiBadRequestResponse({ description: 'La multa ya fue pagada' })
+  @ApiNotFoundResponse({ description: 'Infracción no encontrada' })
+  async chargeFine(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ChargeFineDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.violationsService.chargeFine(id, dto, user.userId);
+  }
+
+  @Post(':id/fine/waive')
+  @RequirePermission('violations', 'edit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Condonar la multa pendiente' })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: ViolationResponseDto })
+  @ApiBadRequestResponse({ description: 'No hay multa pendiente' })
+  async waiveFine(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.violationsService.waiveFine(id, user.userId);
+  }
+
+  @Post(':id/fine/pay')
+  @RequirePermission('violations', 'edit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Marcar la multa como pagada' })
+  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ type: ViolationResponseDto })
+  @ApiBadRequestResponse({ description: 'No hay multa pendiente' })
+  async payFine(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.violationsService.payFine(id, user.userId);
+  }
+
   @Post(':id/notify')
   @RequirePermission('violations', 'edit')
   @HttpCode(HttpStatus.OK)
@@ -108,8 +194,11 @@ export class ViolationsController {
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ type: ViolationMessageResponseDto })
   @ApiNotFoundResponse({ description: 'Infracción no encontrada' })
-  async notifyTenant(@Param('id', ParseIntPipe) id: number) {
-    await this.violationsService.notifyTenant(id);
+  async notifyTenant(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtUser,
+  ) {
+    await this.violationsService.notifyTenant(id, user.userId);
     return { message: 'Notificación enviada al inquilino correctamente.' };
   }
 
@@ -138,6 +227,7 @@ export class ViolationsController {
     @Param('slug') slug: string,
     @Param('id', ParseIntPipe) id: number,
     @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser() user: JwtUser,
   ): Promise<{ evidence_photos: string[] }> {
     if (!files || files.length === 0) {
       throw new BadRequestException('No se enviaron archivos');
@@ -147,6 +237,7 @@ export class ViolationsController {
       id,
       files,
       slug,
+      user.userId,
     );
     return { evidence_photos };
   }

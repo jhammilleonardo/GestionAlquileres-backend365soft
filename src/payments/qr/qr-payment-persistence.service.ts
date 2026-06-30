@@ -21,6 +21,7 @@ export interface QrPaymentDbRow {
   estado: string;
   tenant_id: number;
   contract_id?: number | null;
+  reservation_id?: number | null;
   pago_id?: number | null;
   monto: string | number;
   currency?: string | null;
@@ -36,6 +37,7 @@ export interface MappedQrPayment {
   id: number;
   tenant_id: number;
   contract_id: number | null;
+  reservation_id: number | null;
   amount: number;
   currency: string;
   payment_type: string;
@@ -87,6 +89,7 @@ export class QrPaymentPersistenceService {
     await this.dataSource.query(`
       ALTER TABLE ${schema}.qr_payments ADD COLUMN IF NOT EXISTS currency VARCHAR(10) NOT NULL DEFAULT 'BOB';
       ALTER TABLE ${schema}.qr_payments ADD COLUMN IF NOT EXISTS payment_type VARCHAR(30) NOT NULL DEFAULT 'RENT';
+      ALTER TABLE ${schema}.qr_payments ADD COLUMN IF NOT EXISTS reservation_id INTEGER;
     `);
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS IDX_QR_PAYMENTS_ALIAS
@@ -125,20 +128,34 @@ export class QrPaymentPersistenceService {
     return rows.length > 0;
   }
 
+  async reservationBelongsToTenant(
+    schemaName: string,
+    reservationId: number,
+    tenantId: number,
+  ): Promise<boolean> {
+    const rows = await this.dataSource.query<{ id: number }[]>(
+      `SELECT id FROM ${quoteIdent(schemaName)}.reservations WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [reservationId, tenantId],
+    );
+
+    return rows.length > 0;
+  }
+
   async createPendingQr(
     schemaName: string,
     params: CreatePendingQrParams,
   ): Promise<MappedQrPayment> {
     const rows = await this.dataSource.query<QrPaymentDbRow[]>(
       `INSERT INTO ${quoteIdent(schemaName)}.qr_payments
-         (alias, estado, tenant_id, contract_id, monto, currency, payment_type, detalle_glosa, imagen_qr, fecha_vencimiento, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+         (alias, estado, tenant_id, contract_id, reservation_id, monto, currency, payment_type, detalle_glosa, imagen_qr, fecha_vencimiento, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
        RETURNING *`,
       [
         params.alias,
         QR_ESTADO.PENDIENTE,
         params.dto.tenant_id,
         params.dto.contract_id ?? null,
+        params.dto.reservation_id ?? null,
         params.dto.amount,
         params.dto.currency ?? 'BOB',
         params.dto.payment_type ?? 'RENT',
@@ -257,6 +274,7 @@ export class QrPaymentPersistenceService {
       id: qr.id,
       tenant_id: qr.tenant_id,
       contract_id: qr.contract_id ?? null,
+      reservation_id: qr.reservation_id ?? null,
       amount: Number(qr.monto),
       currency: qr.currency ?? dto?.currency ?? 'BOB',
       payment_type: qr.payment_type ?? dto?.payment_type ?? 'RENT',

@@ -408,22 +408,39 @@ export class StorageController {
       Array<{
         tenant_id: number;
         contract_tenant_id: number | null;
+        expense_property_id: number | null;
         owner_allowed: boolean;
       }>
     >(
       `SELECT
-         p.tenant_id,
-         c.tenant_id AS contract_tenant_id,
+         ref.tenant_id,
+         ref.contract_tenant_id,
+         ref.expense_property_id,
          EXISTS (
            SELECT 1
            FROM ${q}.property_owners po
-           WHERE po.property_id = p.property_id
+           WHERE po.property_id = COALESCE(ref.payment_property_id, ref.expense_property_id)
              AND po.rental_owner_id = $3
          ) AS owner_allowed
-       FROM ${q}.payments p
-       LEFT JOIN ${q}.contracts c ON c.id = p.contract_id
-       WHERE p.proof_file IN ($1, $2)
-          OR p.receipt_file IN ($1, $2)
+       FROM (
+         SELECT
+           p.tenant_id,
+           c.tenant_id AS contract_tenant_id,
+           p.property_id AS payment_property_id,
+           NULL::integer AS expense_property_id
+         FROM ${q}.payments p
+         LEFT JOIN ${q}.contracts c ON c.id = p.contract_id
+         WHERE p.proof_file IN ($1, $2)
+            OR p.receipt_file IN ($1, $2)
+         UNION ALL
+         SELECT
+           NULL::integer AS tenant_id,
+           NULL::integer AS contract_tenant_id,
+           NULL::integer AS payment_property_id,
+           e.property_id AS expense_property_id
+         FROM ${q}.expenses e
+         WHERE e.receipt_url IN ($1, $2)
+       ) ref
        LIMIT 1`,
       [storagePath, routePath, user.rentalOwnerId ?? null],
     );

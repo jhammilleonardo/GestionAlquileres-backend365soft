@@ -7,7 +7,8 @@ import { PostedJournalEntry } from './accounting.types';
 
 interface PaymentPostingRow {
   id: number;
-  contract_id: number;
+  contract_id: number | null;
+  reservation_id: number | null;
   property_id: number;
   amount: string | number;
   payment_type: PaymentType;
@@ -45,13 +46,15 @@ export class AccountingPaymentPostingService {
       metadata: {
         paymentId: payment.id,
         paymentType: payment.payment_type,
+        contractId: payment.contract_id,
+        reservationId: payment.reservation_id,
       },
       lines: [
         {
           accountCode: '1100',
           debit: amount,
           propertyId: payment.property_id,
-          contractId: payment.contract_id,
+          contractId: payment.contract_id ?? null,
           paymentId: payment.id,
           memo: 'Cobro recibido',
         },
@@ -59,7 +62,7 @@ export class AccountingPaymentPostingService {
           accountCode: this.incomeAccountForPaymentType(payment.payment_type),
           credit: amount,
           propertyId: payment.property_id,
-          contractId: payment.contract_id,
+          contractId: payment.contract_id ?? null,
           paymentId: payment.id,
           memo: `Ingreso por ${payment.payment_type}`,
         },
@@ -78,7 +81,7 @@ export class AccountingPaymentPostingService {
     const schema = quoteIdent(schemaName);
     const rows = await this.dataSource.query<PaymentPostingRow[]>(
       `
-        SELECT id, contract_id, property_id, amount, payment_type, payment_date, accounting_status
+        SELECT id, contract_id, reservation_id, property_id, amount, payment_type, payment_date, accounting_status
         FROM ${schema}.payments
         WHERE id = $1 AND status = 'APPROVED'
         LIMIT 1

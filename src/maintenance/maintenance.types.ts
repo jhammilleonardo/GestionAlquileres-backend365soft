@@ -40,6 +40,16 @@ export interface MaintenanceContractRow {
   status: ContractStatus;
 }
 
+export interface MaintenanceReservationRow {
+  id: number;
+  tenant_id: number;
+  property_id: number;
+  unit_id: number | null;
+  checkin_date: Date | string;
+  checkout_date: Date | string;
+  status: string;
+}
+
 export interface MaintenanceAttachmentRow {
   id: number;
   maintenance_request_id?: number;
@@ -80,7 +90,8 @@ export interface MaintenanceRequestRow {
   assigned_to: number | null;
   vendor_id: number | null;
   tenant_id: number;
-  contract_id: number;
+  contract_id: number | null;
+  reservation_id: number | null;
   property_id: number;
   current_stage: MaintenanceStage | string;
   owner_authorized: boolean;
@@ -91,6 +102,12 @@ export interface MaintenanceRequestRow {
   vendor_rated_by: number | null;
   property?: PropertySummaryRow | null;
   contract?: { id: number; contract_number: string } | null;
+  reservation?: {
+    id: number;
+    checkin_date: Date | string;
+    checkout_date: Date | string;
+    status: string;
+  } | null;
   tenant?: {
     id: number;
     name: string;

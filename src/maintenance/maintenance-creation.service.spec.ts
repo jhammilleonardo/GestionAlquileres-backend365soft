@@ -147,4 +147,54 @@ describe('MaintenanceCreationService', () => {
     expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
     expect(notificationsService.createForUser).not.toHaveBeenCalled();
   });
+
+  it('crea solicitud desde una reserva confirmada sin contrato activo', async () => {
+    dataSourceQuery
+      .mockResolvedValueOnce([
+        {
+          id: 55,
+          tenant_id: 10,
+          property_id: 7,
+          unit_id: 3,
+          status: 'confirmed',
+        },
+      ])
+      .mockResolvedValueOnce([{ id: 7, title: 'Casa' }])
+      .mockResolvedValueOnce([{ name: 'Ana' }]);
+    queryRunner.query.mockResolvedValueOnce([
+      {
+        id: 101,
+        ticket_number: 'MNT-2026-RES001',
+        category: 'GENERAL',
+        priority: 'NORMAL',
+      },
+    ]);
+    lookupService.findOne.mockResolvedValueOnce({ id: 101 });
+
+    await expect(
+      service.create(
+        {
+          request_type: 'GENERAL',
+          title: 'Consulta de estadia',
+          description: 'Necesito ayuda con la reserva',
+          reservation_id: 55,
+        },
+        10,
+        undefined,
+        20,
+      ),
+    ).resolves.toEqual({ id: 101 });
+
+    expect(queryRunner.query).toHaveBeenCalledWith(
+      expect.stringContaining('reservation_id'),
+      expect.arrayContaining([10, 7, null, 55, 20]),
+    );
+    expect(notificationsService.createForUser).toHaveBeenCalledWith(
+      20,
+      expect.any(String),
+      expect.any(String),
+      expect.stringContaining('Ana'),
+      expect.objectContaining({ reservation_id: 55, contract_id: null }),
+    );
+  });
 });

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { PaymentMethod, PaymentMethodLabels } from './enums';
+import { resolvePaymentMethodLabel } from './payment-method-catalog';
 import { TenantsService } from '../tenants/tenants.service';
 import { quoteIdent } from '../common/utils/sql-identifier';
 
@@ -27,14 +28,27 @@ export class PaymentMethodsService {
     const configured = this.parseConfiguredPaymentMethods(
       config[0].payment_methods,
     );
-    const validMethods = Object.values(PaymentMethod);
 
-    return configured
-      .filter((method) => validMethods.includes(method as PaymentMethod))
-      .map((method) => ({
-        method,
-        label: PaymentMethodLabels[method as PaymentMethod],
-      }));
+    // Conserva el código configurado tal cual (PaymentProcessorFactory resuelve
+    // el procesador a partir de él) y solo deriva la etiqueta legible. No se
+    // filtra contra el enum: los códigos regionales (qr_accl, transferencia…)
+    // no pertenecen al enum y filtrarlos dejaba el formulario de pago vacío.
+    const seen = new Set<string>();
+    const unique = configured
+      .map((method) => method.trim())
+      .filter((method) => {
+        const key = method.toLowerCase();
+        if (method.length === 0 || seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+
+    return unique.map((method) => ({
+      method,
+      label: resolvePaymentMethodLabel(method),
+    }));
   }
 
   private getAllPaymentMethods(): { method: string; label: string }[] {

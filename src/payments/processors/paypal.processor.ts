@@ -7,6 +7,7 @@ import {
   WebhookResult,
 } from './payment-processor.interface';
 import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
+import { Money, MoneyDecimal, MONEY_ROUNDING } from '../../common/money';
 
 /** Tarifa PayPal: 3.49% + $0.49 (pagos internacionales estándar) */
 const PAYPAL_FEE_PERCENT = 0.0349;
@@ -90,9 +91,11 @@ export class PayPalProcessor implements IPaymentProcessor {
   }
 
   async createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
-    const processorFee = parseFloat(
-      (input.amount * PAYPAL_FEE_PERCENT + PAYPAL_FEE_FIXED).toFixed(2),
-    );
+    const processorFee = new MoneyDecimal(input.amount)
+      .times(PAYPAL_FEE_PERCENT)
+      .plus(PAYPAL_FEE_FIXED)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
 
     const token = await this.getAccessToken();
 
@@ -104,7 +107,7 @@ export class PayPalProcessor implements IPaymentProcessor {
           {
             amount: {
               currency_code: input.currency.toUpperCase(),
-              value: input.amount.toFixed(2),
+              value: Money.of(String(input.amount), input.currency).toString(),
             },
             description: input.notes ?? `Pago contrato #${input.contractId}`,
             custom_id: String(input.contractId),
@@ -171,7 +174,7 @@ export class PayPalProcessor implements IPaymentProcessor {
       `${this.baseUrl}/v2/payments/captures/${captureId}/refund`,
       {
         amount: {
-          value: amount.toFixed(2),
+          value: Money.of(String(amount), 'USD').toString(),
           currency_code: 'USD',
         },
       },

@@ -63,4 +63,14 @@ export class InspectionPhotosService {
 
     return { photos: allPhotos };
   }
+
+  /** Borra del storage las fotos de un ítem (route paths `/storage/...`). */
+  async deleteStoredPhotos(photos: readonly string[]): Promise<void> {
+    for (const routePath of photos) {
+      const storagePath = routePath.replace(/^\//, '');
+      await this.storageService
+        .deleteStoredFile(storagePath)
+        .catch(() => undefined);
+    }
+  }
 }

@@ -24,6 +24,7 @@ import {
   computeCancellationRefund,
   computeRefundableAmount,
 } from './cancellation-policy';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
 export interface DayAvailability {
   date: string;
@@ -327,7 +328,11 @@ export class ReservationsService {
         : null;
     const depositRequired =
       depositPct != null && depositPct > 0 && depositPct < 100
-        ? Math.round(totalAmount * depositPct) / 100
+        ? new MoneyDecimal(totalAmount)
+            .times(depositPct)
+            .div(100)
+            .toDecimalPlaces(2, MONEY_ROUNDING)
+            .toNumber()
         : totalAmount;
 
     // Una reserva instantánea retiene las noches durante un plazo corto, pero no

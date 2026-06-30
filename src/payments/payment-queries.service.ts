@@ -43,10 +43,26 @@ export class PaymentQueriesService {
           'start_date', c.start_date,
           'end_date', c.end_date,
           'status', c.status
-        ) as contract
+        ) as contract,
+        CASE WHEN r.id IS NULL THEN NULL ELSE json_build_object(
+          'id', r.id,
+          'status', r.status,
+          'checkin_date', r.checkin_date,
+          'checkout_date', r.checkout_date,
+          'nights', r.nights,
+          'total_amount', r.total_amount,
+          'deposit_required', r.deposit_required,
+          'paid_amount', COALESCE(res_pay.paid_amount, 0),
+          'unit_number', u.unit_number
+        ) END as reservation
       FROM ${schemaPrefix}payments p
       LEFT JOIN ${schemaPrefix}properties prop ON p.property_id = prop.id
       LEFT JOIN ${schemaPrefix}contracts c ON p.contract_id = c.id
+      LEFT JOIN ${schemaPrefix}reservations r ON p.reservation_id = r.id
+      LEFT JOIN ${schemaPrefix}units u ON r.unit_id = u.id
+      LEFT JOIN LATERAL (
+        ${this.reservationNetPaidSql(schemaPrefix)}
+      ) res_pay ON r.id IS NOT NULL
       WHERE p.tenant_id = $1
       ORDER BY p.created_at DESC`,
       [tenantId],
@@ -62,16 +78,17 @@ export class PaymentQueriesService {
     const stats = await this.dataSource.query<PaymentStats[]>(
       `SELECT
         COUNT(*)::int as total_payments,
-        COUNT(*) FILTER (WHERE status = 'PENDING')::int as total_pending,
-        COUNT(*) FILTER (WHERE status = 'PROCESSING')::int as total_processing,
-        COUNT(*) FILTER (WHERE status = 'APPROVED')::int as total_approved,
-        COUNT(*) FILTER (WHERE status = 'REJECTED')::int as total_rejected,
-        COUNT(*) FILTER (WHERE status = 'FAILED')::int as total_failed,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'PENDING'), 0)::numeric as total_amount_pending,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'APPROVED'), 0)::numeric as total_amount_approved,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'FAILED'), 0)::numeric as total_amount_failed
-      FROM ${schemaPrefix}payments
-      WHERE tenant_id = $1`,
+        COUNT(*) FILTER (WHERE p.status = 'PENDING')::int as total_pending,
+        COUNT(*) FILTER (WHERE p.status = 'PROCESSING')::int as total_processing,
+        COUNT(*) FILTER (WHERE p.status = 'APPROVED')::int as total_approved,
+        COUNT(*) FILTER (WHERE p.status = 'REJECTED')::int as total_rejected,
+        COUNT(*) FILTER (WHERE p.status = 'FAILED')::int as total_failed,
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'PENDING'), 0)::numeric as total_amount_pending,
+        COALESCE(SUM(GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))) FILTER (WHERE p.status = 'APPROVED'), 0)::numeric as total_amount_approved,
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'FAILED'), 0)::numeric as total_amount_failed
+      FROM ${schemaPrefix}payments p
+      ${this.paymentRefundsLateralSql(schemaPrefix)}
+      WHERE p.tenant_id = $1`,
       [tenantId],
     );
 
@@ -107,11 +124,27 @@ export class PaymentQueriesService {
           'start_date', c.start_date,
           'end_date', c.end_date,
           'status', c.status
-        ) as contract
+        ) as contract,
+        CASE WHEN r.id IS NULL THEN NULL ELSE json_build_object(
+          'id', r.id,
+          'status', r.status,
+          'checkin_date', r.checkin_date,
+          'checkout_date', r.checkout_date,
+          'nights', r.nights,
+          'total_amount', r.total_amount,
+          'deposit_required', r.deposit_required,
+          'paid_amount', COALESCE(res_pay.paid_amount, 0),
+          'unit_number', u.unit_number
+        ) END as reservation
       FROM ${schemaPrefix}payments p
       LEFT JOIN ${schemaPrefix}"user" t ON p.tenant_id = t.id
       LEFT JOIN ${schemaPrefix}properties prop ON p.property_id = prop.id
       LEFT JOIN ${schemaPrefix}contracts c ON p.contract_id = c.id
+      LEFT JOIN ${schemaPrefix}reservations r ON p.reservation_id = r.id
+      LEFT JOIN ${schemaPrefix}units u ON r.unit_id = u.id
+      LEFT JOIN LATERAL (
+        ${this.reservationNetPaidSql(schemaPrefix)}
+      ) res_pay ON r.id IS NOT NULL
       ${filterQuery.whereClause}
       ORDER BY p.${sortField} ${sortOrder}
       LIMIT $${filterQuery.nextParamIndex} OFFSET $${filterQuery.nextParamIndex + 1}`,
@@ -136,15 +169,16 @@ export class PaymentQueriesService {
     const stats = await this.dataSource.query<PaymentStats[]>(
       `SELECT
         COUNT(*)::int as total_payments,
-        COUNT(*) FILTER (WHERE status = 'PENDING')::int as total_pending,
-        COUNT(*) FILTER (WHERE status = 'PROCESSING')::int as total_processing,
-        COUNT(*) FILTER (WHERE status = 'APPROVED')::int as total_approved,
-        COUNT(*) FILTER (WHERE status = 'REJECTED')::int as total_rejected,
-        COUNT(*) FILTER (WHERE status = 'FAILED')::int as total_failed,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'PENDING'), 0)::numeric as total_amount_pending,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'APPROVED'), 0)::numeric as total_amount_approved,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'FAILED'), 0)::numeric as total_amount_failed
-      FROM ${schemaPrefix}payments`,
+        COUNT(*) FILTER (WHERE p.status = 'PENDING')::int as total_pending,
+        COUNT(*) FILTER (WHERE p.status = 'PROCESSING')::int as total_processing,
+        COUNT(*) FILTER (WHERE p.status = 'APPROVED')::int as total_approved,
+        COUNT(*) FILTER (WHERE p.status = 'REJECTED')::int as total_rejected,
+        COUNT(*) FILTER (WHERE p.status = 'FAILED')::int as total_failed,
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'PENDING'), 0)::numeric as total_amount_pending,
+        COALESCE(SUM(GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))) FILTER (WHERE p.status = 'APPROVED'), 0)::numeric as total_amount_approved,
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'FAILED'), 0)::numeric as total_amount_failed
+      FROM ${schemaPrefix}payments p
+      ${this.paymentRefundsLateralSql(schemaPrefix)}`,
     );
 
     return stats[0];
@@ -175,11 +209,17 @@ export class PaymentQueriesService {
         t.name as tenant_name,
         t.email as tenant_email,
         prop.title as property_title,
-        c.contract_number
+        c.contract_number,
+        r.id as reservation_id,
+        r.checkin_date as reservation_checkin_date,
+        r.checkout_date as reservation_checkout_date,
+        r.total_amount as reservation_total_amount,
+        r.deposit_required as reservation_deposit_required
       FROM ${schemaPrefix}payments p
       LEFT JOIN ${schemaPrefix}"user" t ON p.tenant_id = t.id
       LEFT JOIN ${schemaPrefix}properties prop ON p.property_id = prop.id
       LEFT JOIN ${schemaPrefix}contracts c ON p.contract_id = c.id
+      LEFT JOIN ${schemaPrefix}reservations r ON p.reservation_id = r.id
       ${filterQuery.whereClause}
       ORDER BY p.${sortField} ${sortOrder}`,
       filterQuery.params,
@@ -201,6 +241,11 @@ export class PaymentQueriesService {
       'Email Inquilino',
       'Propiedad',
       'Contrato',
+      'Reserva',
+      'Check-in',
+      'Check-out',
+      'Total Reserva',
+      'Anticipo Requerido',
     ];
 
     const rows = payments.map((payment) =>
@@ -220,6 +265,11 @@ export class PaymentQueriesService {
         this.escapeCsv(payment.tenant_email),
         this.escapeCsv(payment.property_title),
         this.escapeCsv(payment.contract_number),
+        this.escapeCsv(payment.reservation_id),
+        this.escapeCsv(payment.reservation_checkin_date),
+        this.escapeCsv(payment.reservation_checkout_date),
+        this.escapeCsv(payment.reservation_total_amount),
+        this.escapeCsv(payment.reservation_deposit_required),
       ].join(','),
     );
 
@@ -255,11 +305,27 @@ export class PaymentQueriesService {
           'start_date', c.start_date,
           'end_date', c.end_date,
           'status', c.status
-        ) as contract
+        ) as contract,
+        CASE WHEN r.id IS NULL THEN NULL ELSE json_build_object(
+          'id', r.id,
+          'status', r.status,
+          'checkin_date', r.checkin_date,
+          'checkout_date', r.checkout_date,
+          'nights', r.nights,
+          'total_amount', r.total_amount,
+          'deposit_required', r.deposit_required,
+          'paid_amount', COALESCE(res_pay.paid_amount, 0),
+          'unit_number', u.unit_number
+        ) END as reservation
       FROM ${schemaPrefix}payments p
       LEFT JOIN ${schemaPrefix}"user" t ON p.tenant_id = t.id
       LEFT JOIN ${schemaPrefix}properties prop ON p.property_id = prop.id
       LEFT JOIN ${schemaPrefix}contracts c ON p.contract_id = c.id
+      LEFT JOIN ${schemaPrefix}reservations r ON p.reservation_id = r.id
+      LEFT JOIN ${schemaPrefix}units u ON r.unit_id = u.id
+      LEFT JOIN LATERAL (
+        ${this.reservationNetPaidSql(schemaPrefix)}
+      ) res_pay ON r.id IS NOT NULL
       ${conditions}`,
       params,
     );
@@ -329,6 +395,32 @@ export class PaymentQueriesService {
         : JSON.stringify(value);
 
     return `"${(text ?? '').replace(/"/g, '""')}"`;
+  }
+
+  private reservationNetPaidSql(schemaPrefix: string): string {
+    return `
+        SELECT COALESCE(
+                 SUM(GREATEST(0, rp.amount - COALESCE(ref.total_refunded, 0))),
+                 0
+               )::numeric as paid_amount
+          FROM ${schemaPrefix}payments rp
+          LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(pr.amount), 0)::numeric as total_refunded
+              FROM ${schemaPrefix}payment_refunds pr
+             WHERE pr.payment_id = rp.id
+          ) ref ON true
+         WHERE rp.reservation_id = r.id AND rp.status = 'APPROVED'
+      `;
+  }
+
+  private paymentRefundsLateralSql(schemaPrefix: string): string {
+    return `
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(pr.amount), 0)::numeric as total_refunded
+          FROM ${schemaPrefix}payment_refunds pr
+         WHERE pr.payment_id = p.id
+      ) ref ON true
+    `;
   }
 
   private async getTenantSchemaName(tenantSlug: string): Promise<string> {

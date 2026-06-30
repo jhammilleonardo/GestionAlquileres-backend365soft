@@ -16,14 +16,33 @@ export class TenantAuditComplianceProvisioningService {
         unit_id         INT,
         tenant_id       INT          NOT NULL,
         type            VARCHAR(50)  NOT NULL,
+        severity        VARCHAR(10)  NOT NULL DEFAULT 'medium',
         description     TEXT         NOT NULL,
         status          VARCHAR(20)  NOT NULL DEFAULT 'open',
+        due_date        DATE,
         evidence_photos JSONB        NOT NULL DEFAULT '[]',
+        fine_amount     NUMERIC(12,2),
+        fine_currency   VARCHAR(3),
+        fine_status     VARCHAR(10)  NOT NULL DEFAULT 'none',
+        fine_paid_at    TIMESTAMPTZ,
+        notice_sent_at  TIMESTAMPTZ,
         created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
         resolved_at     TIMESTAMPTZ,
         resolved_notes  TEXT,
         created_by      INT
       )
+    `);
+
+    // Migración perezosa: añade las columnas nuevas a tenants ya provisionados.
+    await this.dataSource.query(`
+      ALTER TABLE ${q}.violations
+        ADD COLUMN IF NOT EXISTS severity       VARCHAR(10) NOT NULL DEFAULT 'medium',
+        ADD COLUMN IF NOT EXISTS due_date       DATE,
+        ADD COLUMN IF NOT EXISTS fine_amount    NUMERIC(12,2),
+        ADD COLUMN IF NOT EXISTS fine_currency  VARCHAR(3),
+        ADD COLUMN IF NOT EXISTS fine_status    VARCHAR(10) NOT NULL DEFAULT 'none',
+        ADD COLUMN IF NOT EXISTS fine_paid_at   TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS notice_sent_at TIMESTAMPTZ
     `);
 
     await this.dataSource.query(`
@@ -39,6 +58,25 @@ export class TenantAuditComplianceProvisioningService {
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS idx_violations_status
         ON ${q}.violations(status)
+    `);
+
+    // Línea de tiempo de actividad (creación, cambios de etapa, avisos, multas,
+    // notas). Inmutable: solo se insertan eventos, nunca se editan.
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.violation_events (
+        id            SERIAL PRIMARY KEY,
+        violation_id  INT          NOT NULL REFERENCES ${q}.violations(id) ON DELETE CASCADE,
+        event_type    VARCHAR(30)  NOT NULL,
+        note          TEXT,
+        metadata      JSONB        NOT NULL DEFAULT '{}',
+        created_by    INT,
+        created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS idx_violation_events_violation_id
+        ON ${q}.violation_events(violation_id, created_at DESC)
     `);
   }
 

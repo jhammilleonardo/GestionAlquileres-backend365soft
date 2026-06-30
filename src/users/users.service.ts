@@ -9,6 +9,11 @@ import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { quoteIdent } from '../common/utils/sql-identifier';
 import { BCRYPT_SALT_ROUNDS } from '../common/constants/security.constants';
+import {
+  MoneyDecimal,
+  MONEY_ROUNDING,
+  type MoneyDecimalInstance,
+} from '../common/money';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 export interface User {
@@ -56,9 +61,175 @@ export interface TenantDirectoryRow extends UserWithoutPassword {
   unit_number: string | null;
 }
 
+/** Estados de pago que cuentan como saldo pendiente (deuda del inquilino). */
+const OUTSTANDING_STATUSES = ['PENDING', 'PROCESSING'];
+/** Estados de pago que cuentan como cobrado. */
+const PAID_STATUSES = ['APPROVED'];
+/** Estados que revierten un cobro previo. */
+const REVERSING_STATUSES = ['REFUNDED', 'REVERSED'];
+
+export interface TenantLedgerLine {
+  id: number;
+  date: string;
+  due_date: string | null;
+  payment_type: string;
+  payment_method: string;
+  status: string;
+  amount: number;
+  reference_number: string | null;
+  contract_number: string | null;
+  /** Saldo pendiente acumulado hasta esta línea (cronológico). */
+  running_balance: number;
+}
+
+export interface TenantLedger {
+  tenant_id: number;
+  currency: string;
+  summary: {
+    total_charged: number;
+    total_paid: number;
+    balance_due: number;
+    pending_count: number;
+  };
+  lines: TenantLedgerLine[];
+}
+
+export interface TenantMaintenanceItem {
+  id: number;
+  ticket_number: string;
+  title: string;
+  category: string | null;
+  status: string;
+  priority: string;
+  property_title: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+interface TenantLedgerRow {
+  id: number;
+  payment_date: string;
+  due_date: string | null;
+  payment_type: string;
+  payment_method: string;
+  status: string;
+  amount: string;
+  currency: string | null;
+  reference_number: string | null;
+  contract_number: string | null;
+}
+
 @Injectable()
 export class UsersService {
   constructor(@InjectDataSource() private dataSource: DataSource) {}
+
+  /**
+   * Rent ledger del inquilino: una línea por pago en orden cronológico con saldo
+   * pendiente acumulado. En este modelo cada registro de pago representa a la vez
+   * la obligación y su liquidación según el `status`, por eso el saldo pendiente
+   * se calcula sobre los estados PENDING/PROCESSING. Montos con aritmética exacta.
+   */
+  async getTenantLedger(
+    schemaName: string,
+    tenantId: number,
+  ): Promise<TenantLedger> {
+    const schema = quoteIdent(schemaName);
+    const rows = await this.dataSource.query<TenantLedgerRow[]>(
+      `SELECT
+         pay.id,
+         pay.payment_date,
+         pay.due_date,
+         pay.payment_type,
+         pay.payment_method,
+         pay.status,
+         pay.amount::text AS amount,
+         pay.currency,
+         pay.reference_number,
+         c.contract_number
+       FROM ${schema}.payments pay
+       LEFT JOIN ${schema}.contracts c ON c.id = pay.contract_id
+       WHERE pay.tenant_id = $1
+       ORDER BY pay.payment_date ASC, pay.id ASC`,
+      [tenantId],
+    );
+
+    let totalCharged = new MoneyDecimal(0);
+    let totalPaid = new MoneyDecimal(0);
+    let running = new MoneyDecimal(0);
+    let pendingCount = 0;
+    let currency = 'BOB';
+
+    const lines: TenantLedgerLine[] = rows.map((row) => {
+      const amount = new MoneyDecimal(row.amount);
+      if (row.currency) {
+        currency = row.currency;
+      }
+      if (OUTSTANDING_STATUSES.includes(row.status)) {
+        running = running.plus(amount);
+        totalCharged = totalCharged.plus(amount);
+        pendingCount += 1;
+      } else if (PAID_STATUSES.includes(row.status)) {
+        totalCharged = totalCharged.plus(amount);
+        totalPaid = totalPaid.plus(amount);
+      } else if (REVERSING_STATUSES.includes(row.status)) {
+        running = running.minus(amount);
+        totalPaid = totalPaid.minus(amount);
+      }
+      return {
+        id: row.id,
+        date: row.payment_date,
+        due_date: row.due_date,
+        payment_type: row.payment_type,
+        payment_method: row.payment_method,
+        status: row.status,
+        amount: this.toMoney(amount),
+        reference_number: row.reference_number,
+        contract_number: row.contract_number,
+        running_balance: this.toMoney(running),
+      };
+    });
+
+    return {
+      tenant_id: tenantId,
+      currency,
+      summary: {
+        total_charged: this.toMoney(totalCharged),
+        total_paid: this.toMoney(totalPaid),
+        balance_due: this.toMoney(running),
+        pending_count: pendingCount,
+      },
+      lines,
+    };
+  }
+
+  /** Historial de solicitudes de mantenimiento del inquilino. */
+  async getTenantMaintenance(
+    schemaName: string,
+    tenantId: number,
+  ): Promise<TenantMaintenanceItem[]> {
+    const schema = quoteIdent(schemaName);
+    return this.dataSource.query<TenantMaintenanceItem[]>(
+      `SELECT
+         m.id,
+         m.ticket_number,
+         m.title,
+         m.category,
+         m.status,
+         m.priority,
+         p.title AS property_title,
+         m.created_at,
+         m.completed_at
+       FROM ${schema}.maintenance_requests m
+       LEFT JOIN ${schema}.properties p ON p.id = m.property_id
+       WHERE m.tenant_id = $1
+       ORDER BY m.created_at DESC`,
+      [tenantId],
+    );
+  }
+
+  private toMoney(value: MoneyDecimalInstance): number {
+    return value.toDecimalPlaces(2, MONEY_ROUNDING).toNumber();
+  }
 
   async updateProfile(
     schemaName: string,
@@ -133,9 +304,9 @@ export class UsersService {
     this.ensureCanManageUser(id, actor);
 
     const rows = await this.dataSource.query<
-      Array<{ id: number; password: string }>
+      Array<{ id: number; password: string; role: string }>
     >(
-      `SELECT id, password
+      `SELECT id, password, role
        FROM ${quoteIdent(schemaName)}."user"
        WHERE id = $1`,
       [id],
@@ -172,8 +343,9 @@ export class UsersService {
             AND tenant_slug = (
               SELECT slug FROM public.tenant WHERE schema_name = $2 LIMIT 1
             )
+            AND role = $3
             AND revoked_at IS NULL`,
-        [id, schemaName],
+        [id, schemaName, user.role],
       );
     });
   }

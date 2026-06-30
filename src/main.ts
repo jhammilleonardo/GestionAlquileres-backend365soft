@@ -118,7 +118,7 @@ async function bootstrap() {
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders:
-      'Content-Type, Accept, Authorization, X-Tenant-ID, X-CSRF-Token, Idempotency-Key',
+      'Content-Type, Accept, Authorization, X-Tenant-ID, X-CSRF-Token, X-Auth-Context, Idempotency-Key',
     exposedHeaders: 'Content-Disposition',
     maxAge: 600,
   });

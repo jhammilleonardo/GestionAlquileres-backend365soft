@@ -69,6 +69,12 @@ export class PropertyUpdateService {
         id,
         updatePropertyDto,
       );
+      await this.updateShortTermUnitDefaults(
+        queryRunner,
+        schemaPrefix,
+        id,
+        updatePropertyDto,
+      );
 
       if (updatePropertyDto.addresses) {
         await this.propertyAddressesService.replaceAddresses(
@@ -251,6 +257,43 @@ export class PropertyUpdateService {
       );
       throw error;
     }
+  }
+
+  private async updateShortTermUnitDefaults(
+    queryRunner: QueryRunner,
+    schemaPrefix: string,
+    propertyId: number,
+    updatePropertyDto: UpdatePropertyDto,
+  ): Promise<void> {
+    const unitFields: string[] = [];
+    const unitValues: unknown[] = [];
+    let paramIndex = 1;
+
+    const assignIfPresent = (dtoKey: keyof UpdatePropertyDto, column: string) => {
+      if (!(dtoKey in updatePropertyDto)) return;
+      unitFields.push(`${column} = $${paramIndex++}`);
+      unitValues.push(updatePropertyDto[dtoKey] ?? null);
+    };
+
+    assignIfPresent('security_deposit_amount', 'deposit_amount');
+    assignIfPresent('deposit_to_confirm_pct', 'deposit_to_confirm_pct');
+    assignIfPresent('checkin_time', 'checkin_time');
+    assignIfPresent('checkout_time', 'checkout_time');
+
+    if (unitFields.length === 0) {
+      return;
+    }
+
+    unitFields.push('updated_at = NOW()');
+    unitValues.push(propertyId);
+
+    await queryRunner.query(
+      `UPDATE ${schemaPrefix}units
+          SET ${unitFields.join(', ')}
+        WHERE property_id = $${paramIndex}
+          AND rental_type IN ('SHORT_TERM', 'BOTH')`,
+      unitValues,
+    );
   }
 
   private isHttpClientError(error: unknown): boolean {

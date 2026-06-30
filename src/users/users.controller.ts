@@ -134,6 +134,42 @@ export class UsersController {
     return tenant;
   }
 
+  @Get('tenants/:id/ledger')
+  @Roles('ADMIN', 'SUPERADMIN', 'EMPLEADO')
+  @ApiOperation({
+    summary: 'Rent ledger del inquilino',
+    description:
+      'Movimientos de pago en orden cronológico con saldo pendiente acumulado y resumen.',
+  })
+  async findTenantLedger(
+    @CurrentTenant() tenant: TenantContext | undefined,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    if (!tenant) {
+      throw new InternalServerErrorException(
+        'Tenant no encontrado en el request',
+      );
+    }
+
+    return this.usersService.getTenantLedger(tenant.schema_name, id);
+  }
+
+  @Get('tenants/:id/maintenance')
+  @Roles('ADMIN', 'SUPERADMIN', 'EMPLEADO')
+  @ApiOperation({ summary: 'Historial de mantenimiento del inquilino' })
+  async findTenantMaintenance(
+    @CurrentTenant() tenant: TenantContext | undefined,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    if (!tenant) {
+      throw new InternalServerErrorException(
+        'Tenant no encontrado en el request',
+      );
+    }
+
+    return this.usersService.getTenantMaintenance(tenant.schema_name, id);
+  }
+
   @Patch(':id')
   @Roles('ADMIN', 'SUPERADMIN', 'EMPLEADO', 'INQUILINO', 'TECNICO')
   @ApiOperation({ summary: 'Actualizar perfil de usuario' })

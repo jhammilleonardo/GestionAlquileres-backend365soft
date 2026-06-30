@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 import { TenantsService } from '../tenants/tenants.service';
 import {
   AsOfQueryDto,
@@ -13,7 +14,7 @@ import {
 const DEBIT_NORMAL_TYPES = new Set(['asset', 'expense']);
 
 function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return new MoneyDecimal(value).toDecimalPlaces(2, MONEY_ROUNDING).toNumber();
 }
 
 export interface TrialBalanceRow {

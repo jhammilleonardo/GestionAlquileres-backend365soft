@@ -17,6 +17,12 @@ export class TenantMaintenanceProvisioningService {
       END $$;
     `);
 
+    // 'CLEANING' (limpieza/turnover): las tareas de limpieza entre estadías son
+    // órdenes de trabajo asignables a un proveedor de limpieza. Idempotente.
+    await this.dataSource.query(`
+      ALTER TYPE ${q}.maintenance_request_type_enum ADD VALUE IF NOT EXISTS 'CLEANING';
+    `);
+
     await this.dataSource.query(`
       DO $$ BEGIN
         CREATE TYPE ${q}.maintenance_category_enum AS ENUM ('GENERAL', 'ACCESORIOS', 'ELECTRICO', 'CLIMATIZACION', 'LLAVE_CERRADURA', 'ILUMINACION', 'AFUERA', 'PLOMERIA');
@@ -65,7 +71,8 @@ export class TenantMaintenanceProvisioningService {
         due_date date,
         assigned_to integer,
         tenant_id integer NOT NULL,
-        contract_id integer NOT NULL,
+        contract_id integer,
+        reservation_id integer,
         property_id integer NOT NULL,
         current_stage VARCHAR(30) NOT NULL DEFAULT 'REPORTED',
         owner_authorized BOOLEAN NOT NULL DEFAULT FALSE,
@@ -113,6 +120,7 @@ export class TenantMaintenanceProvisioningService {
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_TENANT ON ${q}.maintenance_requests(tenant_id);
       CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_CONTRACT ON ${q}.maintenance_requests(contract_id);
+      CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_RESERVATION ON ${q}.maintenance_requests(reservation_id);
       CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_PROPERTY ON ${q}.maintenance_requests(property_id);
       CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_STATUS ON ${q}.maintenance_requests(status);
       CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_PRIORITY ON ${q}.maintenance_requests(priority);
@@ -123,6 +131,32 @@ export class TenantMaintenanceProvisioningService {
     `);
 
     await this.ensureStageHistory(schemaName);
+  }
+
+  async ensureReservationSupport(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(
+      `ALTER TABLE ${q}.maintenance_requests ALTER COLUMN contract_id DROP NOT NULL`,
+    );
+
+    await this.dataSource.query(
+      `ALTER TABLE ${q}.maintenance_requests ADD COLUMN IF NOT EXISTS reservation_id INTEGER`,
+    );
+
+    await this.dataSource.query(`
+      DO $$ BEGIN
+        ALTER TABLE ${q}.maintenance_requests
+          ADD CONSTRAINT fk_maintenance_requests_reservation
+          FOREIGN KEY (reservation_id) REFERENCES ${q}.reservations(id)
+          ON DELETE SET NULL;
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+
+    await this.dataSource.query(
+      `CREATE INDEX IF NOT EXISTS IDX_MAINTENANCE_REQUESTS_RESERVATION
+         ON ${q}.maintenance_requests(reservation_id)`,
+    );
   }
 
   async ensureStageFields(schemaName: string): Promise<void> {
@@ -174,6 +208,9 @@ export class TenantMaintenanceProvisioningService {
         phone          VARCHAR(30),
         email          VARCHAR(200),
         address        TEXT,
+        tax_id         VARCHAR(80),
+        license_number VARCHAR(120),
+        insurance_expires_at DATE,
         rate_per_hour  DECIMAL(10,2),
         rate_flat      DECIMAL(10,2),
         is_active      BOOLEAN       NOT NULL DEFAULT true,
@@ -183,6 +220,14 @@ export class TenantMaintenanceProvisioningService {
         created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
         updated_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
       )
+    `);
+
+    await this.dataSource.query(`
+      ALTER TABLE ${q}.vendors
+        ADD COLUMN IF NOT EXISTS tax_id VARCHAR(80),
+        ADD COLUMN IF NOT EXISTS license_number VARCHAR(120),
+        ADD COLUMN IF NOT EXISTS insurance_expires_at DATE,
+        ADD COLUMN IF NOT EXISTS specialty_other VARCHAR(80);
     `);
 
     await this.dataSource.query(`

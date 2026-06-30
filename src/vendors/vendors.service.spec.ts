@@ -3,6 +3,8 @@ import { NotFoundException } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { VendorsService } from './vendors.service';
 import { VendorSpecialty } from './enums/vendor-specialty.enum';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuthService } from '../auth/auth.service';
 
 function mockVendor(
   overrides?: Partial<Record<string, unknown>>,
@@ -29,12 +31,15 @@ function mockVendor(
 describe('VendorsService', () => {
   let service: VendorsService;
   const mockDataSource = { query: jest.fn() };
+  const mockAuthService = { createPasswordSetupLink: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VendorsService,
         { provide: getDataSourceToken(), useValue: mockDataSource },
+        { provide: AuditLogsService, useValue: { log: jest.fn() } },
+        { provide: AuthService, useValue: mockAuthService },
       ],
     }).compile();
 
@@ -113,6 +118,94 @@ describe('VendorsService', () => {
 
       expect(result.name).toBe(dto.name);
       expect(result.specialty).toBe(VendorSpecialty.PLUMBING);
+    });
+
+    it('persiste specialty_other solo cuando la especialidad es "other"', async () => {
+      mockDataSource.query.mockResolvedValueOnce([mockVendor()]);
+
+      await service.create(
+        {
+          name: 'Jardines SRL',
+          specialty: VendorSpecialty.OTHER,
+          specialty_other: 'Jardinería',
+        },
+        1,
+      );
+
+      const params = mockDataSource.query.mock.calls[0][1] as unknown[];
+      expect(params[1]).toBe(VendorSpecialty.OTHER);
+      expect(params[2]).toBe('Jardinería');
+    });
+
+    it('ignora specialty_other cuando la especialidad no es "other"', async () => {
+      mockDataSource.query.mockResolvedValueOnce([mockVendor()]);
+
+      await service.create(
+        {
+          name: 'Plomería Central',
+          specialty: VendorSpecialty.PLUMBING,
+          specialty_other: 'no debería guardarse',
+        },
+        1,
+      );
+
+      const params = mockDataSource.query.mock.calls[0][1] as unknown[];
+      expect(params[2]).toBeNull();
+    });
+  });
+
+  // ─── inviteVendor ───────────────────────────────────────────────────────────
+
+  describe('inviteVendor', () => {
+    it('crea la cuenta si no existe y devuelve el enlace de invitación', async () => {
+      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 48);
+      mockDataSource.query
+        .mockResolvedValueOnce([
+          mockVendor({ email: 'prov@example.com', is_active: true }),
+        ]) // findOne
+        .mockResolvedValueOnce([]) // ensureVendorUser: no existe usuario
+        .mockResolvedValueOnce(undefined); // INSERT user
+      mockAuthService.createPasswordSetupLink.mockResolvedValueOnce({
+        resetUrl: 'http://localhost:4200/reset-password?token=abc',
+        expiresAt,
+      });
+
+      const result = await service.inviteVendor(1);
+
+      expect(result).toEqual({
+        email: 'prov@example.com',
+        inviteUrl: 'http://localhost:4200/reset-password?token=abc',
+        expiresAt,
+        created: true,
+      });
+      expect(mockAuthService.createPasswordSetupLink).toHaveBeenCalledWith(
+        'prov@example.com',
+        1000 * 60 * 60 * 48,
+      );
+    });
+
+    it('rechaza invitar a un proveedor sin correo', async () => {
+      mockDataSource.query.mockResolvedValueOnce([
+        mockVendor({ email: null, is_active: true }),
+      ]); // findOne
+
+      await expect(service.inviteVendor(1)).rejects.toThrow(
+        'El proveedor necesita un correo',
+      );
+      expect(mockAuthService.createPasswordSetupLink).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si el correo ya pertenece a otra cuenta no-VENDOR', async () => {
+      mockDataSource.query
+        .mockResolvedValueOnce([
+          mockVendor({ email: 'dup@example.com', is_active: true }),
+        ]) // findOne
+        .mockResolvedValueOnce([{ id: 9, role: 'ADMIN' }]); // ensureVendorUser: colisión
+
+      await expect(service.inviteVendor(1)).rejects.toThrow(
+        'Ya existe una cuenta de otro tipo',
+      );
+      expect(mockAuthService.createPasswordSetupLink).not.toHaveBeenCalled();
     });
   });
 

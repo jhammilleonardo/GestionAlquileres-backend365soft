@@ -29,10 +29,10 @@ describe('PaymentMethodsService', () => {
     );
   });
 
-  it('lee métodos configurados desde tenant_config con schema calificado', async () => {
+  it('resuelve las etiquetas de los códigos regionales configurados (caso real)', async () => {
     dataSource.query.mockResolvedValueOnce([
       {
-        payment_methods: [PaymentMethod.CASH, PaymentMethod.QR_MC4, 'INVALID'],
+        payment_methods: ['qr_accl', 'transferencia'],
       },
     ]);
 
@@ -43,20 +43,49 @@ describe('PaymentMethodsService', () => {
       'SELECT payment_methods FROM "tenant_acme".tenant_config LIMIT 1',
     );
     expect(methods).toEqual([
+      { method: 'qr_accl', label: 'QR MC4 (Bolivia)'},
+      { method: 'transferencia', label: 'Transferencia bancaria' },
+    ]);
+  });
+
+  it('etiqueta códigos legados del enum y humaniza los desconocidos sin descartarlos', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      {
+        payment_methods: [PaymentMethod.CASH, PaymentMethod.QR_MC4, 'mi_metodo'],
+      },
+    ]);
+
+    const methods = await service.getAvailablePaymentMethods('acme');
+
+    expect(methods).toEqual([
       { method: PaymentMethod.CASH, label: 'Efectivo' },
-      { method: PaymentMethod.QR_MC4, label: 'QR Dinámico (MC4/SIP)' },
+      { method: PaymentMethod.QR_MC4, label: 'QR MC4 (Bolivia)'},
+      { method: 'mi_metodo', label: 'Mi metodo' },
+    ]);
+  });
+
+  it('descarta duplicados y entradas vacías', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      {
+        payment_methods: ['stripe', 'stripe', '  ', 'paypal'],
+      },
+    ]);
+
+    await expect(service.getAvailablePaymentMethods('acme')).resolves.toEqual([
+      { method: 'stripe', label: 'Tarjeta de crédito/débito' },
+      { method: 'paypal', label: 'PayPal' },
     ]);
   });
 
   it('soporta configuración serializada como JSON', async () => {
     dataSource.query.mockResolvedValueOnce([
       {
-        payment_methods: JSON.stringify([PaymentMethod.TRANSFER]),
+        payment_methods: JSON.stringify(['transferencia']),
       },
     ]);
 
     await expect(service.getAvailablePaymentMethods('acme')).resolves.toEqual([
-      { method: PaymentMethod.TRANSFER, label: 'Transferencia Bancaria' },
+      { method: 'transferencia', label: 'Transferencia bancaria' },
     ]);
   });
 

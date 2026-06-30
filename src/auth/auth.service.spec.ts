@@ -6,6 +6,7 @@ import { TenantAdminIndexService } from '../tenants/tenant-admin-index.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { AuthSecurityService } from './auth-security.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 
@@ -69,6 +70,10 @@ describe('AuthService', () => {
         {
           provide: AuthSecurityService,
           useValue: authSecurityService,
+        },
+        {
+          provide: AuditLogsService,
+          useValue: { log: jest.fn(), logForSchema: jest.fn() },
         },
       ],
     }).compile();
@@ -196,6 +201,10 @@ describe('AuthService', () => {
     expect(manager.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE public.password_reset_tokens'),
       [77],
+    );
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('AND role = $3'),
+      [10, 'demo', 'PROPIETARIO'],
     );
   });
 

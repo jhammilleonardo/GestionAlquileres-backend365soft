@@ -8,6 +8,7 @@ import { DataSource } from 'typeorm';
 import { QuoteRequestDto } from './dto/quote-request.dto';
 import { priceReservation, PriceLine } from './reservation-pricing';
 import { resolveStayPricing, SeasonRule } from './season-pricing';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
 /** Línea del desglose (alias de la línea de pricing compartida). */
 export type QuoteLine = PriceLine;
@@ -131,7 +132,11 @@ export class QuoteService {
         : null;
     const depositToConfirm =
       depositPct != null && depositPct > 0 && depositPct < 100
-        ? Math.round(pricing.totalDue * depositPct) / 100
+        ? new MoneyDecimal(pricing.totalDue)
+            .times(depositPct)
+            .div(100)
+            .toDecimalPlaces(2, MONEY_ROUNDING)
+            .toNumber()
         : pricing.totalDue;
 
     return {

@@ -21,10 +21,12 @@ export class MaintenanceLookupService {
         mr.*,
         json_build_object('id', p.id, 'title', p.title) as property,
         json_build_object('id', c.id, 'contract_number', c.contract_number) as contract,
+        json_build_object('id', r.id, 'checkin_date', r.checkin_date, 'checkout_date', r.checkout_date, 'status', r.status) as reservation,
         json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'phone', u.phone) as tenant
       FROM maintenance_requests mr
       LEFT JOIN properties p ON p.id = mr.property_id
       LEFT JOIN contracts c ON c.id = mr.contract_id
+      LEFT JOIN reservations r ON r.id = mr.reservation_id
       LEFT JOIN "user" u ON u.id = mr.tenant_id
       WHERE 1=1
     `;
@@ -81,10 +83,12 @@ export class MaintenanceLookupService {
       `SELECT
         mr.*,
         json_build_object('id', p.id, 'title', p.title) as property,
-        json_build_object('id', c.id, 'contract_number', c.contract_number) as contract
+        json_build_object('id', c.id, 'contract_number', c.contract_number) as contract,
+        json_build_object('id', r.id, 'checkin_date', r.checkin_date, 'checkout_date', r.checkout_date, 'status', r.status) as reservation
       FROM maintenance_requests mr
       LEFT JOIN properties p ON p.id = mr.property_id
       LEFT JOIN contracts c ON c.id = mr.contract_id
+      LEFT JOIN reservations r ON r.id = mr.reservation_id
       WHERE mr.tenant_id = $1
       ORDER BY mr.updated_at DESC`,
       [tenantId],
@@ -107,6 +111,7 @@ export class MaintenanceLookupService {
           'country', addr.country
         ) as property,
         json_build_object('id', c.id, 'contract_number', c.contract_number) as contract,
+        json_build_object('id', r.id, 'checkin_date', r.checkin_date, 'checkout_date', r.checkout_date, 'status', r.status) as reservation,
         json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'phone', u.phone) as tenant
       FROM maintenance_requests mr
       LEFT JOIN properties p ON p.id = mr.property_id
@@ -118,6 +123,7 @@ export class MaintenanceLookupService {
         LIMIT 1
       ) addr ON true
       LEFT JOIN contracts c ON c.id = mr.contract_id
+      LEFT JOIN reservations r ON r.id = mr.reservation_id
       LEFT JOIN "user" u ON u.id = mr.tenant_id
       WHERE mr.id = $1`,
       [id],

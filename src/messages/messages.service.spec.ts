@@ -96,17 +96,26 @@ describe('MessagesService', () => {
       attachments: [],
     };
     queryRunner.query.mockResolvedValueOnce([{ id: 1 }]);
-    dataSource.query.mockResolvedValueOnce([{ role: 'INQUILINO' }]);
-    dataSource.query.mockResolvedValueOnce([row]);
+    dataSource.query.mockResolvedValueOnce([{ role: 'INQUILINO' }]); // assertCanInteract
+    dataSource.query.mockResolvedValueOnce([row]); // findMessageWithAttachments
+    dataSource.query.mockResolvedValueOnce([{ name: 'Admin' }]); // SELECT name del remitente
 
     await service.send(1, 'ADMIN', 2, 'Hola', [], 'test2');
 
+    // Al destinatario: payload enriquecido para notificar (nombre + preview).
     expect(gateway.emitUserEvent).toHaveBeenCalledWith(
       'test2',
       2,
       'message.new',
-      expect.objectContaining({ messageId: 1, peerUserId: 1 }),
+      expect.objectContaining({
+        messageId: 1,
+        peerUserId: 1,
+        senderName: 'Admin',
+        preview: 'Hola',
+        hasAttachments: false,
+      }),
     );
+    // Al emisor: solo sincronización, sin metadatos de notificación.
     expect(gateway.emitUserEvent).toHaveBeenCalledWith(
       'test2',
       1,

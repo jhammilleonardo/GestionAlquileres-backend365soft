@@ -13,6 +13,8 @@ import { CreateRentalOwnerDto } from './dto/create-rental-owner.dto';
 import { UpdateRentalOwnerDto } from './dto/update-rental-owner.dto';
 import { AssignOwnerPropertyDto } from './dto/assign-owner-property.dto';
 import { AuthService } from '../auth/auth.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 
 /** Estados de contrato que implican una propiedad "activa" para el propietario. */
 const ACTIVE_PROPERTY_STATUSES = [
@@ -30,6 +32,7 @@ export class RentalOwnersService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly authService: AuthService,
+    private readonly auditLogsService: AuditLogsService,
   ) {}
 
   // ─── Listado ─────────────────────────────────────────────────────────────
@@ -115,6 +118,13 @@ export class RentalOwnersService {
       ],
     );
 
+    await this.auditLogsService.log({
+      action: AuditAction.CREATED,
+      entityType: 'rental_owner',
+      entityId: result[0].id,
+      newValues: { name: dto.name, primary_email: dto.primary_email },
+    });
+
     return result[0];
   }
 
@@ -179,6 +189,13 @@ export class RentalOwnersService {
       values,
     );
 
+    await this.auditLogsService.log({
+      action: AuditAction.UPDATED,
+      entityType: 'rental_owner',
+      entityId: id,
+      newValues: { ...scalar },
+    });
+
     return this.findOne(id);
   }
 
@@ -199,6 +216,13 @@ export class RentalOwnersService {
       `UPDATE rental_owners SET is_active = false, updated_at = NOW() WHERE id = $1`,
       [id],
     );
+
+    await this.auditLogsService.log({
+      action: AuditAction.STATUS_CHANGED,
+      entityType: 'rental_owner',
+      entityId: id,
+      newValues: { is_active: false },
+    });
 
     return { message: `Propietario ${id} desactivado correctamente` };
   }
@@ -324,29 +348,30 @@ export class RentalOwnersService {
   }
 
   /**
-   * Historial de pagos agrupado por mes para todas las propiedades del dueño.
-   * Sirve como base del estado de cuenta hasta que se implemente
-   * la tabla owner_statements dedicada (Fase 3).
+   * Liquidaciones del propietario leídas de la tabla dedicada `owner_statements`
+   * (fuente única de verdad, gestionada por el módulo owner-statements). Antes se
+   * agregaban pagos al vuelo, lo que podía no coincidir con las liquidaciones reales.
    */
   async getStatements(ownerId: number): Promise<OwnerStatementRow[]> {
     await this.findOne(ownerId); // garantiza existencia
 
     return this.dataSource.query<OwnerStatementRow[]>(
       `SELECT
-         TO_CHAR(DATE_TRUNC('month', py.payment_date), 'YYYY-MM') AS period,
-         p.id    AS property_id,
+         os.id,
+         os.period_month,
+         os.period_year,
+         os.property_id,
          p.title AS property_title,
-         SUM(py.amount)                                           AS total_collected,
-         py.currency,
-         COUNT(py.id)::int                                        AS payment_count,
-         SUM(py.amount) FILTER (WHERE py.status = 'CONFIRMED')   AS confirmed_amount,
-         SUM(py.amount) FILTER (WHERE py.status = 'PENDING')     AS pending_amount
-       FROM property_owners po
-       JOIN properties p    ON p.id  = po.property_id
-       JOIN payments   py   ON py.property_id = po.property_id
-       WHERE po.rental_owner_id = $1
-       GROUP BY DATE_TRUNC('month', py.payment_date), p.id, p.title, py.currency
-       ORDER BY period DESC, p.title ASC`,
+         os.gross_rent,
+         os.maintenance_deduction,
+         os.management_commission,
+         os.net_amount,
+         os.currency,
+         os.status
+       FROM owner_statements os
+       LEFT JOIN properties p ON p.id = os.property_id
+       WHERE os.rental_owner_id = $1
+       ORDER BY os.period_year DESC, os.period_month DESC, p.title ASC`,
       [ownerId],
     );
   }
@@ -557,14 +582,17 @@ export interface OwnerPropertyRow {
 }
 
 export interface OwnerStatementRow {
-  period: string;
+  id: number;
+  period_month: number;
+  period_year: number;
   property_id: number;
-  property_title: string;
-  total_collected: string;
+  property_title: string | null;
+  gross_rent: string;
+  maintenance_deduction: string;
+  management_commission: string;
+  net_amount: string;
   currency: string;
-  payment_count: number;
-  confirmed_amount: string;
-  pending_amount: string;
+  status: string;
 }
 
 export interface OwnerContractRow {

@@ -7,6 +7,8 @@
  * Abierto/cerrado: un nuevo concepto = una línea más, sin tocar el resto.
  */
 
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
+
 export type PriceLineType = 'charge' | 'discount';
 
 export type PriceConcept =
@@ -72,8 +74,18 @@ export interface PricingResult {
 export const WEEKLY_THRESHOLD_NIGHTS = 7;
 export const MONTHLY_THRESHOLD_NIGHTS = 28;
 
+/** Redondeo a 2 decimales exacto (decimal, sin float) con política central. */
 function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return new MoneyDecimal(value).toDecimalPlaces(2, MONEY_ROUNDING).toNumber();
+}
+
+/** Porcentaje exacto: base * pct / 100, redondeado a 2 decimales. */
+function pctOf(base: number, pct: number): number {
+  return new MoneyDecimal(base)
+    .times(pct)
+    .div(100)
+    .toDecimalPlaces(2, MONEY_ROUNDING)
+    .toNumber();
 }
 
 function lengthOfStayDiscount(
@@ -103,7 +115,7 @@ function discountLine(
   return {
     concept,
     type: 'discount',
-    amount: round2(-(baseAmount * percentage) / 100),
+    amount: -pctOf(baseAmount, percentage),
     detail: { percentage },
   };
 }
@@ -117,7 +129,7 @@ function percentageLine(
   percentage: number,
 ): PriceLine | null {
   if (percentage === 0 || baseAmount === 0) return null;
-  const amount = round2((baseAmount * percentage) / 100);
+  const amount = pctOf(baseAmount, percentage);
   return {
     concept,
     type: amount < 0 ? 'discount' : 'charge',
@@ -186,10 +198,21 @@ export function priceReservation(input: PricingInput): PricingResult {
   // Base por temporada (suma de noches) o tarifa plana (precio × noches).
   const baseAmount =
     input.nightlyPrices && input.nightlyPrices.length > 0
-      ? round2(input.nightlyPrices.reduce((sum, price) => sum + price, 0))
-      : round2(input.pricePerNight * input.nights);
+      ? input.nightlyPrices
+          .reduce((sum, price) => sum.plus(price), new MoneyDecimal(0))
+          .toDecimalPlaces(2, MONEY_ROUNDING)
+          .toNumber()
+      : new MoneyDecimal(input.pricePerNight)
+          .times(input.nights)
+          .toDecimalPlaces(2, MONEY_ROUNDING)
+          .toNumber();
   const displayPricePerNight =
-    input.nights > 0 ? round2(baseAmount / input.nights) : input.pricePerNight;
+    input.nights > 0
+      ? new MoneyDecimal(baseAmount)
+          .div(input.nights)
+          .toDecimalPlaces(2, MONEY_ROUNDING)
+          .toNumber()
+      : input.pricePerNight;
   lines.push({
     concept: 'nightly',
     type: 'charge',
@@ -240,7 +263,7 @@ export function priceReservation(input: PricingInput): PricingResult {
   );
   let taxTotal = 0;
   if (input.occupancyTaxPct > 0) {
-    taxTotal = round2((accommodationNet * input.occupancyTaxPct) / 100);
+    taxTotal = pctOf(accommodationNet, input.occupancyTaxPct);
     lines.push({
       concept: 'occupancy_tax',
       type: 'charge',

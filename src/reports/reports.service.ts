@@ -6,6 +6,7 @@ import { MaintenanceStage } from '../maintenance/enums/maintenance-stage.enum';
 import { PaymentStatus } from '../payments/enums';
 import { UnitStatus } from '../units/enums/unit-status.enum';
 import { ReportFilterDto } from './dto/report-filter.dto';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 import {
   CountQueryResult,
   DelinquencyRow,
@@ -451,49 +452,63 @@ export class ReportsService {
     filters: ReportFilterDto,
   ): Promise<BudgetVsActualReportRow[]> {
     const pnl = await this.getPnL(filters);
-    const income = pnl.reduce((sum, row) => sum + this.toNumber(row.income), 0);
-    const expenses = pnl.reduce(
-      (sum, row) => sum + this.toNumber(row.expenses),
-      0,
-    );
-    const net = income - expenses;
+    // Sumas y varianzas en decimal exacto (sin acumulación de error float).
+    const income = this.sumMoney(pnl.map((row) => row.income));
+    const expenses = this.sumMoney(pnl.map((row) => row.expenses));
+    const net = this.subtractMoney(income, expenses);
 
     const previousFilters: ReportFilterDto = { ...filters };
     delete previousFilters.from;
     delete previousFilters.to;
     const previousPnl = await this.getPreviousMonthPnL(previousFilters);
-    const previousIncome = previousPnl.reduce(
-      (sum, row) => sum + this.toNumber(row.income),
-      0,
-    );
-    const previousExpenses = previousPnl.reduce(
-      (sum, row) => sum + this.toNumber(row.expenses),
-      0,
+    const previousIncome = this.sumMoney(previousPnl.map((row) => row.income));
+    const previousExpenses = this.sumMoney(
+      previousPnl.map((row) => row.expenses),
     );
     const budgetIncome = previousIncome > 0 ? previousIncome : income;
     const budgetExpenses = previousExpenses > 0 ? previousExpenses : expenses;
-    const budgetNet = budgetIncome - budgetExpenses;
+    const budgetNet = this.subtractMoney(budgetIncome, budgetExpenses);
 
     return [
       {
         line: 'Ingresos',
         budget: budgetIncome,
         actual: income,
-        variance: income - budgetIncome,
+        variance: this.subtractMoney(income, budgetIncome),
       },
       {
         line: 'Gastos',
         budget: budgetExpenses,
         actual: expenses,
-        variance: budgetExpenses - expenses,
+        variance: this.subtractMoney(budgetExpenses, expenses),
       },
       {
         line: 'Resultado neto',
         budget: budgetNet,
         actual: net,
-        variance: net - budgetNet,
+        variance: this.subtractMoney(net, budgetNet),
       },
     ];
+  }
+
+  /** Suma exacta (decimal) de una lista de montos provenientes de NUMERIC/strings. */
+  private sumMoney(values: Array<string | number | null | undefined>): number {
+    return values
+      .reduce(
+        (acc: InstanceType<typeof MoneyDecimal>, v) =>
+          acc.plus(new MoneyDecimal(this.toNumber(v))),
+        new MoneyDecimal(0),
+      )
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
+  }
+
+  /** Resta exacta (decimal) de dos montos a 2 decimales. */
+  private subtractMoney(a: number, b: number): number {
+    return new MoneyDecimal(a)
+      .minus(b)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
   }
 
   private getPreviousMonthPnL(

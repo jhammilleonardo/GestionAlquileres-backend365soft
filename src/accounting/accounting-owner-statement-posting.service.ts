@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { MoneyDecimal } from '../common/money';
 import { AccountingLedgerService } from './accounting-ledger.service';
 import { JournalLineInput, PostedJournalEntry } from './accounting.types';
 
@@ -40,8 +41,13 @@ export class AccountingOwnerStatementPostingService {
       );
     }
 
-    const creditTotal = commission + netAmount + maintenanceDeduction;
-    if (Math.round(grossRent * 100) !== Math.round(creditTotal * 100)) {
+    // Cuadre exacto en centavos (sin float): gross == comisión + neto + deducción.
+    const grossCents = this.toCents(statement.gross_rent);
+    const creditCents =
+      this.toCents(statement.management_commission) +
+      this.toCents(statement.net_amount) +
+      this.toCents(statement.maintenance_deduction);
+    if (grossCents !== creditCents) {
       throw new BadRequestException(
         `Owner statement #${statementId} no cuadra: gross_rent debe igualar comision + neto + deducciones.`,
       );
@@ -223,6 +229,11 @@ export class AccountingOwnerStatementPostingService {
   private toAmount(value: string | number): number {
     const amount = Number(value);
     return Number.isFinite(amount) ? amount : Number.NaN;
+  }
+
+  /** Centavos enteros exactos (sin float) para validar el cuadre del asiento. */
+  private toCents(value: string | number): number {
+    return new MoneyDecimal(value).times(100).toDecimalPlaces(0).toNumber();
   }
 
   private statementPeriodDate(statement: OwnerStatementPostingRow): string {

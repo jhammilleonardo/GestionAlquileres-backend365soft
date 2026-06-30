@@ -50,6 +50,45 @@ describe('ReservationPaymentConfirmationService', () => {
     expect(query).toHaveBeenCalledTimes(2);
   });
 
+  it('confirma con el anticipo requerido aunque el total de la reserva quede con saldo', async () => {
+    query
+      .mockResolvedValueOnce([
+        {
+          id: 8,
+          status: 'pending_payment',
+          total_amount: '1000.00',
+          deposit_required: '300.00',
+          hold_expired: false,
+        },
+      ])
+      .mockResolvedValueOnce([{ approved_total: '300.00' }])
+      .mockResolvedValueOnce([{ id: 8 }]);
+
+    await expect(
+      service.confirmIfFullyPaid(queryRunner, 'tenant_acme', 8),
+    ).resolves.toBe(true);
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+
+  it('tolera diferencias menores a un centavo al comparar anticipo requerido', async () => {
+    query
+      .mockResolvedValueOnce([
+        {
+          id: 8,
+          status: 'pending_payment',
+          total_amount: '1000.00',
+          deposit_required: '300.00',
+          hold_expired: false,
+        },
+      ])
+      .mockResolvedValueOnce([{ approved_total: '299.995' }])
+      .mockResolvedValueOnce([{ id: 8 }]);
+
+    await expect(
+      service.confirmIfFullyPaid(queryRunner, 'tenant_acme', 8),
+    ).resolves.toBe(true);
+  });
+
   it('rechaza aprobar pagos de una retención vencida', async () => {
     query.mockResolvedValueOnce([
       {

@@ -99,4 +99,13 @@ export class CreateMaintenanceDto {
   @IsNumber()
   @IsOptional()
   contract_id?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'ID de reserva de corto plazo. Permite crear solicitudes de estadía sin contrato activo.',
+    example: 42,
+  })
+  @IsNumber()
+  @IsOptional()
+  reservation_id?: number;
 }

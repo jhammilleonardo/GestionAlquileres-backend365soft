@@ -1,11 +1,16 @@
 import { Test } from '@nestjs/testing';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
+import { tenantConnectionStore } from '../common/tenant/tenant-connection.store';
 import { ExpensesService } from './expenses.service';
 import { Expense } from './entities/expense.entity';
-import { ExpenseCategoryEnum } from './enums/expense-category.enum';
+import {
+  ExpenseCategoryEnum,
+  ExpensePaymentStatusEnum,
+} from './enums/expense-category.enum';
 import { CreateExpenseDto, UpdateExpenseDto, ExpenseFiltersDto } from './dto';
 
 type MockedExpenseRepository = jest.Mocked<
@@ -33,11 +38,17 @@ const makeMockRepository = (): MockedExpenseRepository => ({
 describe('ExpensesService', () => {
   let service: ExpensesService;
   let mockRepository: MockedExpenseRepository;
+  let accountingOutbox: { enqueue: jest.Mock };
 
   beforeEach(async () => {
+    accountingOutbox = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module = await Test.createTestingModule({
       providers: [
         ExpensesService,
+        { provide: AuditLogsService, useValue: { log: jest.fn() } },
         {
           provide: getRepositoryToken(Expense),
           useValue: makeMockRepository(),
@@ -48,9 +59,7 @@ describe('ExpensesService', () => {
         },
         {
           provide: AccountingOutboxService,
-          useValue: {
-            enqueue: jest.fn().mockResolvedValue(undefined),
-          },
+          useValue: accountingOutbox,
         },
       ],
     }).compile();
@@ -59,6 +68,10 @@ describe('ExpensesService', () => {
     mockRepository = module.get<MockedExpenseRepository>(
       getRepositoryToken(Expense),
     );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('createExpense', () => {
@@ -176,6 +189,7 @@ describe('ExpensesService', () => {
 
       const mockQueryBuilder = {
         createQueryBuilder: jest.fn().mockReturnThis(),
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
@@ -206,6 +220,7 @@ describe('ExpensesService', () => {
       };
 
       const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
@@ -237,6 +252,7 @@ describe('ExpensesService', () => {
       };
 
       const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
@@ -343,6 +359,68 @@ describe('ExpensesService', () => {
       expect(mockRepository.merge).toHaveBeenCalled();
       expect(mockRepository.save).toHaveBeenCalled();
       expect(result).toEqual(updatedExpense);
+    });
+
+    it('encola posteo de pago al pasar un gasto pendiente ya posteado a pagado', async () => {
+      jest.spyOn(tenantConnectionStore, 'getStore').mockReturnValue({
+        queryRunner: null,
+        schemaName: 'tenant_alpha',
+        actor: null,
+      });
+
+      const existingExpense: Expense = {
+        id: 2,
+        property_id: 1,
+        category: ExpenseCategoryEnum.MAINTENANCE,
+        amount: 150.5,
+        date: new Date('2024-04-15'),
+        due_date: new Date('2024-04-30'),
+        paid_date: null,
+        payment_status: ExpensePaymentStatusEnum.PENDING,
+        accounting_status: 'posted',
+        currency: 'USD',
+        unit_id: null,
+        vendor_id: null,
+        vendor_name: null,
+        receipt_url: null,
+        is_recurring: false,
+        recurrence_interval: null,
+        recurrence_start_date: null,
+        recurrence_end_date: null,
+        recurring_expense_id: null,
+        description: 'Factura pendiente',
+        notes: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+        created_by: null,
+        updated_by: null,
+      } as Expense;
+
+      const updateDto: UpdateExpenseDto = {
+        payment_status: ExpensePaymentStatusEnum.PAID,
+        paid_date: '2024-04-20',
+      };
+      const updatedExpense = {
+        ...existingExpense,
+        payment_status: ExpensePaymentStatusEnum.PAID,
+        paid_date: new Date('2024-04-20'),
+      } as Expense;
+
+      (mockRepository.findOne as jest.Mock).mockResolvedValue(existingExpense);
+      (mockRepository.merge as jest.Mock).mockReturnValue(updatedExpense);
+      (mockRepository.save as jest.Mock).mockResolvedValue(updatedExpense);
+
+      await service.update(2, updateDto, 1);
+
+      expect(accountingOutbox.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          schemaName: 'tenant_alpha',
+          eventType: 'expense.paid',
+          aggregateType: 'expense',
+          aggregateId: '2',
+          payload: expect.objectContaining({ expenseId: 2 }),
+        }),
+      );
     });
   });
 

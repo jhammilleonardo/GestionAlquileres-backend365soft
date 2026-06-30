@@ -7,6 +7,7 @@ import {
   ProcessorResult,
   WebhookResult,
 } from './payment-processor.interface';
+import { Money, MoneyDecimal, MONEY_ROUNDING } from '../../common/money';
 
 /** Tarifa Stripe: 2.9% + $0.30 para tarjetas nacionales USA */
 const STRIPE_FEE_PERCENT = 0.029;
@@ -41,10 +42,16 @@ export class StripeProcessor implements IPaymentProcessor {
   }
 
   async createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
-    const amountCents = Math.round(input.amount * 100);
-    const processorFee = parseFloat(
-      (input.amount * STRIPE_FEE_PERCENT + STRIPE_FEE_FIXED).toFixed(2),
-    );
+    // Unidad mínima exacta y consciente de la moneda (no float).
+    const amountCents = Money.of(
+      String(input.amount),
+      input.currency,
+    ).toMinorUnits();
+    const processorFee = new MoneyDecimal(input.amount)
+      .times(STRIPE_FEE_PERCENT)
+      .plus(STRIPE_FEE_FIXED)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
 
     const paymentIntent = await this.stripe.paymentIntents.create({
       amount: amountCents,
@@ -88,7 +95,10 @@ export class StripeProcessor implements IPaymentProcessor {
   ): Promise<ProcessorResult> {
     const refund = await this.stripe.refunds.create({
       payment_intent: transactionId,
-      amount: Math.round(amount * 100),
+      amount: new MoneyDecimal(amount)
+        .times(100)
+        .toDecimalPlaces(0, MONEY_ROUNDING)
+        .toNumber(),
     });
 
     const succeeded = refund.status === 'succeeded';

@@ -10,6 +10,7 @@ import {
 } from './qr-payment.controller';
 import { TenantsModule } from '../../tenants/tenants.module';
 import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
+import { ReservationPaymentConfirmationService } from '../reservation-payment-confirmation.service';
 
 /**
  * QrPaymentModule
@@ -30,6 +31,7 @@ import { SafeHttpClientService } from '../../common/http/safe-http-client.servic
     QrProviderService,
     QrPaymentPersistenceService,
     SafeHttpClientService,
+    ReservationPaymentConfirmationService,
   ],
   exports: [QrPaymentService],
 })

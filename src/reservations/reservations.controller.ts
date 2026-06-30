@@ -39,8 +39,6 @@ import { ReservationAnalyticsService } from './reservation-analytics.service';
 import { IcalService } from './ical/ical.service';
 import { SeasonRulesService } from './season-rules.service';
 import { CreateSeasonRuleDto } from './dto/create-season-rule.dto';
-import { HousekeepingService } from './housekeeping.service';
-import { UpdateHousekeepingDto } from './dto/update-housekeeping.dto';
 import { CalendarSyncService } from './ical/calendar-sync.service';
 import { CreateSyncSourceDto } from './dto/create-sync-source.dto';
 import { QuoteService } from './quote.service';
@@ -438,44 +436,6 @@ export class AdminUnitSeasonsController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     await this.seasonRulesService.remove(unitId, id);
-  }
-}
-
-// ─── Admin — housekeeping (limpieza) ──────────────────────────────────────────
-
-@ApiTags('Reservations - Housekeeping')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
-@Controller(':slug/admin/housekeeping')
-export class AdminHousekeepingController {
-  constructor(private readonly housekeepingService: HousekeepingService) {}
-
-  @Get()
-  @RequirePermission('reservations', 'view')
-  @ApiOperation({ summary: 'Listar tareas de limpieza (filtros opcionales)' })
-  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  async list(
-    @Query('status') status?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
-    return this.housekeepingService.list({ status, from, to });
-  }
-
-  @Patch(':id')
-  @RequirePermission('reservations', 'edit')
-  @ApiOperation({
-    summary: 'Actualizar una tarea de limpieza (estado/asignación)',
-  })
-  @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
-  @ApiParam({ name: 'id', type: Number })
-  @ApiBody({ type: UpdateHousekeepingDto })
-  @ApiNotFoundResponse({ description: 'Tarea no encontrada' })
-  async update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateHousekeepingDto,
-  ) {
-    return this.housekeepingService.update(id, dto);
   }
 }
 

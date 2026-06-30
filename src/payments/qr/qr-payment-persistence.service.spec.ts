@@ -122,7 +122,10 @@ describe('QrPaymentPersistenceService', () => {
     expect(insertCall[0]).toContain('INSERT INTO "tenant_acme".qr_payments');
     expect(insertCall[1][0]).toBe(baseQrRow.alias);
     expect(insertCall[1][1]).toBe('PENDIENTE');
-    expect(insertCall[1][8]).toBe(
+    // [4] = reservation_id (null cuando no se paga una reserva)
+    expect(insertCall[1][4]).toBeNull();
+    // [9] = imagen_qr (corrido tras agregar reservation_id al INSERT)
+    expect(insertCall[1][9]).toBe(
       JSON.stringify({ imagenQr: 'base64-image', idQr: 'mc4-1' }),
     );
   });

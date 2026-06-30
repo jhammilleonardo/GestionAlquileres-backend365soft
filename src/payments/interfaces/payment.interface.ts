@@ -16,7 +16,8 @@ export interface Payment {
 
   // Relaciones
   tenant_id: number;
-  contract_id: number;
+  contract_id: number | null;
+  reservation_id?: number | null;
   property_id: number;
 
   // Información financiera
@@ -76,6 +77,7 @@ export interface Payment {
   tenant?: TenantReference;
   property?: PropertyReference;
   contract?: ContractReference;
+  reservation?: ReservationReference;
 }
 
 /**
@@ -130,4 +132,17 @@ export interface ContractReference {
   start_date: string;
   end_date: string;
   status: string;
+}
+
+export interface ReservationReference {
+  id: number;
+  status: string;
+  checkin_date: string;
+  checkout_date: string;
+  nights: number;
+  total_amount: string | number;
+  deposit_required?: string | number | null;
+  paid_amount: string | number;
+  property_name?: string | null;
+  unit_number?: string | null;
 }

@@ -3,6 +3,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 
 export interface TenantConfigRow {
   id: number;
@@ -17,6 +19,10 @@ export interface TenantConfigRow {
   commission_percentage: string | number;
   grace_days_late_fee: number;
   late_fee_percentage: string | number;
+  accounting_basis?: string;
+  tax_id?: string | null;
+  legal_name?: string | null;
+  tax_regime?: string | null;
   custom_expense_categories?: unknown;
   setup_completed?: boolean;
   created_at?: Date;
@@ -28,6 +34,7 @@ export class TenantConfigService {
   constructor(
     @InjectDataSource()
     private dataSource: DataSource,
+    private readonly auditLogsService: AuditLogsService,
   ) {}
 
   async getConfig(schemaName: string): Promise<TenantConfigRow> {
@@ -96,6 +103,22 @@ export class TenantConfigService {
       fields.push(`late_fee_percentage = $${idx++}`);
       values.push(dto.late_fee_percentage);
     }
+    if (dto.accounting_basis !== undefined) {
+      fields.push(`accounting_basis = $${idx++}`);
+      values.push(dto.accounting_basis);
+    }
+    if (dto.tax_id !== undefined) {
+      fields.push(`tax_id = $${idx++}`);
+      values.push(dto.tax_id);
+    }
+    if (dto.legal_name !== undefined) {
+      fields.push(`legal_name = $${idx++}`);
+      values.push(dto.legal_name);
+    }
+    if (dto.tax_regime !== undefined) {
+      fields.push(`tax_regime = $${idx++}`);
+      values.push(dto.tax_regime);
+    }
     if (dto.custom_expense_categories !== undefined) {
       fields.push(`custom_expense_categories = $${idx++}`);
       values.push(JSON.stringify(dto.custom_expense_categories));
@@ -112,6 +135,13 @@ export class TenantConfigService {
       `UPDATE ${quoteIdent(schemaName)}.tenant_config SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
       values,
     );
+
+    await this.auditLogsService.log({
+      action: AuditAction.UPDATED,
+      entityType: 'config',
+      entityId: config.id,
+      newValues: { ...dto },
+    });
 
     return rows[0];
   }

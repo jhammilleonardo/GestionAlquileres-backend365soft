@@ -18,6 +18,8 @@ import { PropertyCatalogService } from './property-catalog.service';
 import { PropertyCreationService } from './property-creation.service';
 import { PropertyUpdateService } from './property-update.service';
 import { PropertyPublicCatalogService } from './property-public-catalog.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 
 interface PropertyTypeIdRow {
   id: number;
@@ -38,6 +40,7 @@ export class PropertiesService {
     private readonly propertyCreationService: PropertyCreationService,
     private readonly propertyUpdateService: PropertyUpdateService,
     private readonly propertyPublicCatalogService: PropertyPublicCatalogService,
+    private readonly auditLogsService: AuditLogsService,
   ) {}
 
   private async getTenantSchemaName(tenantSlug: string): Promise<string> {
@@ -54,7 +57,17 @@ export class PropertiesService {
   }
 
   async create(tenantSlug: string, createPropertyDto: CreatePropertyDto) {
-    return this.propertyCreationService.create(tenantSlug, createPropertyDto);
+    const property = await this.propertyCreationService.create(
+      tenantSlug,
+      createPropertyDto,
+    );
+    await this.auditLogsService.log({
+      action: AuditAction.CREATED,
+      entityType: 'property',
+      entityId: (property as { id: number }).id,
+      newValues: { title: createPropertyDto.title },
+    });
+    return property;
   }
 
   async findAll(filters?: FilterPropertiesDto, tenantSlug?: string) {
@@ -74,7 +87,18 @@ export class PropertiesService {
     updatePropertyDto: UpdatePropertyDto,
     tenantSlug?: string,
   ) {
-    return this.propertyUpdateService.update(id, updatePropertyDto, tenantSlug);
+    const result = await this.propertyUpdateService.update(
+      id,
+      updatePropertyDto,
+      tenantSlug,
+    );
+    await this.auditLogsService.log({
+      action: AuditAction.UPDATED,
+      entityType: 'property',
+      entityId: id,
+      newValues: { ...updatePropertyDto },
+    });
+    return result;
   }
 
   async updateDetails(
@@ -114,6 +138,12 @@ export class PropertiesService {
       `DELETE FROM ${schemaPrefix}properties WHERE id = $1`,
       [id],
     );
+
+    await this.auditLogsService.log({
+      action: AuditAction.DELETED,
+      entityType: 'property',
+      entityId: id,
+    });
 
     return { message: 'Property deleted successfully', id };
   }

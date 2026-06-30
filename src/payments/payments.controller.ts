@@ -34,6 +34,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PaymentsService } from './payments.service';
+import { PaymentLedgerService } from './payment-ledger.service';
 import { ReservationPaymentService } from './reservation-payment.service';
 import {
   CreatePaymentDto,
@@ -85,7 +86,10 @@ function getRequestUserId(req: TenantRequest): number {
 @ApiBearerAuth()
 @Controller(':slug/admin/payments')
 export class AdminPaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    private readonly paymentLedgerService: PaymentLedgerService,
+  ) {}
 
   /**
    * GET /:slug/admin/payments
@@ -123,6 +127,20 @@ export class AdminPaymentsController {
   async getStats(@Param('slug') slug: string, @Request() req: TenantRequest) {
     const schemaName = getTenantSchemaName(req, slug);
     return this.paymentsService.getAdminStats(schemaName);
+  }
+
+  @Get('ledger')
+  @RequirePermission('payments', 'view')
+  @ApiOperation({
+    summary: 'Ledger financiero admin para largo y corto plazo',
+    description:
+      'Consolida contratos de largo plazo, reservas de corto plazo, deuda, mora, saldos y alertas financieras.',
+  })
+  @ApiParam({ name: 'slug', example: 'mi-empresa' })
+  @ApiOkResponse({ description: 'Ledger financiero consolidado' })
+  async getLedger(@Param('slug') slug: string, @Request() req: TenantRequest) {
+    const schemaName = getTenantSchemaName(req, slug);
+    return this.paymentLedgerService.getAdminLedger(schemaName);
   }
 
   /**

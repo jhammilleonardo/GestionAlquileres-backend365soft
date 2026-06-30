@@ -5,15 +5,20 @@ import {
   ACCESS_TOKEN_COOKIE,
   CSRF_COOKIE,
   REFRESH_TOKEN_COOKIE,
+  accessTokenCookieName,
+  refreshTokenCookieName,
+  refreshCookieOptions,
 } from './auth-cookie.util';
 
 describe('AuthCookieInterceptor', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalExposeToken = process.env.AUTH_EXPOSE_ACCESS_TOKEN_RESPONSE;
+  const originalRefreshCookiePath = process.env.REFRESH_COOKIE_PATH;
 
   afterEach(() => {
     process.env.NODE_ENV = originalNodeEnv;
     process.env.AUTH_EXPOSE_ACCESS_TOKEN_RESPONSE = originalExposeToken;
+    process.env.REFRESH_COOKIE_PATH = originalRefreshCookiePath;
   });
 
   it('emite cookies y elimina el access token del body', async () => {
@@ -52,12 +57,22 @@ describe('AuthCookieInterceptor', () => {
       expect.objectContaining({ httpOnly: true }),
     );
     expect(cookie).toHaveBeenCalledWith(
+      accessTokenCookieName('admin'),
+      'jwt-value',
+      expect.objectContaining({ httpOnly: true }),
+    );
+    expect(cookie).toHaveBeenCalledWith(
       CSRF_COOKIE,
       expect.any(String),
       expect.objectContaining({ httpOnly: false }),
     );
     expect(cookie).toHaveBeenCalledWith(
       REFRESH_TOKEN_COOKIE,
+      'refresh-value',
+      expect.objectContaining({ httpOnly: true, path: '/auth' }),
+    );
+    expect(cookie).toHaveBeenCalledWith(
+      refreshTokenCookieName('admin'),
       'refresh-value',
       expect.objectContaining({ httpOnly: true, path: '/auth' }),
     );
@@ -82,5 +97,24 @@ describe('AuthCookieInterceptor', () => {
     );
 
     expect(response).toEqual({ success: true });
+  });
+
+  it('permite configurar el path publico de la cookie refresh para proxies con /api', () => {
+    process.env.REFRESH_COOKIE_PATH = '/api/auth';
+
+    expect(refreshCookieOptions()).toEqual(
+      expect.objectContaining({
+        httpOnly: true,
+        path: '/api/auth',
+      }),
+    );
+  });
+
+  it('rechaza un path de refresh mal formado', () => {
+    process.env.REFRESH_COOKIE_PATH = 'api/auth';
+
+    expect(() => refreshCookieOptions()).toThrow(
+      'REFRESH_COOKIE_PATH debe ser un path absoluto de cookie',
+    );
   });
 });

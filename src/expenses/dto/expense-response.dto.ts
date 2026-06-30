@@ -13,8 +13,20 @@ export class ExpenseResponseDto {
   @ApiProperty({ example: 'MAINTENANCE' })
   category: string;
 
+  @ApiProperty({ example: 'GENERAL' })
+  expense_scope: string;
+
+  @ApiProperty({ example: 'COMPANY' })
+  responsibility: string;
+
+  @ApiProperty({ example: 'PAID' })
+  payment_status: string;
+
   @ApiProperty({ example: 250 })
   amount: number;
+
+  @ApiProperty({ example: 100 })
+  paid_amount: number;
 
   @ApiProperty({ example: 'BOB' })
   currency: string;
@@ -25,6 +37,12 @@ export class ExpenseResponseDto {
   @ApiProperty({ example: '2026-05-20' })
   date: Date;
 
+  @ApiPropertyOptional({ example: '2026-05-30', nullable: true })
+  due_date: Date | null;
+
+  @ApiPropertyOptional({ example: '2026-05-25', nullable: true })
+  paid_date: Date | null;
+
   @ApiPropertyOptional({ example: 3, nullable: true })
   vendor_id: number | null;
 
@@ -34,8 +52,32 @@ export class ExpenseResponseDto {
   @ApiPropertyOptional({ example: '/receipts/expense-1.pdf', nullable: true })
   receipt_url: string | null;
 
+  @ApiPropertyOptional({ example: 'FAC-1234', nullable: true })
+  invoice_number: string | null;
+
+  @ApiPropertyOptional({ example: 12, nullable: true })
+  contract_id: number | null;
+
+  @ApiPropertyOptional({ example: 44, nullable: true })
+  reservation_id: number | null;
+
+  @ApiPropertyOptional({ example: 31, nullable: true })
+  maintenance_request_id: number | null;
+
+  @ApiProperty({ example: true })
+  affects_owner_statement: boolean;
+
+  @ApiProperty({ example: false })
+  is_reimbursable: boolean;
+
   @ApiProperty({ example: false })
   is_recurring: boolean;
+
+  @ApiPropertyOptional({ example: 'posted', nullable: true })
+  accounting_status?: string | null;
+
+  @ApiPropertyOptional({ example: 91, nullable: true })
+  journal_entry_id?: number | null;
 }
 
 export class PaginatedExpensesResponseDto {
@@ -49,6 +91,18 @@ export class PaginatedExpensesResponseDto {
 export class ExpenseSummaryResponseDto {
   @ApiProperty({ example: '1200.00' })
   total_expenses: string;
+
+  @ApiProperty({ example: '700.00' })
+  paid_expenses: string;
+
+  @ApiProperty({ example: '500.00' })
+  pending_balance: string;
+
+  @ApiProperty({ example: '900.00' })
+  owner_deductions: string;
+
+  @ApiProperty({ example: '150.00' })
+  reimbursable_total: string;
 
   @ApiProperty({ example: { MAINTENANCE: '800.00', UTILITIES: '400.00' } })
   by_category: Record<string, string>;

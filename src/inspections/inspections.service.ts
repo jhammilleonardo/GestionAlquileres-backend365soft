@@ -12,6 +12,8 @@ import type { FilterInspectionsDto } from './dto/filter-inspections.dto';
 import { LifecycleNotificationsService } from '../lifecycle-notifications/lifecycle-notifications.service';
 import { InspectionPhotosService } from './inspection-photos.service';
 import { InspectionPdfService } from './inspection-pdf.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 
 export interface InspectionRow {
   id: number;
@@ -65,6 +67,7 @@ export class InspectionsService {
     private lifecycleNotificationsService: LifecycleNotificationsService,
     private inspectionPhotosService: InspectionPhotosService,
     private inspectionPdfService: InspectionPdfService,
+    private auditLogsService: AuditLogsService,
   ) {}
 
   async create(schemaName: string, dto: CreateInspectionDto, userId: number) {
@@ -88,22 +91,39 @@ export class InspectionsService {
       ],
     );
 
-    if (dto.items?.length) {
-      for (const item of dto.items) {
-        await this.dataSource.query(
-          `INSERT INTO ${q}.inspection_items
-             (inspection_id, area, item_name, condition, notes)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [
-            inspection.id,
-            item.area,
-            item.item_name,
-            item.condition ?? 'good',
-            item.notes ?? null,
-          ],
-        );
-      }
+    // Los ítems explícitos del DTO tienen prioridad; si no llegan y se indicó
+    // una plantilla, se expande su checklist (estilo Buildium).
+    const items: Array<{
+      area: string;
+      item_name: string;
+      condition?: string;
+      notes?: string | null;
+    }> = dto.items?.length
+      ? dto.items
+      : await this.resolveTemplateItems(schemaName, dto.template_id);
+
+    for (const item of items) {
+      await this.dataSource.query(
+        `INSERT INTO ${q}.inspection_items
+           (inspection_id, area, item_name, condition, notes)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          inspection.id,
+          item.area,
+          item.item_name,
+          item.condition ?? 'good',
+          item.notes ?? null,
+        ],
+      );
     }
+
+    await this.auditLogsService.log({
+      userId,
+      action: AuditAction.CREATED,
+      entityType: 'inspection',
+      entityId: inspection.id,
+      newValues: { type: dto.type, scheduled_date: dto.scheduled_date },
+    });
 
     return this.findOne(schemaName, inspection.id);
   }
@@ -293,7 +313,77 @@ export class InspectionsService {
       );
     }
 
-    void userId; // disponible para auditoría futura
+    const newStatus = dto.complete
+      ? 'completed'
+      : inspection.status === 'scheduled'
+        ? 'in_progress'
+        : inspection.status;
+    await this.auditLogsService.log({
+      userId,
+      action: dto.complete ? AuditAction.STATUS_CHANGED : AuditAction.UPDATED,
+      entityType: 'inspection',
+      entityId: inspectionId,
+      oldValues: { status: inspection.status },
+      newValues: { status: newStatus },
+    });
+
+    return this.findOne(schemaName, inspectionId);
+  }
+
+  async removeItem(
+    schemaName: string,
+    inspectionId: number,
+    itemId: number,
+    userId: number,
+  ) {
+    const q = quoteIdent(schemaName);
+
+    const [inspection] = await this.dataSource.query<
+      { id: number; status: string }[]
+    >(`SELECT id, status FROM ${q}.inspections WHERE id = $1`, [inspectionId]);
+
+    if (!inspection) {
+      throw new NotFoundException(`Inspección ${inspectionId} no encontrada`);
+    }
+
+    if (inspection.status === 'completed') {
+      throw new BadRequestException(
+        'No se pueden modificar ítems de una inspección completada',
+      );
+    }
+
+    const [item] = await this.dataSource.query<
+      { id: number; item_name: string; photos: string[] | null }[]
+    >(
+      `SELECT id, item_name, photos FROM ${q}.inspection_items
+       WHERE id = $1 AND inspection_id = $2`,
+      [itemId, inspectionId],
+    );
+
+    if (!item) {
+      throw new NotFoundException(
+        `Ítem ${itemId} no pertenece a la inspección ${inspectionId}`,
+      );
+    }
+
+    await this.dataSource.query(
+      `DELETE FROM ${q}.inspection_items WHERE id = $1`,
+      [itemId],
+    );
+
+    if (item.photos?.length) {
+      await this.inspectionPhotosService.deleteStoredPhotos(item.photos);
+    }
+
+    await this.auditLogsService.log({
+      userId,
+      action: AuditAction.UPDATED,
+      entityType: 'inspection',
+      entityId: inspectionId,
+      oldValues: { removed_item: item.item_name },
+      newValues: {},
+    });
+
     return this.findOne(schemaName, inspectionId);
   }
 
@@ -373,6 +463,27 @@ export class InspectionsService {
         unchanged_items: comparison.filter((c) => !c.degraded).length,
       },
     };
+  }
+
+  /** Lee los ítems base de una plantilla; devuelve [] si no se indicó una. */
+  private async resolveTemplateItems(
+    schemaName: string,
+    templateId?: number,
+  ): Promise<Array<{ area: string; item_name: string }>> {
+    if (!templateId) {
+      return [];
+    }
+    const q = quoteIdent(schemaName);
+    const [template] = await this.dataSource.query<
+      { items: Array<{ area: string; item_name: string }> }[]
+    >(`SELECT items FROM ${q}.inspection_templates WHERE id = $1`, [
+      templateId,
+    ]);
+
+    if (!template) {
+      throw new NotFoundException(`Plantilla ${templateId} no encontrada`);
+    }
+    return Array.isArray(template.items) ? template.items : [];
   }
 
   private conditionOrder(condition: string): number {

@@ -82,6 +82,9 @@ export class PropertyDetailResponseDto {
   @ApiProperty({ example: 'DISPONIBLE' })
   status: string;
 
+  @ApiPropertyOptional({ example: 'SHORT_TERM', nullable: true })
+  rental_type?: string | null;
+
   @ApiPropertyOptional({ example: 3000, nullable: true })
   monthly_rent?: number | null;
 

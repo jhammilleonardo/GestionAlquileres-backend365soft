@@ -150,6 +150,41 @@ describe('PropertyUpdateService', () => {
     expect(commitOrder).toBeLessThan(notificationOrder);
   });
 
+  it('propaga la configuracion basica de reserva a las unidades de corto plazo', async () => {
+    dataSource.query.mockResolvedValueOnce([{ schema_name: 'tenant_acme' }]);
+    queryRunner.query
+      .mockResolvedValueOnce([
+        {
+          id: 10,
+          title: 'Casa Central',
+          status: 'DISPONIBLE',
+          property_type_id: 1,
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await service.update(
+      10,
+      {
+        security_deposit_amount: 100,
+        deposit_to_confirm_pct: 30,
+        checkin_time: '14:00',
+        checkout_time: '10:00',
+      },
+      'acme',
+    );
+
+    const unitUpdate = queryRunner.query.mock.calls.find(([sql]) =>
+      String(sql).includes('UPDATE "tenant_acme".units'),
+    );
+    expect(unitUpdate).toBeDefined();
+    expect(unitUpdate?.[0]).toContain('deposit_amount = $1');
+    expect(unitUpdate?.[0]).toContain('deposit_to_confirm_pct = $2');
+    expect(unitUpdate?.[0]).toContain("rental_type IN ('SHORT_TERM', 'BOTH')");
+    expect(unitUpdate?.[1]).toEqual([100, 30, '14:00', '10:00', 10]);
+  });
+
   it('rejects subtype changes that do not belong to the target type', async () => {
     dataSource.query.mockResolvedValueOnce([{ schema_name: 'tenant_acme' }]);
     queryRunner.query

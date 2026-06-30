@@ -211,7 +211,7 @@ export class MessagesService {
     );
 
     const message = await this.findMessageWithAttachments(messageId);
-    this.emitMessageEvent(tenantSlug, senderId, recipientId, message);
+    await this.emitMessageEvent(tenantSlug, senderId, recipientId, message);
     return message;
   }
 
@@ -307,16 +307,27 @@ export class MessagesService {
     return row;
   }
 
-  private emitMessageEvent(
+  private async emitMessageEvent(
     tenantSlug: string | undefined,
     senderId: number,
     recipientId: number,
     message: MessageRow,
-  ): void {
+  ): Promise<void> {
     if (!tenantSlug) {
       return;
     }
 
+    const [sender] = await this.dataSource.query<Array<{ name: string }>>(
+      `SELECT name FROM "user" WHERE id = $1`,
+      [senderId],
+    );
+    const senderName = sender?.name ?? '';
+    const hasAttachments = (message.attachments?.length ?? 0) > 0;
+    // Preview corto para la notificación; si solo hay adjuntos, se deja vacío y
+    // el cliente muestra un texto genérico ("te envió un archivo").
+    const preview = (message.body ?? '').slice(0, 80);
+
+    // Al destinatario: con metadatos para notificar (nombre + preview).
     this.notificationsGateway.emitUserEvent(
       tenantSlug,
       recipientId,
@@ -326,9 +337,13 @@ export class MessagesService {
         peerUserId: senderId,
         senderId,
         recipientId,
+        senderName,
+        preview,
+        hasAttachments,
       },
     );
 
+    // Al emisor: solo para sincronizar su propia vista (sin notificar).
     this.notificationsGateway.emitUserEvent(
       tenantSlug,
       senderId,

@@ -23,7 +23,7 @@ export class MaintenanceRequest {
 
   @Column({
     type: 'enum',
-    enum: ['MAINTENANCE', 'GENERAL'],
+    enum: ['MAINTENANCE', 'GENERAL', 'CLEANING'],
     default: 'MAINTENANCE',
   })
   request_type: string;
@@ -89,8 +89,11 @@ export class MaintenanceRequest {
   @Column()
   tenant_id: number;
 
-  @Column()
-  contract_id: number;
+  @Column({ type: 'int', nullable: true })
+  contract_id: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  reservation_id: number | null;
 
   @Column()
   property_id: number;

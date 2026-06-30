@@ -11,7 +11,11 @@ import {
   HttpCode,
   HttpStatus,
   ParseIntPipe,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiOperation,
@@ -23,10 +27,16 @@ import {
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { ExpensesService } from './expenses.service';
 import type { ExpenseSummary } from './expenses.service';
-import { CreateExpenseDto, UpdateExpenseDto, ExpenseFiltersDto } from './dto';
+import {
+  CreateExpenseDto,
+  CreateExpensePaymentDto,
+  UpdateExpenseDto,
+  ExpenseFiltersDto,
+} from './dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
@@ -38,6 +48,9 @@ import {
   ExpenseSummaryResponseDto,
   PaginatedExpensesResponseDto,
 } from './dto/expense-response.dto';
+import { StorageService } from '../common/storage/storage.service';
+import { receiptMulterConfig } from '../common/utils/multer.config';
+import { assertUploadedFilesMatchContent } from '../common/utils/upload-content-validation';
 
 interface JwtUser {
   userId: number;
@@ -50,7 +63,10 @@ interface JwtUser {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller(':slug/admin/expenses')
 export class AdminExpensesController {
-  constructor(private readonly expensesService: ExpensesService) {}
+  constructor(
+    private readonly expensesService: ExpensesService,
+    private readonly storageService: StorageService,
+  ) {}
 
   @Post()
   @RequirePermission('expenses', 'create')
@@ -64,6 +80,66 @@ export class AdminExpensesController {
     @CurrentUser() user: JwtUser,
   ): Promise<Expense> {
     return this.expensesService.createExpense(createExpenseDto, user.userId);
+  }
+
+  @Post(':id/receipt')
+  @RequirePermission('expenses', 'edit')
+  @UseInterceptors(FileInterceptor('receipt', receiptMulterConfig))
+  @ApiOperation({ summary: 'Subir comprobante privado para un gasto' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['receipt'],
+      properties: {
+        receipt: {
+          type: 'string',
+          format: 'binary',
+          description: 'Imagen o PDF, maximo 10 MB.',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({ type: ExpenseResponseDto })
+  async uploadReceipt(
+    @Param('slug') slug: string,
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() receipt: Express.Multer.File,
+    @CurrentUser() user: JwtUser,
+  ): Promise<Expense> {
+    if (!receipt) {
+      throw new BadRequestException('Debe adjuntar un comprobante');
+    }
+
+    await assertUploadedFilesMatchContent(receipt);
+    const storagePath = await this.storageService.persistUploadedFile(
+      receipt,
+      this.storageService.buildStoragePath(
+        'receipts',
+        slug,
+        receipt.filename,
+      ),
+      'private',
+    );
+
+    return this.expensesService.attachReceipt(id, storagePath, user.userId);
+  }
+
+  @Post(':id/payments')
+  @RequirePermission('expenses', 'edit')
+  @ApiOperation({ summary: 'Registrar pago o abono de un gasto pendiente' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: CreateExpensePaymentDto })
+  @ApiOkResponse({ type: ExpenseResponseDto })
+  async registerPayment(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateExpensePaymentDto,
+    @CurrentUser() user: JwtUser,
+  ): Promise<Expense> {
+    return this.expensesService.registerExpensePayment(id, dto, user.userId);
   }
 
   @Get()

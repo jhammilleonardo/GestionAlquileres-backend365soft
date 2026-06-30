@@ -4,6 +4,7 @@ import { Logger } from '@nestjs/common';
 import { AuditLogsService } from './audit-logs.service';
 import { AuditAction } from './enums/audit-action.enum';
 import { QueryAuditLogsDto } from './dto/query-audit-logs.dto';
+import { tenantConnectionStore } from '../common/tenant/tenant-connection.store';
 
 type QueryCall = [string, unknown[]];
 function queryParams(mock: jest.Mock, callIndex: number): unknown[] {
@@ -108,6 +109,63 @@ describe('AuditLogsService', () => {
       const params = queryParams(mockQuery, 0);
       expect(params[7]).toBe('Mozilla/5.0');
     });
+
+    it('debe resolver autor, ip y user-agent del contexto de request cuando se omiten', async () => {
+      mockQuery.mockResolvedValueOnce([]);
+      jest.spyOn(tenantConnectionStore, 'getStore').mockReturnValue({
+        queryRunner: null,
+        schemaName: 'tenant_acme',
+        actor: { userId: 99, ip: '10.0.0.5', userAgent: 'Edge/120' },
+      });
+
+      await service.log({
+        action: AuditAction.UPDATED,
+        entityType: 'property',
+        entityId: 7,
+      });
+
+      const params = queryParams(mockQuery, 0);
+      expect(params[0]).toBe(99); // user_id desde el actor
+      expect(params[6]).toBe('10.0.0.5'); // ip_address desde el actor
+      expect(params[7]).toBe('Edge/120'); // user_agent desde el actor
+    });
+
+    it('debe priorizar los params explícitos sobre el contexto de request', async () => {
+      mockQuery.mockResolvedValueOnce([]);
+      jest.spyOn(tenantConnectionStore, 'getStore').mockReturnValue({
+        queryRunner: null,
+        schemaName: 'tenant_acme',
+        actor: { userId: 99, ip: '10.0.0.5', userAgent: 'Edge/120' },
+      });
+
+      await service.log({
+        userId: 1,
+        action: AuditAction.LOGGED_IN,
+        entityType: 'auth',
+        entityId: 1,
+        ipAddress: '203.0.113.9',
+      });
+
+      const params = queryParams(mockQuery, 0);
+      expect(params[0]).toBe(1);
+      expect(params[6]).toBe('203.0.113.9');
+    });
+
+    it('no debe insertar cuando no hay autor resoluble', async () => {
+      jest.spyOn(tenantConnectionStore, 'getStore').mockReturnValue({
+        queryRunner: null,
+        schemaName: 'tenant_acme',
+        actor: null,
+      });
+
+      await service.log({
+        action: AuditAction.UPDATED,
+        entityType: 'property',
+        entityId: 7,
+      });
+
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
   });
 
   describe('findAll()', () => {
@@ -208,6 +266,51 @@ describe('AuditLogsService', () => {
       expect(countSql).toContain('user_id = $');
       const countParams = queryParams(mockQuery, 0);
       expect(countParams).toContain(7);
+    });
+
+    it('debe resolver etiqueta legible para las nuevas entidades', async () => {
+      mockQuery
+        .mockResolvedValueOnce([{ total: '0' }])
+        .mockResolvedValueOnce([]);
+
+      await service.findAll({ entity_type: 'property' } as QueryAuditLogsDto);
+
+      const dataSql = querySql(mockQuery, 1);
+      expect(dataSql).toContain("WHEN 'property'");
+      expect(dataSql).toContain("WHEN 'vendor'");
+      expect(dataSql).toContain("WHEN 'auth'");
+      expect(dataSql).toContain("WHEN 'expense'");
+    });
+  });
+
+  describe('exportCsv()', () => {
+    it('debe generar CSV con encabezados y filas escapadas', async () => {
+      mockQuery.mockResolvedValueOnce([
+        {
+          timestamp: new Date('2026-01-02T03:04:05.000Z'),
+          user_name: 'Ana, "la jefa"',
+          user_email: 'ana@acme.com',
+          user_role: 'ADMIN',
+          action: 'created',
+          entity_type: 'property',
+          entity_id: 7,
+          entity_label: 'Casa Central',
+          ip_address: '10.0.0.5',
+          user_agent: 'Edge/120',
+        },
+      ]);
+
+      const csv = await service.exportCsv({} as QueryAuditLogsDto);
+      const lines = csv.split('\r\n');
+
+      expect(lines[0]).toContain('timestamp,user_name');
+      // Comillas internas escapadas como dobles comillas.
+      expect(lines[1]).toContain('"Ana, ""la jefa"""');
+      expect(lines[1]).toContain('"10.0.0.5"');
+      // Aplica LIMIT de exportación (sin paginar).
+      const dataSql = querySql(mockQuery, 0);
+      expect(dataSql).toContain('LIMIT');
+      expect(dataSql).not.toContain('OFFSET');
     });
   });
 });

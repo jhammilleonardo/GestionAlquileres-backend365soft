@@ -22,6 +22,7 @@ describe('PropertyLookupService', () => {
           property_type_id: 1,
           property_subtype_id: 2,
           status: 'DISPONIBLE',
+          rental_type: 'SHORT_TERM',
           images: [],
           amenities: [],
           included_items: [],
@@ -32,11 +33,14 @@ describe('PropertyLookupService', () => {
         },
       ])
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
     await expect(service.findOne(10, 'acme')).resolves.toMatchObject({
       id: 10,
       title: 'Casa Central',
+      rental_type: 'SHORT_TERM',
+      units: [],
       property_type: {
         id: 1,
         name: 'Casa',

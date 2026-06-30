@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { Money, allocate, MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
 export interface SplitCalculation {
   grossRent: number;
@@ -48,12 +49,18 @@ export class SplitPaymentService {
     commissionPercentage: number,
     maintenanceDeductions: number,
   ): SplitCalculation {
-    const commissionAmount = this.round2(
-      (grossRent * commissionPercentage) / 100,
-    );
-    const netAmount = this.round2(
-      grossRent - commissionAmount - maintenanceDeductions,
-    );
+    // Aritmética exacta en decimal (sin float). La comisión es un cargo: se
+    // redondea a 2 decimales con la política central. El neto se deriva exacto.
+    const commissionAmount = new MoneyDecimal(grossRent)
+      .times(commissionPercentage)
+      .div(100)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
+    const netAmount = new MoneyDecimal(grossRent)
+      .minus(commissionAmount)
+      .minus(maintenanceDeductions)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
     return { grossRent, commissionAmount, maintenanceDeductions, netAmount };
   }
 
@@ -162,14 +169,24 @@ export class SplitPaymentService {
         );
       }
 
+      // 4. Repartir con "largest remainder": la suma de las partes es EXACTA-
+      //    mente igual al total (no se pierde ni se crea un centavo entre los
+      //    propietarios). Reemplaza el redondeo por-propietario que descuadraba.
+      const ratios = owners.map((o) => Number(o.ownership_percentage));
+      const grossRents = allocate(
+        Money.of(String(totalAmount), currency),
+        ratios,
+      );
+      const maintenances = allocate(
+        Money.of(String(maintenanceDeductions), currency),
+        ratios,
+      );
+
       // 4. Calcular y persistir split por propietario
-      for (const owner of owners) {
-        const grossRent = this.round2(
-          (totalAmount * owner.ownership_percentage) / 100,
-        );
-        const ownerMaintenance = this.round2(
-          (maintenanceDeductions * owner.ownership_percentage) / 100,
-        );
+      for (let i = 0; i < owners.length; i++) {
+        const owner = owners[i];
+        const grossRent = grossRents[i].toNumber();
+        const ownerMaintenance = maintenances[i].toNumber();
         const split = this.calculateSplit(
           grossRent,
           commissionPercentage,
@@ -341,8 +358,10 @@ export class SplitPaymentService {
     }
   }
 
-  /** Redondea a 2 decimales usando multiplicación entera para evitar imprecisión float. */
+  /** Redondea a 2 decimales con decimal exacto (sin float) y política central. */
   round2(value: number): number {
-    return Math.round(value * 100) / 100;
+    return new MoneyDecimal(value)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
   }
 }

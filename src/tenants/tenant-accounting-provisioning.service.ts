@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
 
-const ACCOUNTING_SCHEMA_VERSION = 2;
+const ACCOUNTING_SCHEMA_VERSION = 3;
 
 interface ChartAccountSeed {
   code: string;
@@ -168,6 +168,56 @@ export class TenantAccountingProvisioningService {
     `);
 
     await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.bank_accounts (
+        id                    SERIAL PRIMARY KEY,
+        name                  VARCHAR(160) NOT NULL,
+        bank_name             VARCHAR(160),
+        account_number_last4  VARCHAR(4),
+        currency              VARCHAR(3) NOT NULL DEFAULT 'BOB',
+        gl_account_id         INTEGER NOT NULL REFERENCES ${q}.chart_of_accounts(id),
+        is_active             BOOLEAN NOT NULL DEFAULT true,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.bank_transactions (
+        id                      SERIAL PRIMARY KEY,
+        bank_account_id         INTEGER NOT NULL REFERENCES ${q}.bank_accounts(id) ON DELETE CASCADE,
+        transaction_date        DATE NOT NULL,
+        description             TEXT NOT NULL,
+        amount                  NUMERIC(14,2) NOT NULL,
+        currency                VARCHAR(3) NOT NULL DEFAULT 'BOB',
+        external_id             VARCHAR(120),
+        matched_journal_line_id INTEGER REFERENCES ${q}.journal_lines(id) ON DELETE SET NULL,
+        status                  VARCHAR(20) NOT NULL DEFAULT 'imported'
+          CHECK (status IN ('imported', 'matched', 'ignored')),
+        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.bank_reconciliations (
+        id                 SERIAL PRIMARY KEY,
+        bank_account_id    INTEGER NOT NULL REFERENCES ${q}.bank_accounts(id) ON DELETE CASCADE,
+        period_start       DATE NOT NULL,
+        period_end         DATE NOT NULL,
+        statement_balance  NUMERIC(14,2) NOT NULL DEFAULT 0,
+        book_balance       NUMERIC(14,2) NOT NULL DEFAULT 0,
+        difference         NUMERIC(14,2) NOT NULL DEFAULT 0,
+        status             VARCHAR(20) NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'reconciled', 'void')),
+        reconciled_at      TIMESTAMPTZ,
+        reconciled_by      INTEGER,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (bank_account_id, period_start, period_end)
+      );
+    `);
+
+    await this.dataSource.query(`
       CREATE TABLE IF NOT EXISTS ${q}.accounting_schema_version (
         id             INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
         version        INTEGER NOT NULL,
@@ -195,6 +245,17 @@ export class TenantAccountingProvisioningService {
         ON ${q}.accounting_outbox(status, next_retry_at);
       CREATE INDEX IF NOT EXISTS idx_accounting_periods_status
         ON ${q}.accounting_periods(status, period_year, period_month);
+      CREATE INDEX IF NOT EXISTS idx_bank_accounts_active
+        ON ${q}.bank_accounts(is_active);
+      CREATE INDEX IF NOT EXISTS idx_bank_transactions_account_date
+        ON ${q}.bank_transactions(bank_account_id, transaction_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_bank_transactions_status
+        ON ${q}.bank_transactions(status);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_bank_transactions_external_unique
+        ON ${q}.bank_transactions(bank_account_id, external_id)
+        WHERE external_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_bank_reconciliations_account_period
+        ON ${q}.bank_reconciliations(bank_account_id, period_end DESC);
     `);
   }
 

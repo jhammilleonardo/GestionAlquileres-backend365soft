@@ -156,10 +156,24 @@ export class ReservationPaymentService {
     newAmount: number,
   ): Promise<void> {
     const rows = (await queryRunner.query(
-      `SELECT COALESCE(SUM(amount), 0)::text AS paid
-         FROM ${q}.payments
-        WHERE reservation_id = $1
-          AND status IN ('PENDING', 'PROCESSING', 'APPROVED')`,
+      `SELECT COALESCE(
+                SUM(
+                  CASE
+                    WHEN p.status = 'APPROVED'
+                      THEN GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))
+                    ELSE p.amount
+                  END
+                ),
+                0
+              )::text AS paid
+         FROM ${q}.payments p
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(SUM(pr.amount), 0)::numeric AS total_refunded
+             FROM ${q}.payment_refunds pr
+            WHERE pr.payment_id = p.id
+         ) ref ON true
+        WHERE p.reservation_id = $1
+          AND p.status IN ('PENDING', 'PROCESSING', 'APPROVED')`,
       [reservationId],
     )) as Array<{ paid: string }>;
 

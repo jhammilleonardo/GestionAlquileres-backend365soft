@@ -6,6 +6,7 @@ import {
   CSRF_COOKIE,
   CSRF_HEADER,
   REFRESH_TOKEN_COOKIE,
+  allSessionCookieNames,
 } from './auth-cookie.util';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -29,8 +30,12 @@ export class CsrfMiddleware implements NestMiddleware {
       return next();
     }
 
-    const cookies = (req as { cookies?: Record<string, string> }).cookies;
-    if (!cookies?.[ACCESS_TOKEN_COOKIE] && !cookies?.[REFRESH_TOKEN_COOKIE]) {
+    const cookies = (req as { cookies?: Record<string, string> }).cookies ?? {};
+    if (
+      !cookies?.[ACCESS_TOKEN_COOKIE] &&
+      !cookies?.[REFRESH_TOKEN_COOKIE] &&
+      !allSessionCookieNames().some((name) => cookies?.[name])
+    ) {
       // Sin sesión por cookie: la autorización la maneja el guard de la ruta.
       return next();
     }

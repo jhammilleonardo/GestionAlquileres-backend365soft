@@ -5,6 +5,7 @@ import {
   ACCESS_TOKEN_COOKIE,
   CSRF_COOKIE,
   REFRESH_TOKEN_COOKIE,
+  refreshTokenCookieName,
 } from './auth-cookie.util';
 
 describe('CsrfMiddleware', () => {
@@ -74,6 +75,16 @@ describe('CsrfMiddleware', () => {
       method: 'POST',
       headers: { 'x-csrf-token': 'match' },
       cookies: { [REFRESH_TOKEN_COOKIE]: 'refresh', [CSRF_COOKIE]: 'match' },
+    });
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('protege refresh con cookies de contexto', () => {
+    run({
+      method: 'POST',
+      headers: { 'x-csrf-token': 'match' },
+      cookies: { [refreshTokenCookieName('admin')]: 'refresh', [CSRF_COOKIE]: 'match' },
     });
 
     expect(next).toHaveBeenCalledTimes(1);

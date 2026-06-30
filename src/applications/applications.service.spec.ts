@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApplicationsService } from './applications.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -108,6 +109,7 @@ describe('ApplicationsService — screening', () => {
         ApplicationScreeningDecisionService,
         ApplicationScreeningService,
         ApplicationStatusService,
+        { provide: AuditLogsService, useValue: { log: jest.fn() } },
         { provide: DataSource, useValue: dataSource },
         { provide: NotificationsService, useValue: notificationsService },
         { provide: UsersService, useValue: {} },

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { QueryRunner } from 'typeorm';
 import { PaymentStatus } from '../payments/enums';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
 interface ApprovedPaymentRow {
   id: number;
@@ -39,9 +40,12 @@ export class ReservationRefundService {
     let totalRefunded = 0;
 
     for (const payment of payments) {
-      const refundAmount = this.round2(
-        (Number(payment.amount) * refundPercentage) / 100,
-      );
+      // Reembolso exacto (decimal, sin float): monto * porcentaje / 100.
+      const refundAmount = new MoneyDecimal(payment.amount)
+        .times(refundPercentage)
+        .div(100)
+        .toDecimalPlaces(2, MONEY_ROUNDING)
+        .toNumber();
       if (refundAmount <= 0) continue;
 
       await queryRunner.query(
@@ -129,6 +133,8 @@ export class ReservationRefundService {
   }
 
   private round2(value: number): number {
-    return Math.round((value + Number.EPSILON) * 100) / 100;
+    return new MoneyDecimal(value)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
   }
 }

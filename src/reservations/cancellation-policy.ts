@@ -23,10 +23,12 @@ export interface RefundComputation {
     | 'no_refund_policy';
 }
 
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
+
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return new MoneyDecimal(value).toDecimalPlaces(2, MONEY_ROUNDING).toNumber();
 }
 
 /**
@@ -43,7 +45,13 @@ export function computeRefundableAmount(
 ): number {
   const rentPaid = Math.min(paid, rentPortion);
   const depositPaid = Math.max(0, paid - rentPortion);
-  return round2((rentPaid * policyPct) / 100 + depositPaid);
+  // Reembolso exacto (decimal): parte de alquiler según política + depósito 100%.
+  return new MoneyDecimal(rentPaid)
+    .times(policyPct)
+    .div(100)
+    .plus(depositPaid)
+    .toDecimalPlaces(2, MONEY_ROUNDING)
+    .toNumber();
 }
 
 /**

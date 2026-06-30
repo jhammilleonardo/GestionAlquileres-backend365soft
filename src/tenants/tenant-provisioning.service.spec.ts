@@ -65,6 +65,7 @@ describe('TenantProvisioningService', () => {
     tenantInspectionsProvisioningService = mockService(['ensureInspections']);
     tenantMaintenanceProvisioningService = mockService([
       'ensureMaintenance',
+      'ensureReservationSupport',
       'ensureStageFields',
       'ensureStageHistory',
       'ensureVendors',
@@ -174,6 +175,9 @@ describe('TenantProvisioningService', () => {
     ).toHaveBeenCalledWith(schemaName);
     expect(
       tenantMaintenanceProvisioningService.ensureVendors,
+    ).toHaveBeenCalledWith(schemaName);
+    expect(
+      tenantMaintenanceProvisioningService.ensureReservationSupport,
     ).toHaveBeenCalledWith(schemaName);
     expect(
       tenantNotificationsProvisioningService.ensureNotifications,
@@ -289,6 +293,9 @@ describe('TenantProvisioningService', () => {
     ).toHaveBeenCalledWith(schemaName);
     expect(
       tenantAccountingProvisioningService.ensureAccounting,
+    ).toHaveBeenCalledWith(schemaName);
+    expect(
+      tenantMaintenanceProvisioningService.ensureReservationSupport,
     ).toHaveBeenCalledWith(schemaName);
   });
 });

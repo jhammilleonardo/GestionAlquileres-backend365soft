@@ -105,6 +105,10 @@ export class TenantConfigProvisioningService {
         grace_days_late_fee INTEGER NOT NULL DEFAULT 0,
         late_fee_percentage NUMERIC(5,2) NOT NULL DEFAULT 0,
         occupancy_tax_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+        accounting_basis VARCHAR(20) NOT NULL DEFAULT 'cash',
+        tax_id VARCHAR(40),
+        legal_name VARCHAR(160),
+        tax_regime VARCHAR(80),
         custom_expense_categories JSONB NOT NULL DEFAULT '[]',
         setup_completed BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMP NOT NULL DEFAULT now(),
@@ -117,6 +121,13 @@ export class TenantConfigProvisioningService {
     await this.dataSource.query(
       `ALTER TABLE ${q}.tenant_config
          ADD COLUMN IF NOT EXISTS occupancy_tax_pct NUMERIC(5,2) NOT NULL DEFAULT 0`,
+    );
+    await this.dataSource.query(
+      `ALTER TABLE ${q}.tenant_config
+         ADD COLUMN IF NOT EXISTS accounting_basis VARCHAR(20) NOT NULL DEFAULT 'cash',
+         ADD COLUMN IF NOT EXISTS tax_id VARCHAR(40),
+         ADD COLUMN IF NOT EXISTS legal_name VARCHAR(160),
+         ADD COLUMN IF NOT EXISTS tax_regime VARCHAR(80)`,
     );
 
     const defaults = TENANT_DEFAULTS_BY_COUNTRY[country];

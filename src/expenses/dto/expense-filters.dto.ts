@@ -4,10 +4,15 @@ import {
   IsEnum,
   IsDateString,
   IsString,
+  IsBoolean,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { ExpenseCategoryEnum } from '../enums/expense-category.enum';
+import { Transform, Type } from 'class-transformer';
+import {
+  ExpensePaymentStatusEnum,
+  ExpenseResponsibilityEnum,
+  ExpenseScopeEnum,
+} from '../enums/expense-category.enum';
 
 export class ExpenseFiltersDto {
   @ApiPropertyOptional({
@@ -30,17 +35,51 @@ export class ExpenseFiltersDto {
 
   @ApiPropertyOptional({
     description: 'Filtrar por categoría',
-    enum: ExpenseCategoryEnum,
+    example: 'MAINTENANCE',
   })
-  @IsEnum(ExpenseCategoryEnum)
+  @IsString()
   @IsOptional()
-  category?: ExpenseCategoryEnum;
+  category?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar por ámbito del gasto',
+    enum: ExpenseScopeEnum,
+  })
+  @IsEnum(ExpenseScopeEnum)
+  @IsOptional()
+  expense_scope?: ExpenseScopeEnum;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar por responsable económico',
+    enum: ExpenseResponsibilityEnum,
+  })
+  @IsEnum(ExpenseResponsibilityEnum)
+  @IsOptional()
+  responsibility?: ExpenseResponsibilityEnum;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar por estado de pago',
+    enum: ExpensePaymentStatusEnum,
+  })
+  @IsEnum(ExpensePaymentStatusEnum)
+  @IsOptional()
+  payment_status?: ExpensePaymentStatusEnum;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar solo gastos reembolsables',
+    example: true,
+  })
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  @IsOptional()
+  is_reimbursable?: boolean;
 
   @ApiPropertyOptional({
     description: 'Filtrar solo gastos recurrentes',
     example: false,
   })
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
   @IsOptional()
   is_recurring?: boolean;
 

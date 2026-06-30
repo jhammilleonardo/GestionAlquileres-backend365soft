@@ -20,6 +20,7 @@ import { ContractsModule } from '../contracts/contracts.module';
 import { BlacklistModule } from '../blacklist/blacklist.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { StorageModule } from '../common/storage/storage.module';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { StorageModule } from '../common/storage/storage.module';
     BlacklistModule,
     TenantsModule,
     StorageModule,
+    AuditLogsModule,
   ],
   controllers: [ApplicationsController],
   providers: [

@@ -248,6 +248,46 @@ describe('SplitPaymentService — executeSplit (transacción atómica)', () => {
     expect(insertCall).toBeUndefined();
   });
 
+  it('reparte entre 3 propietarios (33.33/33.33/33.34) sin perder ni un centavo', async () => {
+    const owners = [
+      { rental_owner_id: 1, owner_name: 'A', ownership_percentage: 33.33 },
+      { rental_owner_id: 2, owner_name: 'B', ownership_percentage: 33.33 },
+      { rental_owner_id: 3, owner_name: 'C', ownership_percentage: 33.34 },
+    ];
+    const splitAmounts: number[] = [];
+    const qr = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockImplementation((sql: string, params?: unknown[]) => {
+        if (sql.includes('tenant_config'))
+          return Promise.resolve([{ commission_percentage: 0 }]);
+        if (sql.includes('maintenance_requests'))
+          return Promise.resolve([{ total: '0' }]);
+        if (sql.includes('property_owners')) return Promise.resolve(owners);
+        if (sql.includes('INSERT INTO') && sql.includes('payment_splits')) {
+          splitAmounts.push(Number(params?.[4]));
+          return Promise.resolve([]);
+        }
+        return Promise.resolve([]);
+      }),
+    };
+
+    ds = {
+      createQueryRunner: jest.fn().mockReturnValue(qr),
+    } as unknown as jest.Mocked<Pick<DataSource, 'createQueryRunner'>>;
+    service = new SplitPaymentService(ds as unknown as DataSource);
+
+    // Monto con centavo impar: el viejo redondeo por-propietario lo descuadraba.
+    await service.executeSplit({ ...BASE_PARAMS, totalAmount: 1000.01 });
+
+    expect(splitAmounts).toHaveLength(3);
+    const sum = splitAmounts.reduce((a, b) => a + b, 0);
+    expect(Number(sum.toFixed(2))).toBe(1000.01);
+  });
+
   it('sin propietarios registrados termina sin error ni commit de datos', async () => {
     let call = 0;
     const qr = {

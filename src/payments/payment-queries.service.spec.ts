@@ -46,6 +46,19 @@ describe('PaymentQueriesService', () => {
     );
   });
 
+  it('getTenantPayments calcula paid_amount de reserva neto de reembolsos', async () => {
+    dataSource.query.mockResolvedValueOnce([]);
+
+    await service.getTenantPayments(7, 'acme');
+
+    const sql = dataSource.query.mock.calls[0][0];
+    expect(sql).toContain('payment_refunds pr');
+    expect(sql).toContain(
+      'SUM(GREATEST(0, rp.amount - COALESCE(ref.total_refunded, 0)))',
+    );
+    expect(sql).toContain("rp.status = 'APPROVED'");
+  });
+
   it('getAllPayments parametriza filtros y limita el ordenamiento a campos permitidos', async () => {
     dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([
       {
@@ -83,7 +96,63 @@ describe('PaymentQueriesService', () => {
     );
     const firstSql = dataSource.query.mock.calls[0][0];
     expect(firstSql).toContain('ORDER BY p.amount ASC');
+    expect(firstSql).toContain('LEFT JOIN "tenant_acme".reservations r ON p.reservation_id = r.id');
+    expect(firstSql).toContain('payment_refunds pr');
+    expect(firstSql).toContain(
+      'SUM(GREATEST(0, rp.amount - COALESCE(ref.total_refunded, 0)))',
+    );
+    expect(firstSql).toContain('END as reservation');
     expect(firstSql).not.toContain('SET search_path');
+  });
+
+  it('getTenantStats reporta monto aprobado neto de reembolsos parciales', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      {
+        total_payments: 1,
+        total_pending: 0,
+        total_processing: 0,
+        total_approved: 1,
+        total_rejected: 0,
+        total_failed: 0,
+        total_amount_pending: 0,
+        total_amount_approved: 80,
+        total_amount_failed: 0,
+      },
+    ]);
+
+    await service.getTenantStats(7, 'acme');
+
+    const sql = dataSource.query.mock.calls[0][0];
+    expect(sql).toContain('payment_refunds pr');
+    expect(sql).toContain(
+      'SUM(GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))) FILTER (WHERE p.status = \'APPROVED\')',
+    );
+    expect(sql).toContain('WHERE p.tenant_id = $1');
+  });
+
+  it('getAdminStats reporta monto aprobado neto de reembolsos parciales', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      {
+        total_payments: 1,
+        total_pending: 0,
+        total_processing: 0,
+        total_approved: 1,
+        total_rejected: 0,
+        total_failed: 0,
+        total_amount_pending: 0,
+        total_amount_approved: 80,
+        total_amount_failed: 0,
+      },
+    ]);
+
+    await service.getAdminStats('tenant_acme');
+
+    const sql = dataSource.query.mock.calls[0][0];
+    expect(sql).toContain('FROM "tenant_acme".payments p');
+    expect(sql).toContain('payment_refunds pr');
+    expect(sql).toContain(
+      'SUM(GREATEST(0, p.amount - COALESCE(ref.total_refunded, 0))) FILTER (WHERE p.status = \'APPROVED\')',
+    );
   });
 
   it('exportPaymentsCsv escapa comillas y usa schema explícito', async () => {

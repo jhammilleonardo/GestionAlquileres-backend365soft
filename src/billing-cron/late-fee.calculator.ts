@@ -2,14 +2,23 @@
  * Funciones puras para el cálculo de mora y ventanas de tiempo de cron.
  * Separadas del servicio para facilitar tests unitarios sin DI de NestJS.
  */
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
-/** Calcula el monto de mora. Retorna 0 si algún argumento no es positivo. */
+/**
+ * Calcula el monto de mora con aritmética decimal exacta (sin float). Retorna 0
+ * si algún argumento no es positivo. La mora es un cargo: se redondea a 2
+ * decimales con la política central (HALF_UP).
+ */
 export function calculateLateFee(
   principalAmount: number,
   lateFeePercentage: number,
 ): number {
   if (principalAmount <= 0 || lateFeePercentage <= 0) return 0;
-  return Math.round(principalAmount * (lateFeePercentage / 100) * 100) / 100;
+  return new MoneyDecimal(principalAmount)
+    .times(lateFeePercentage)
+    .div(100)
+    .toDecimalPlaces(2, MONEY_ROUNDING)
+    .toNumber();
 }
 
 /**

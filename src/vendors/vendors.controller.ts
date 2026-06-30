@@ -29,8 +29,8 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import {
-  VendorAccountResponseDto,
   VendorHistoryResponseDto,
+  VendorInviteResponseDto,
   VendorMessageResponseDto,
   VendorResponseDto,
 } from './dto/vendor-response.dto';
@@ -115,19 +115,21 @@ export class VendorsController {
     return this.vendorsService.getHistory(id);
   }
 
-  @Post(':id/account')
+  @Post(':id/invite')
   @RequirePermission('vendors', 'edit')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Crear cuenta de acceso (rol VENDOR) para el proveedor',
+    summary: 'Invitar al proveedor a su portal (rol VENDOR)',
     description:
-      'Genera credenciales temporales. El proveedor podrá entrar en /:slug/vendor/login.',
+      'Asegura la cuenta del proveedor y genera un enlace de un solo uso (caduca en 48 h) ' +
+      'para que defina su propia contraseña. El admin nunca ve la contraseña; comparte el ' +
+      'enlace manualmente o por correo si SendGrid está configurado.',
   })
   @ApiParam({ name: 'slug', description: 'Identificador del tenant' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiCreatedResponse({ type: VendorAccountResponseDto })
+  @ApiCreatedResponse({ type: VendorInviteResponseDto })
   @ApiNotFoundResponse({ description: 'Proveedor no encontrado' })
-  createAccount(@Param('id', ParseIntPipe) id: number) {
-    return this.vendorsService.createVendorAccount(id);
+  invite(@Param('id', ParseIntPipe) id: number) {
+    return this.vendorsService.inviteVendor(id);
   }
 }

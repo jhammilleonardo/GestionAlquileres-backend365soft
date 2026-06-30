@@ -10,6 +10,7 @@ import { PropertyCatalogService } from './property-catalog.service';
 import { PropertyCreationService } from './property-creation.service';
 import { PropertyUpdateService } from './property-update.service';
 import { PropertyPublicCatalogService } from './property-public-catalog.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 describe('PropertiesService', () => {
   let service: PropertiesService;
@@ -93,6 +94,7 @@ describe('PropertiesService', () => {
       propertyCreationService as unknown as PropertyCreationService,
       propertyUpdateService as unknown as PropertyUpdateService,
       propertyPublicCatalogService as unknown as PropertyPublicCatalogService,
+      { log: jest.fn() } as unknown as AuditLogsService,
     );
   });
 

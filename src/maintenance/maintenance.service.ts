@@ -11,6 +11,8 @@ import { MaintenanceStageService } from './maintenance-stage.service';
 import { MaintenanceStatsService } from './maintenance-stats.service';
 import { MaintenanceUpdateService } from './maintenance-update.service';
 import { MaintenanceVendorsService } from './maintenance-vendors.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 import type {
   MaintenanceAttachmentRow,
   MaintenanceMessageRow,
@@ -31,6 +33,7 @@ export class MaintenanceService {
     private maintenanceStatsService: MaintenanceStatsService,
     private maintenanceUpdateService: MaintenanceUpdateService,
     private maintenanceVendorsService: MaintenanceVendorsService,
+    private auditLogsService: AuditLogsService,
   ) {}
 
   /**
@@ -80,7 +83,19 @@ export class MaintenanceService {
     id: number,
     updateMaintenanceDto: UpdateMaintenanceDto,
   ): Promise<MaintenanceRequestRow> {
-    return this.maintenanceUpdateService.update(id, updateMaintenanceDto);
+    const result = await this.maintenanceUpdateService.update(
+      id,
+      updateMaintenanceDto,
+    );
+    await this.auditLogsService.log({
+      action: updateMaintenanceDto.status
+        ? AuditAction.STATUS_CHANGED
+        : AuditAction.UPDATED,
+      entityType: 'maintenance',
+      entityId: id,
+      newValues: { ...updateMaintenanceDto },
+    });
+    return result;
   }
 
   /**
@@ -250,11 +265,18 @@ export class MaintenanceService {
     vendorId: number | null,
     assignedTo: number | null,
   ): Promise<MaintenanceRequestRow> {
-    return this.maintenanceVendorsService.assignVendor(
+    const result = await this.maintenanceVendorsService.assignVendor(
       requestId,
       vendorId,
       assignedTo,
     );
+    await this.auditLogsService.log({
+      action: AuditAction.UPDATED,
+      entityType: 'maintenance',
+      entityId: requestId,
+      newValues: { vendor_id: vendorId, assigned_to: assignedTo },
+    });
+    return result;
   }
 
   async rateVendor(

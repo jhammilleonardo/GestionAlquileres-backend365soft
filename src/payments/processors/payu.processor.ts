@@ -8,6 +8,7 @@ import {
   WebhookResult,
 } from './payment-processor.interface';
 import { SafeHttpClientService } from '../../common/http/safe-http-client.service';
+import { Money } from '../../common/money';
 
 /** Códigos de estado IPN de PayU */
 const PAYU_STATE_APPROVED = '4';
@@ -93,7 +94,7 @@ export class PayUProcessor implements IPaymentProcessor {
   async createPayment(input: ProcessorPaymentInput): Promise<ProcessorResult> {
     const referenceCode =
       input.reference_number ?? `365S-${input.contractId}-${Date.now()}`;
-    const amountStr = input.amount.toFixed(2);
+    const amountStr = Money.of(String(input.amount), input.currency).toString();
     const currency = input.currency.toUpperCase();
     const signature = this.buildSignature(referenceCode, amountStr, currency);
     const isTest = this.config.get<string>('NODE_ENV') !== 'production';

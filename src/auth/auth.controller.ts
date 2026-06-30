@@ -26,7 +26,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { AuthRequestUser, AuthService } from './auth.service';
+import { AuthRequestMeta, AuthRequestUser, AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterAdminDto } from './dto/register-admin.dto';
@@ -37,12 +37,11 @@ import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AuthCookieInterceptor } from './auth-cookie.interceptor';
 import {
-  ACCESS_TOKEN_COOKIE,
   CSRF_COOKIE,
-  REFRESH_TOKEN_COOKIE,
-  authCookieOptions,
+  authCookieContextFromRequest,
+  clearAuthCookies,
   csrfCookieOptions,
-  refreshCookieOptions,
+  extractRefreshToken,
 } from './auth-cookie.util';
 import { RefreshTokenService } from './refresh-token.service';
 import {
@@ -52,6 +51,19 @@ import {
   RegisteredUserResponseDto,
   RegisterAdminResponseDto,
 } from './dto/auth-response.dto';
+
+/** Extrae IP y dispositivo del request para auditar eventos de autenticación. */
+function requestMeta(req: ExpressRequest): AuthRequestMeta {
+  const forwarded = req.headers['x-forwarded-for'];
+  const forwardedIp = Array.isArray(forwarded)
+    ? forwarded[0]
+    : forwarded?.split(',')[0]?.trim();
+  const ip = req.ip ?? forwardedIp ?? req.socket?.remoteAddress ?? null;
+  return {
+    ipAddress: ip ? ip.slice(0, 45) : null,
+    userAgent: req.headers['user-agent'] ?? null,
+  };
+}
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -74,7 +86,7 @@ export class AuthController {
   async refresh(
     @Request() req: ExpressRequest,
   ): Promise<{ access_token: string; success: true }> {
-    const raw = req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined;
+    const raw = extractRefreshToken(req);
     if (!raw) {
       throw new UnauthorizedException('Falta el refresh token');
     }
@@ -105,20 +117,20 @@ export class AuthController {
     @Request() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ success: boolean }> {
-    const raw = req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined;
+    const raw = extractRefreshToken(req);
     if (raw) {
-      await this.refreshTokenService.revoke(raw);
+      const owner = await this.refreshTokenService.revoke(raw);
+      if (owner) {
+        await this.authService.recordLogout(owner, requestMeta(req));
+      }
     }
 
-    const { maxAge: _a, ...clearAccess } = authCookieOptions();
-    const { maxAge: _r, ...clearRefresh } = refreshCookieOptions();
     const { maxAge: _c, ...clearCsrf } = csrfCookieOptions();
-    void _a;
-    void _r;
     void _c;
-    res.clearCookie(ACCESS_TOKEN_COOKIE, clearAccess);
-    res.clearCookie(REFRESH_TOKEN_COOKIE, clearRefresh);
-    res.clearCookie(CSRF_COOKIE, clearCsrf);
+    clearAuthCookies(res, authCookieContextFromRequest(req));
+    if (!req.headers['x-auth-context']) {
+      res.clearCookie(CSRF_COOKIE, clearCsrf);
+    }
     return { success: true };
   }
 
@@ -153,8 +165,12 @@ export class AuthController {
     description: 'Credenciales inválidas o usuario inactivo',
   })
   @ApiTooManyRequestsResponse({ description: 'Cuenta temporalmente bloqueada' })
-  async loginAdmin(@Body() loginDto: LoginDto) {
-    return this.authService.loginAdmin(loginDto.email, loginDto.password);
+  async loginAdmin(@Body() loginDto: LoginDto, @Request() req: ExpressRequest) {
+    return this.authService.loginAdmin(
+      loginDto.email,
+      loginDto.password,
+      requestMeta(req),
+    );
   }
 
   @Public()

@@ -35,6 +35,15 @@ describe('TenantAccountingProvisioningService', () => {
       'CREATE TABLE IF NOT EXISTS "tenant_alpha".accounting_periods',
     );
     expect(sql).toContain(
+      'CREATE TABLE IF NOT EXISTS "tenant_alpha".bank_accounts',
+    );
+    expect(sql).toContain(
+      'CREATE TABLE IF NOT EXISTS "tenant_alpha".bank_transactions',
+    );
+    expect(sql).toContain(
+      'CREATE TABLE IF NOT EXISTS "tenant_alpha".bank_reconciliations',
+    );
+    expect(sql).toContain(
       'CREATE TABLE IF NOT EXISTS "tenant_alpha".accounting_schema_version',
     );
     expect(sql).toContain('ALTER TABLE "tenant_alpha".payments');
@@ -50,7 +59,7 @@ describe('TenantAccountingProvisioningService', () => {
       expect.stringContaining(
         'INSERT INTO "tenant_alpha".accounting_schema_version',
       ),
-      [2],
+      [3],
     );
   });
 

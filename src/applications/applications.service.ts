@@ -16,6 +16,8 @@ import { ApplicationScreeningService } from './application-screening.service';
 import type { ApplicationScreeningResult } from './application-screening.types';
 import { ApplicationScreeningFeeService } from './application-screening-fee.service';
 import { ApplicationStatusService } from './application-status.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 
 export interface BlacklistAlertInfo {
   is_blacklisted: boolean;
@@ -54,6 +56,7 @@ export class ApplicationsService {
     private readonly applicationScreeningFeeService: ApplicationScreeningFeeService,
     private readonly applicationScreeningService: ApplicationScreeningService,
     private readonly applicationStatusService: ApplicationStatusService,
+    private readonly auditLogsService: AuditLogsService,
   ) {}
 
   async approveAndCreateContract(
@@ -62,12 +65,21 @@ export class ApplicationsService {
     adminId: number,
     tenantSlug: string,
   ): Promise<ApplicationApprovalResult> {
-    return this.applicationApprovalService.approveAndCreateContract(
-      id,
-      approveDto,
-      adminId,
-      tenantSlug,
-    );
+    const result =
+      await this.applicationApprovalService.approveAndCreateContract(
+        id,
+        approveDto,
+        adminId,
+        tenantSlug,
+      );
+    await this.auditLogsService.log({
+      userId: adminId,
+      action: AuditAction.APPROVED,
+      entityType: 'application',
+      entityId: id,
+      newValues: { status: ApplicationStatus.APROBADA },
+    });
+    return result;
   }
 
   async create(
@@ -105,11 +117,22 @@ export class ApplicationsService {
     updateDto: UpdateApplicationStatusDto,
     tenantSlug: string,
   ): Promise<ApplicationResult> {
-    return this.applicationStatusService.updateStatus(
+    const result = await this.applicationStatusService.updateStatus(
       id,
       updateDto,
       tenantSlug,
     );
+    const action =
+      updateDto.status === ApplicationStatus.RECHAZADA
+        ? AuditAction.REJECTED
+        : AuditAction.STATUS_CHANGED;
+    await this.auditLogsService.log({
+      action,
+      entityType: 'application',
+      entityId: id,
+      newValues: { status: updateDto.status },
+    });
+    return result;
   }
 
   async uploadDocuments(

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { BadRequestException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -25,6 +26,7 @@ const makeModule = async (dataSourceQuery: jest.Mock) => {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       MaintenanceService,
+      { provide: AuditLogsService, useValue: { log: jest.fn() } },
       {
         provide: MaintenanceCreationService,
         useValue: { create: jest.fn() },
@@ -322,6 +324,7 @@ describe('MaintenanceService — Stage Pipeline', () => {
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           MaintenanceService,
+          { provide: AuditLogsService, useValue: { log: jest.fn() } },
           {
             provide: MaintenanceCreationService,
             useValue: { create: jest.fn() },

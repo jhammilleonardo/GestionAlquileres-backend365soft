@@ -4,7 +4,10 @@ import {
   TenantContextMiddleware,
   TenantRequest,
 } from './tenant-context.middleware';
-import { ACCESS_TOKEN_COOKIE } from '../../auth/auth-cookie.util';
+import {
+  ACCESS_TOKEN_COOKIE,
+  accessTokenCookieName,
+} from '../../auth/auth-cookie.util';
 
 describe('TenantContextMiddleware', () => {
   const tenant = {
@@ -123,7 +126,7 @@ describe('TenantContextMiddleware', () => {
     const req = buildRequest(
       '/acme/admin/properties',
       {},
-      { [ACCESS_TOKEN_COOKIE]: 'cookie-token' },
+      { [accessTokenCookieName('admin')]: 'cookie-token' },
     );
 
     await expect(middleware.use(req, {} as never, next)).rejects.toMatchObject({
@@ -194,6 +197,7 @@ describe('TenantContextMiddleware', () => {
           {},
           {
             [ACCESS_TOKEN_COOKIE]: 'cookie-token',
+            [accessTokenCookieName('admin')]: 'cookie-token',
           },
         ),
         {} as never,
@@ -232,6 +236,7 @@ describe('TenantContextMiddleware', () => {
           {},
           {
             [ACCESS_TOKEN_COOKIE]: 'cookie-token',
+            [accessTokenCookieName('admin')]: 'cookie-token',
           },
         ),
         {} as never,

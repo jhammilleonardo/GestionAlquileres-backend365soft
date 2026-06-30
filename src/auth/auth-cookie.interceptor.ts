@@ -11,9 +11,12 @@ import {
   ACCESS_TOKEN_COOKIE,
   CSRF_COOKIE,
   REFRESH_TOKEN_COOKIE,
+  accessTokenCookieName,
+  authCookieContextFromRole,
   authCookieOptions,
   csrfCookieOptions,
   generateCsrfToken,
+  refreshTokenCookieName,
   refreshCookieOptions,
 } from './auth-cookie.util';
 import { RefreshTokenService } from './refresh-token.service';
@@ -66,6 +69,9 @@ export class AuthCookieInterceptor implements NestInterceptor {
 
     const decoded: DecodedJwt | null = this.jwtService.decode(token);
     if (decoded?.sub && decoded.email && decoded.role && decoded.tenantSlug) {
+      const context = authCookieContextFromRole(decoded.role);
+      res.cookie(accessTokenCookieName(context), token, authCookieOptions());
+
       const refresh = await this.refreshTokenService.issue({
         sub: decoded.sub,
         email: decoded.email,
@@ -77,6 +83,7 @@ export class AuthCookieInterceptor implements NestInterceptor {
         tokenVersion: decoded.tokenVersion ?? 0,
       });
       res.cookie(REFRESH_TOKEN_COOKIE, refresh, refreshCookieOptions());
+      res.cookie(refreshTokenCookieName(context), refresh, refreshCookieOptions());
     }
 
     if (this.exposeAccessTokenInResponse()) {

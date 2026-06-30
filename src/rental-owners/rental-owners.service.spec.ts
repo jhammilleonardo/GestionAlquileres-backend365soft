@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import {
   NotFoundException,
   BadRequestException,
@@ -44,6 +45,7 @@ describe('RentalOwnersService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RentalOwnersService,
+        { provide: AuditLogsService, useValue: { log: jest.fn() } },
         { provide: getDataSourceToken(), useValue: mockDataSource },
         {
           provide: AuthService,
@@ -249,27 +251,35 @@ describe('RentalOwnersService', () => {
   // ─── getStatements ─────────────────────────────────────────────────────────
 
   describe('getStatements', () => {
-    it('debe retornar el historial de pagos por período y propiedad', async () => {
+    it('debe leer las liquidaciones de la tabla dedicada owner_statements', async () => {
       const statements = [
         {
-          period: '2025-01',
+          id: 7,
+          period_month: 1,
+          period_year: 2025,
           property_id: 10,
           property_title: 'Depto 2A',
-          total_collected: '500',
+          gross_rent: '500',
+          maintenance_deduction: '20',
+          management_commission: '50',
+          net_amount: '430',
           currency: 'BOB',
-          payment_count: 1,
-          confirmed_amount: '500',
-          pending_amount: '0',
+          status: 'pending',
         },
       ];
       mockDataSource.query
         .mockResolvedValueOnce([mockOwnerRow()]) // findOne
-        .mockResolvedValueOnce(statements); // SELECT statements
+        .mockResolvedValueOnce(statements); // SELECT owner_statements
 
       const result = await service.getStatements(1);
 
       expect(result).toHaveLength(1);
-      expect(result[0].period).toBe('2025-01');
+      expect(result[0].net_amount).toBe('430');
+      // Debe consultar la tabla dedicada, no agregar pagos.
+      expect(mockDataSource.query).toHaveBeenLastCalledWith(
+        expect.stringContaining('owner_statements'),
+        [1],
+      );
     });
 
     it('debe lanzar NotFoundException si el propietario no existe', async () => {

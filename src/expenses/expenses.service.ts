@@ -7,14 +7,30 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 import { tenantConnectionStore } from '../common/tenant/tenant-connection.store';
+import { runTenantTransaction } from '../common/tenant/tenant-transaction';
 import { quoteIdent } from '../common/utils/sql-identifier';
 import { Expense } from './entities/expense.entity';
-import { CreateExpenseDto, UpdateExpenseDto, ExpenseFiltersDto } from './dto';
-import { ExpenseCategoryEnum } from './enums/expense-category.enum';
+import {
+  CreateExpenseDto,
+  CreateExpensePaymentDto,
+  UpdateExpenseDto,
+  ExpenseFiltersDto,
+} from './dto';
+import {
+  ExpenseCategoryEnum,
+  ExpensePaymentStatusEnum,
+} from './enums/expense-category.enum';
 
 export interface ExpenseSummary {
   total_expenses: string;
+  paid_expenses: string;
+  pending_balance: string;
+  owner_deductions: string;
+  reimbursable_total: string;
   by_category: Record<string, string>;
   expense_count: number;
   by_unit?: Record<string, string>;
@@ -22,6 +38,10 @@ export interface ExpenseSummary {
 
 interface ExpenseSumRow {
   total: string | null;
+  paid_total?: string | null;
+  pending_balance?: string | null;
+  owner_deductions?: string | null;
+  reimbursable_total?: string | null;
 }
 
 interface ExpenseCategorySummaryRow {
@@ -38,6 +58,10 @@ interface TenantExpenseConfigRow {
   custom_expense_categories: string[] | null;
 }
 
+interface ExpensePaymentInsertRow {
+  id: number;
+}
+
 @Injectable()
 export class ExpensesService {
   private readonly logger = new Logger(ExpensesService.name);
@@ -47,6 +71,7 @@ export class ExpensesService {
     private readonly expenseRepository: Repository<Expense>,
     private readonly dataSource: DataSource,
     private readonly accountingOutboxService: AccountingOutboxService,
+    private readonly auditLogsService: AuditLogsService,
   ) {}
 
   /**
@@ -69,6 +94,17 @@ export class ExpensesService {
       const expense = this.expenseRepository.create({
         ...dto,
         date: new Date(dto.date),
+        due_date: dto.due_date ? new Date(dto.due_date) : null,
+        paid_amount:
+          (dto.payment_status ?? ExpensePaymentStatusEnum.PAID) ===
+          ExpensePaymentStatusEnum.PAID
+            ? dto.amount
+            : 0,
+        paid_date: this.buildPaidDate(
+          dto.payment_status ?? ExpensePaymentStatusEnum.PAID,
+          dto.paid_date,
+          dto.date,
+        ),
         recurrence_start_date: dto.recurrence_start_date
           ? new Date(dto.recurrence_start_date)
           : null,
@@ -80,7 +116,7 @@ export class ExpensesService {
 
       const saved = await this.expenseRepository.save(expense);
 
-      await this.enqueueExpenseAccounting(saved, userId);
+      await this.enqueueExpenseAccounting(saved, userId, 'expense.created');
 
       // Si es un gasto recurrente, generar las instancias futuras
       if (dto.is_recurring && dto.recurrence_interval) {
@@ -88,6 +124,17 @@ export class ExpensesService {
       }
 
       this.logger.log(`Expense created: ${saved.id}`);
+      await this.auditLogsService.log({
+        userId,
+        action: AuditAction.CREATED,
+        entityType: 'expense',
+        entityId: saved.id,
+        newValues: {
+          description: dto.description,
+          amount: dto.amount,
+          category: dto.category,
+        },
+      });
       return saved;
     } catch (error: unknown) {
       this.logger.error(`Error creating expense: ${getErrorMessage(error)}`);
@@ -98,6 +145,8 @@ export class ExpensesService {
   private async enqueueExpenseAccounting(
     expense: Expense,
     userId?: number,
+    eventType = 'expense.created',
+    extraPayload: Record<string, unknown> = {},
   ): Promise<void> {
     const schemaName = tenantConnectionStore.getStore()?.schemaName;
     if (!schemaName) {
@@ -109,22 +158,28 @@ export class ExpensesService {
     await this.dataSource.query(
       `
         UPDATE ${schema}.expenses
-        SET accounting_status = 'pending_posting',
+        SET accounting_status = $1,
             journal_entry_id = NULL,
             updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $2
       `,
-      [expense.id],
+      [
+        eventType === 'expense.paid'
+          ? 'payment_posting_pending'
+          : 'pending_posting',
+        expense.id,
+      ],
     );
 
     await this.accountingOutboxService.enqueue({
       schemaName,
-      eventType: 'expense.created',
+      eventType,
       aggregateType: 'expense',
       aggregateId: String(expense.id),
       payload: {
         expenseId: expense.id,
         createdBy: userId ?? null,
+        ...extraPayload,
       },
     });
   }
@@ -136,6 +191,7 @@ export class ExpensesService {
     filters: ExpenseFiltersDto,
   ): Promise<{ data: Expense[]; total: number }> {
     const query = this.expenseRepository.createQueryBuilder('e');
+    query.leftJoinAndSelect('e.property', 'property');
 
     // El aislamiento por tenant se maneja mediante search_path en la DB
 
@@ -154,6 +210,30 @@ export class ExpensesService {
     // Filtro por categoría
     if (filters.category) {
       query.andWhere('e.category = :category', { category: filters.category });
+    }
+
+    if (filters.expense_scope) {
+      query.andWhere('e.expense_scope = :expenseScope', {
+        expenseScope: filters.expense_scope,
+      });
+    }
+
+    if (filters.responsibility) {
+      query.andWhere('e.responsibility = :responsibility', {
+        responsibility: filters.responsibility,
+      });
+    }
+
+    if (filters.payment_status) {
+      query.andWhere('e.payment_status = :paymentStatus', {
+        paymentStatus: filters.payment_status,
+      });
+    }
+
+    if (filters.is_reimbursable !== undefined) {
+      query.andWhere('e.is_reimbursable = :isReimbursable', {
+        isReimbursable: filters.is_reimbursable,
+      });
     }
 
     // Filtro por rango de fechas
@@ -178,7 +258,7 @@ export class ExpensesService {
     // Búsqueda en descripción
     if (filters.search) {
       query.andWhere(
-        '(e.description ILIKE :search OR e.vendor_name ILIKE :search)',
+        '(e.description ILIKE :search OR e.vendor_name ILIKE :search OR e.invoice_number ILIKE :search)',
         { search: `%${filters.search}%` },
       );
     }
@@ -232,9 +312,35 @@ export class ExpensesService {
       );
     }
 
+    if (
+      expense.payment_status !== ExpensePaymentStatusEnum.PENDING &&
+      dto.payment_status === ExpensePaymentStatusEnum.PENDING
+    ) {
+      throw new BadRequestException(
+        'No se puede volver un gasto pagado a pendiente sin reverso contable.',
+      );
+    }
+
+    const shouldPostPayment =
+      expense.payment_status === ExpensePaymentStatusEnum.PENDING &&
+      expense.accounting_status === 'posted' &&
+      (dto.payment_status === ExpensePaymentStatusEnum.PAID ||
+        dto.payment_status === ExpensePaymentStatusEnum.REIMBURSED);
+    const effectivePaymentStatus = dto.payment_status ?? expense.payment_status;
+
     const updated = this.expenseRepository.merge(expense, {
       ...dto,
       date: dto.date ? new Date(dto.date) : undefined,
+      due_date: dto.due_date ? new Date(dto.due_date) : undefined,
+      paid_date:
+        shouldPostPayment || dto.paid_date
+          ? this.buildPaidDate(
+              effectivePaymentStatus,
+              dto.paid_date,
+              dto.date,
+              expense.date,
+            )
+          : undefined,
       recurrence_start_date: dto.recurrence_start_date
         ? new Date(dto.recurrence_start_date)
         : undefined,
@@ -246,9 +352,141 @@ export class ExpensesService {
 
     const saved = await this.expenseRepository.save(updated);
 
+    if (shouldPostPayment) {
+      await this.enqueueExpenseAccounting(saved, userId, 'expense.paid');
+    }
+
     this.logger.log(`Expense updated: ${expenseId}`);
 
+    await this.auditLogsService.log({
+      userId,
+      action: AuditAction.UPDATED,
+      entityType: 'expense',
+      entityId: expenseId,
+      newValues: { ...dto },
+    });
+
     return saved;
+  }
+
+  async attachReceipt(
+    expenseId: number,
+    receiptUrl: string,
+    userId?: number,
+  ): Promise<Expense> {
+    const expense = await this.findOne(expenseId);
+    const updated = this.expenseRepository.merge(expense, {
+      receipt_url: receiptUrl,
+      updated_by: userId,
+    });
+
+    return this.expenseRepository.save(updated);
+  }
+
+  async registerExpensePayment(
+    expenseId: number,
+    dto: CreateExpensePaymentDto,
+    userId?: number,
+  ): Promise<Expense> {
+    const expense = await runTenantTransaction(
+      this.dataSource,
+      async (runner) => {
+        const lockedRows = (await runner.query(
+          `
+          SELECT *
+          FROM expenses
+          WHERE id = $1
+          FOR UPDATE
+        `,
+          [expenseId],
+        )) as Expense[];
+        const current = lockedRows[0];
+
+        if (!current) {
+          throw new NotFoundException(
+            `Gasto con ID ${expenseId} no encontrado`,
+          );
+        }
+
+        const amount = this.toNumber(current.amount);
+        const paidAmount = this.toNumber(current.paid_amount);
+        const paymentAmount = this.toNumber(dto.amount);
+        const remaining = Math.max(0, amount - paidAmount);
+
+        if (paymentAmount <= 0) {
+          throw new BadRequestException('El pago debe ser mayor a cero.');
+        }
+
+        if (paymentAmount > remaining) {
+          throw new BadRequestException(
+            'El pago no puede superar el saldo pendiente del gasto.',
+          );
+        }
+
+        const newPaidAmount = new MoneyDecimal(paidAmount)
+          .plus(paymentAmount)
+          .toDecimalPlaces(2, MONEY_ROUNDING)
+          .toNumber();
+        const newStatus =
+          newPaidAmount >= amount
+            ? ExpensePaymentStatusEnum.PAID
+            : ExpensePaymentStatusEnum.PARTIALLY_PAID;
+        const paidDate =
+          newStatus === ExpensePaymentStatusEnum.PAID ? dto.payment_date : null;
+
+        const inserted = (await runner.query(
+          `
+          INSERT INTO expense_payments
+            (expense_id, amount, currency, payment_date, payment_method,
+             reference_number, notes, created_by)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING id
+        `,
+          [
+            current.id,
+            paymentAmount,
+            dto.currency ?? current.currency,
+            dto.payment_date,
+            dto.payment_method ?? null,
+            dto.reference_number ?? null,
+            dto.notes ?? null,
+            userId ?? null,
+          ],
+        )) as ExpensePaymentInsertRow[];
+
+        await runner.query(
+          `
+          UPDATE expenses
+          SET paid_amount = $1,
+              payment_status = $2,
+              paid_date = COALESCE($3::date, paid_date),
+              updated_by = $4,
+              updated_at = NOW()
+          WHERE id = $5
+        `,
+          [newPaidAmount, newStatus, paidDate, userId ?? null, current.id],
+        );
+
+        return {
+          expense: {
+            ...current,
+            paid_amount: newPaidAmount,
+            payment_status: newStatus,
+            paid_date: paidDate ? new Date(paidDate) : current.paid_date,
+          } as Expense,
+          paymentId: inserted[0].id,
+        };
+      },
+    );
+
+    await this.enqueueExpenseAccounting(
+      expense.expense,
+      userId,
+      'expense.payment.created',
+      { expensePaymentId: expense.paymentId },
+    );
+
+    return this.findOne(expenseId);
   }
 
   /**
@@ -267,6 +505,11 @@ export class ExpensesService {
     await this.expenseRepository.delete(expenseId);
 
     this.logger.log(`Expense deleted: ${expenseId}`);
+    await this.auditLogsService.log({
+      action: AuditAction.DELETED,
+      entityType: 'expense',
+      entityId: expenseId,
+    });
   }
 
   /**
@@ -293,6 +536,19 @@ export class ExpensesService {
     const totalQuery = query.clone();
     const result = await totalQuery
       .select('SUM(e.amount)', 'total')
+      .addSelect('SUM(COALESCE(e.paid_amount, 0))', 'paid_total')
+      .addSelect(
+        'SUM(GREATEST(e.amount - COALESCE(e.paid_amount, 0), 0))',
+        'pending_balance',
+      )
+      .addSelect(
+        'SUM(CASE WHEN e.affects_owner_statement THEN e.amount ELSE 0 END)',
+        'owner_deductions',
+      )
+      .addSelect(
+        'SUM(CASE WHEN e.is_reimbursable THEN e.amount ELSE 0 END)',
+        'reimbursable_total',
+      )
       .getRawOne<ExpenseSumRow>();
 
     // Gastos por categoría
@@ -317,6 +573,10 @@ export class ExpensesService {
 
     return {
       total_expenses: result?.total || '0',
+      paid_expenses: result?.paid_total || '0',
+      pending_balance: result?.pending_balance || '0',
+      owner_deductions: result?.owner_deductions || '0',
+      reimbursable_total: result?.reimbursable_total || '0',
       by_category: byCategory.reduce(
         (acc, cat) => {
           acc[cat.category] = cat.total;
@@ -368,7 +628,7 @@ export class ExpensesService {
       exp AS (
         SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month, SUM(amount) AS total
         FROM expenses
-        WHERE 1 = 1 ${expenseFilter}
+        WHERE payment_status IN ('PAID', 'REIMBURSED') ${expenseFilter}
         GROUP BY 1
       )
       SELECT m.month,
@@ -482,6 +742,27 @@ export class ExpensesService {
     }
 
     return newDate;
+  }
+
+  private buildPaidDate(
+    paymentStatus: string | undefined,
+    paidDate: string | undefined,
+    expenseDate: string | undefined,
+    fallbackDate?: Date,
+  ): Date | null {
+    if (
+      paymentStatus === ExpensePaymentStatusEnum.PENDING ||
+      paymentStatus === ExpensePaymentStatusEnum.PARTIALLY_PAID
+    ) {
+      return null;
+    }
+
+    const value = paidDate ?? expenseDate;
+    if (value) {
+      return new Date(value);
+    }
+
+    return fallbackDate ?? new Date();
   }
 
   /**

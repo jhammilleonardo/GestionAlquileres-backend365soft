@@ -6,6 +6,7 @@ import {
   IsEmail,
   IsNumber,
   IsBoolean,
+  IsDateString,
   Min,
   MaxLength,
 } from 'class-validator';
@@ -28,6 +29,16 @@ export class CreateVendorDto {
   })
   @IsEnum(VendorSpecialty)
   specialty: VendorSpecialty;
+
+  @ApiPropertyOptional({
+    example: 'Jardinería',
+    description:
+      'Nombre de la especialidad cuando specialty es "other". Se ignora para el resto.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  specialty_other?: string;
 
   @ApiPropertyOptional({
     example: '+591 76543210',
@@ -53,6 +64,32 @@ export class CreateVendorDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @ApiPropertyOptional({
+    example: 'NIT 123456789',
+    description: 'Identificación fiscal del proveedor para reportes y retenciones',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  tax_id?: string;
+
+  @ApiPropertyOptional({
+    example: 'LIC-MNT-2026-001',
+    description: 'Número de licencia o matrícula profesional',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  license_number?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-12-31',
+    description: 'Fecha de vencimiento del seguro del proveedor',
+  })
+  @IsOptional()
+  @IsDateString()
+  insurance_expires_at?: string;
 
   @ApiPropertyOptional({
     example: 80,

@@ -128,4 +128,30 @@ describe('priceReservation', () => {
     ).toBeUndefined();
     expect(r.total).toBe(500);
   });
+
+  it('mantiene consistencia contable entre líneas, total y depósito con redondeo a centavos', () => {
+    const r = priceReservation(
+      input({
+        nights: 3,
+        cleaningFee: 10.015,
+        nightlyPrices: [33.335, 33.335, 33.335],
+        occupancyTaxPct: 13,
+        securityDeposit: 50.005,
+      }),
+    );
+
+    const accommodationLines = r.lines.filter(
+      (line) => line.concept !== 'security_deposit',
+    );
+    const lineTotal = accommodationLines.reduce(
+      (sum, line) => sum + line.amount,
+      0,
+    );
+
+    expect(r.baseAmount).toBe(100.01);
+    expect(r.taxTotal).toBe(13);
+    expect(r.deposit).toBe(50.01);
+    expect(Number(lineTotal.toFixed(2))).toBe(r.total);
+    expect(Number((r.total + r.deposit).toFixed(2))).toBe(r.totalDue);
+  });
 });

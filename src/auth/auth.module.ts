@@ -12,6 +12,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { RefreshTokenService } from './refresh-token.service';
 import { AuthCookieInterceptor } from './auth-cookie.interceptor';
 import { accessTokenTtlSeconds } from './auth-cookie.util';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { accessTokenTtlSeconds } from './auth-cookie.util';
     }),
     TypeOrmModule.forFeature([]),
     NotificationsModule,
+    AuditLogsModule,
   ],
   providers: [
     AuthService,

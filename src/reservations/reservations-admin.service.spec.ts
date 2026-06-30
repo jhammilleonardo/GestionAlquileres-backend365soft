@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { ReservationsAdminService } from './reservations-admin.service';
 import { ReservationNotificationService } from './reservation-notification.service';
 import { ReservationRefundService } from './reservation-refund.service';
-import { HousekeepingService } from './housekeeping.service';
 import { ReservationStatus } from './enums/reservation-status.enum';
 import { ReservationAction } from './enums/reservation-action.enum';
 
@@ -35,21 +35,18 @@ describe('ReservationsAdminService', () => {
     refundApprovedPayments: jest.fn().mockResolvedValue(0),
     refundAbsoluteAmount: jest.fn().mockResolvedValue(0),
   };
-  const mockHousekeeping = {
-    createForReservation: jest.fn().mockResolvedValue(undefined),
-  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReservationsAdminService,
+        { provide: AuditLogsService, useValue: { log: jest.fn() } },
         { provide: getDataSourceToken(), useValue: mockDataSource },
         {
           provide: ReservationNotificationService,
           useValue: mockNotification,
         },
         { provide: ReservationRefundService, useValue: mockRefund },
-        { provide: HousekeepingService, useValue: mockHousekeeping },
       ],
     }).compile();
 
@@ -218,13 +215,16 @@ describe('ReservationsAdminService', () => {
             status: ReservationStatus.IN_PROGRESS,
             property_id: 3,
             unit_id: 7,
+            tenant_id: 9,
             checkout_date: '2026-06-15',
             total_amount: '570.00', // 420 alquiler + 150 depósito
             security_deposit: '150.00',
             approved_paid: '570.00',
           },
         ])
-        .mockResolvedValueOnce(undefined); // UPDATE reservations
+        .mockResolvedValueOnce(undefined) // UPDATE reservations
+        .mockResolvedValueOnce([]) // SELECT orden de limpieza existente (none)
+        .mockResolvedValueOnce(undefined); // INSERT orden de limpieza
       mockDataSource.query.mockResolvedValueOnce([
         { id: 1, status: ReservationStatus.COMPLETED },
       ]);
@@ -239,11 +239,14 @@ describe('ReservationsAdminService', () => {
         42,
         'security_deposit_return',
       );
-      // y se programa la tarea de limpieza para la fecha de salida
-      expect(mockHousekeeping.createForReservation).toHaveBeenCalledWith(
-        mockQueryRunner,
-        { id: 1, property_id: 3, unit_id: 7, checkout_date: '2026-06-15' },
+      // y se crea una orden de trabajo de limpieza (turnover) tipo CLEANING
+      const insertCall = mockQueryRunner.query.mock.calls.find(
+        ([sql]) =>
+          typeof sql === 'string' &&
+          sql.includes('INSERT INTO maintenance_requests') &&
+          sql.includes("'CLEANING'"),
       );
+      expect(insertCall).toBeDefined();
     });
 
     it('NO debe tocar disponibilidad al confirmar (no libera)', async () => {

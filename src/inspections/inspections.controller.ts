@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -126,6 +127,27 @@ export class InspectionsController {
       req.tenant!.schema_name,
       id,
       dto,
+      req.user!.userId,
+    );
+  }
+
+  @Delete(':id/items/:itemId')
+  @RequirePermission('inspections', 'edit')
+  @ApiOperation({ summary: 'Eliminar un ítem del checklist' })
+  @ApiParam({ name: 'slug', description: 'Tenant slug' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiParam({ name: 'itemId', type: Number })
+  @ApiOkResponse({ type: InspectionDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Inspección o ítem no encontrado' })
+  removeItem(
+    @Req() req: TenantRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+  ) {
+    return this.inspectionsService.removeItem(
+      req.tenant!.schema_name,
+      id,
+      itemId,
       req.user!.userId,
     );
   }

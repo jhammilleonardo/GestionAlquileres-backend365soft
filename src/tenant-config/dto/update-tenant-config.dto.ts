@@ -39,6 +39,11 @@ export enum RentalTypeEnum {
   BOTH = 'BOTH',
 }
 
+export enum AccountingBasisEnum {
+  CASH = 'cash',
+  ACCRUAL = 'accrual',
+}
+
 export class NotificationChannelsDto {
   @IsBoolean()
   email: boolean;
@@ -114,6 +119,26 @@ export class UpdateTenantConfigDto {
   @Min(0)
   @Max(100)
   late_fee_percentage?: number;
+
+  @ApiPropertyOptional({ enum: AccountingBasisEnum })
+  @IsOptional()
+  @IsEnum(AccountingBasisEnum)
+  accounting_basis?: AccountingBasisEnum;
+
+  @ApiPropertyOptional({ example: '123456789' })
+  @IsOptional()
+  @IsString()
+  tax_id?: string | null;
+
+  @ApiPropertyOptional({ example: '365Soft SRL' })
+  @IsOptional()
+  @IsString()
+  legal_name?: string | null;
+
+  @ApiPropertyOptional({ example: 'REGIMEN_GENERAL' })
+  @IsOptional()
+  @IsString()
+  tax_regime?: string | null;
 
   @ApiPropertyOptional({ example: ['Jardinería', 'Reparaciones Menores'] })
   @IsOptional()

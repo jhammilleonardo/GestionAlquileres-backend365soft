@@ -35,6 +35,13 @@ interface RefreshTokenRow {
   token_version: number;
 }
 
+/** Dueño de un refresh token revocado — usado para auditar el logout. */
+export interface RevokedTokenOwner {
+  user_id: number;
+  tenant_slug: string;
+  role: string;
+}
+
 const REFRESH_TTL_DAYS = 30;
 
 /**
@@ -143,7 +150,7 @@ export class RefreshTokenService implements OnModuleInit {
       currentUser.role !== row.role ||
       currentUser.token_version !== row.token_version
     ) {
-      await this.revokeAll(row.user_id, row.tenant_slug);
+      await this.revokeAll(row.user_id, row.tenant_slug, row.role);
       throw new UnauthorizedException('La sesión ya no es válida');
     }
 
@@ -160,33 +167,48 @@ export class RefreshTokenService implements OnModuleInit {
   }
 
   /** Revoca un refresh token (logout). No falla si ya estaba revocado/ausente. */
-  async revoke(rawToken: string): Promise<void> {
+  async revoke(rawToken: string): Promise<RevokedTokenOwner | null> {
     try {
-      await this.dataSource.query(
+      const rows = await this.dataSource.query<RevokedTokenOwner[]>(
         `UPDATE public.refresh_tokens
            SET revoked_at = NOW()
-         WHERE token_hash = $1 AND revoked_at IS NULL`,
+         WHERE token_hash = $1 AND revoked_at IS NULL
+         RETURNING user_id, tenant_slug, role`,
         [this.hash(rawToken)],
       );
+      return rows[0] ?? null;
     } catch (error) {
       this.logger.warn(`No se pudo revocar refresh token: ${String(error)}`);
+      return null;
     }
   }
 
-  async revokeAll(userId: number, tenantSlug: string): Promise<void> {
+  async revokeAll(
+    userId: number,
+    tenantSlug: string,
+    role: string,
+  ): Promise<void> {
     await this.dataSource.query(
       `UPDATE public.refresh_tokens
           SET revoked_at = NOW()
-        WHERE user_id = $1 AND tenant_slug = $2 AND revoked_at IS NULL`,
-      [userId, tenantSlug],
+        WHERE user_id = $1
+          AND tenant_slug = $2
+          AND role = $3
+          AND revoked_at IS NULL`,
+      [userId, tenantSlug, role],
     );
   }
 
   private async revokeOnReuse(rawToken: string): Promise<void> {
     const rows = await this.dataSource.query<
-      Array<{ user_id: number; tenant_slug: string; revoked_at: Date | null }>
+      Array<{
+        user_id: number;
+        tenant_slug: string;
+        role: string;
+        revoked_at: Date | null;
+      }>
     >(
-      `SELECT user_id, tenant_slug, revoked_at
+      `SELECT user_id, tenant_slug, role, revoked_at
          FROM public.refresh_tokens
         WHERE token_hash = $1
         LIMIT 1`,
@@ -194,9 +216,9 @@ export class RefreshTokenService implements OnModuleInit {
     );
     const reused = rows[0];
     if (reused?.revoked_at) {
-      await this.revokeAll(reused.user_id, reused.tenant_slug);
+      await this.revokeAll(reused.user_id, reused.tenant_slug, reused.role);
       this.logger.warn(
-        `Reutilización de refresh token detectada para ${reused.tenant_slug}:${reused.user_id}`,
+        `Reutilización de refresh token detectada para ${reused.tenant_slug}:${reused.role}:${reused.user_id}`,
       );
     }
   }

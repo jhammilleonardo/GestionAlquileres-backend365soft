@@ -68,5 +68,65 @@ export class TenantInspectionsProvisioningService {
       CREATE INDEX IF NOT EXISTS idx_inspection_items_inspection_id
         ON ${q}.inspection_items(inspection_id);
     `);
+
+    await this.ensureInspectionTemplates(schemaName);
+  }
+
+  /**
+   * Plantillas reutilizables de checklist (estilo Buildium): un administrador
+   * define una vez las áreas e ítems y luego crea inspecciones a partir de
+   * ellas. Se siembra una plantilla por defecto si el tenant no tiene ninguna.
+   */
+  private async ensureInspectionTemplates(schemaName: string): Promise<void> {
+    const q = quoteIdent(schemaName);
+
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${q}.inspection_templates (
+        id          SERIAL PRIMARY KEY,
+        name        VARCHAR(120) NOT NULL,
+        type        VARCHAR(20),
+        items       JSONB NOT NULL DEFAULT '[]',
+        is_default  BOOLEAN NOT NULL DEFAULT false,
+        created_by  INTEGER REFERENCES ${q}."user"(id) ON DELETE SET NULL,
+        created_at  TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at  TIMESTAMP NOT NULL DEFAULT now(),
+        CONSTRAINT chk_inspection_templates_type
+          CHECK (type IS NULL OR type IN ('move_in', 'move_out', 'periodic'))
+      );
+    `);
+
+    const seedItems = JSON.stringify(DEFAULT_TEMPLATE_ITEMS);
+    await this.dataSource.query(
+      `INSERT INTO ${q}.inspection_templates (name, type, items, is_default)
+       SELECT 'Checklist estándar', NULL, $1::jsonb, true
+        WHERE NOT EXISTS (SELECT 1 FROM ${q}.inspection_templates)`,
+      [seedItems],
+    );
   }
 }
+
+/** Áreas e ítems base que alimentan la plantilla por defecto sembrada. */
+const DEFAULT_TEMPLATE_ITEMS: Array<{ area: string; item_name: string }> = [
+  { area: 'living_room', item_name: 'Paredes' },
+  { area: 'living_room', item_name: 'Piso' },
+  { area: 'living_room', item_name: 'Techo' },
+  { area: 'living_room', item_name: 'Ventanas' },
+  { area: 'living_room', item_name: 'Iluminación' },
+  { area: 'kitchen', item_name: 'Mesón' },
+  { area: 'kitchen', item_name: 'Fregadero' },
+  { area: 'kitchen', item_name: 'Gabinetes' },
+  { area: 'kitchen', item_name: 'Electrodomésticos' },
+  { area: 'kitchen', item_name: 'Pisos' },
+  { area: 'bathroom', item_name: 'Inodoro' },
+  { area: 'bathroom', item_name: 'Lavamanos' },
+  { area: 'bathroom', item_name: 'Ducha' },
+  { area: 'bathroom', item_name: 'Grifería' },
+  { area: 'bathroom', item_name: 'Azulejos' },
+  { area: 'bedroom', item_name: 'Paredes' },
+  { area: 'bedroom', item_name: 'Piso' },
+  { area: 'bedroom', item_name: 'Closet' },
+  { area: 'bedroom', item_name: 'Ventanas' },
+  { area: 'exterior', item_name: 'Fachada' },
+  { area: 'exterior', item_name: 'Jardín' },
+  { area: 'exterior', item_name: 'Estacionamiento' },
+];

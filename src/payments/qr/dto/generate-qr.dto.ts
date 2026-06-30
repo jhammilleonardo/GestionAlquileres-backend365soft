@@ -45,6 +45,15 @@ export class GenerateQrDto {
   @IsNumber()
   @IsOptional()
   contract_id?: number;
+
+  @ApiPropertyOptional({
+    example: 14,
+    description:
+      'ID de la reserva de corto plazo a pagar. Mutuamente excluyente con contract_id.',
+  })
+  @IsNumber()
+  @IsOptional()
+  reservation_id?: number;
 }
 
 export class GenerateTenantQrDto extends OmitType(GenerateQrDto, [

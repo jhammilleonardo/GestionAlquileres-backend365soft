@@ -8,7 +8,11 @@ import { AccountingPaymentRefundPostingService } from './accounting-payment-refu
 describe('AccountingOutboxProcessor', () => {
   let dataSource: { query: jest.Mock };
   let paymentPosting: { postApprovedPayment: jest.Mock };
-  let expensePosting: { postExpense: jest.Mock };
+  let expensePosting: {
+    postExpense: jest.Mock;
+    postExpensePayment: jest.Mock;
+    postExpenseVendorPayment: jest.Mock;
+  };
   let paymentRefundPosting: { postPaymentRefund: jest.Mock };
   let ownerStatementPosting: {
     postGeneratedStatement: jest.Mock;
@@ -23,6 +27,8 @@ describe('AccountingOutboxProcessor', () => {
     };
     expensePosting = {
       postExpense: jest.fn().mockResolvedValue({ id: 102 }),
+      postExpensePayment: jest.fn().mockResolvedValue({ id: 106 }),
+      postExpenseVendorPayment: jest.fn().mockResolvedValue({ id: 107 }),
     };
     paymentRefundPosting = {
       postPaymentRefund: jest.fn().mockResolvedValue({ id: 103 }),
@@ -156,6 +162,62 @@ describe('AccountingOutboxProcessor', () => {
     expect(dataSource.query).toHaveBeenLastCalledWith(
       expect.stringContaining('UPDATE "tenant_alpha".accounting_outbox'),
       [102, 9],
+    );
+  });
+
+  it('processes expense paid events', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([
+        {
+          id: 11,
+          event_type: 'expense.paid',
+          aggregate_type: 'expense',
+          aggregate_id: '44',
+          payload: { expenseId: 44 },
+          status: 'processing',
+          attempts: 1,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const count = await processor.processPendingForSchema('tenant_alpha');
+
+    expect(count).toBe(1);
+    expect(expensePosting.postExpensePayment).toHaveBeenCalledWith(
+      'tenant_alpha',
+      44,
+    );
+    expect(dataSource.query).toHaveBeenLastCalledWith(
+      expect.stringContaining('UPDATE "tenant_alpha".accounting_outbox'),
+      [106, 11],
+    );
+  });
+
+  it('processes expense vendor payment events', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([
+        {
+          id: 12,
+          event_type: 'expense.payment.created',
+          aggregate_type: 'expense',
+          aggregate_id: '44',
+          payload: { expenseId: 44, expensePaymentId: 70 },
+          status: 'processing',
+          attempts: 1,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const count = await processor.processPendingForSchema('tenant_alpha');
+
+    expect(count).toBe(1);
+    expect(expensePosting.postExpenseVendorPayment).toHaveBeenCalledWith(
+      'tenant_alpha',
+      70,
+    );
+    expect(dataSource.query).toHaveBeenLastCalledWith(
+      expect.stringContaining('UPDATE "tenant_alpha".accounting_outbox'),
+      [107, 12],
     );
   });
 

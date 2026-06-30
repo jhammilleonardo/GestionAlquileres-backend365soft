@@ -11,9 +11,9 @@ import { IcalService } from './ical/ical.service';
 import { CalendarSyncService } from './ical/calendar-sync.service';
 import { CalendarSyncScheduler } from './ical/calendar-sync.scheduler';
 import { SeasonRulesService } from './season-rules.service';
-import { HousekeepingService } from './housekeeping.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SafeHttpClientService } from '../common/http/safe-http-client.service';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import {
   PublicAvailabilityController,
   PublicQuoteController,
@@ -22,12 +22,11 @@ import {
   TenantReservationsController,
   AdminUnitCalendarController,
   AdminUnitSeasonsController,
-  AdminHousekeepingController,
   AdminCalendarSyncController,
 } from './reservations.controller';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, AuditLogsModule],
   providers: [
     ReservationsService,
     ReservationsAdminService,
@@ -41,7 +40,6 @@ import {
     CalendarSyncService,
     CalendarSyncScheduler,
     SeasonRulesService,
-    HousekeepingService,
     SafeHttpClientService,
   ],
   controllers: [
@@ -52,7 +50,6 @@ import {
     TenantReservationsController,
     AdminUnitCalendarController,
     AdminUnitSeasonsController,
-    AdminHousekeepingController,
     AdminCalendarSyncController,
   ],
   exports: [ReservationsService, ReservationsAdminService, QuoteService],

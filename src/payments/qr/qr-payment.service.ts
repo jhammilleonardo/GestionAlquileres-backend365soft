@@ -12,6 +12,7 @@ import { QrPaymentProcessingService } from './qr-payment-processing.service';
 import { QrProviderService } from './qr-provider.service';
 import { QrPaymentPersistenceService } from './qr-payment-persistence.service';
 import { QR_ESTADO } from './qr-payment.constants';
+import { Money } from '../../common/money';
 
 @Injectable()
 export class QrPaymentService {
@@ -55,9 +56,23 @@ export class QrPaymentService {
 
     const nombreCompleto = tenant.name?.trim() ?? '';
 
-    // Si se proporciona contract_id, verificar que pertenece al tenant autenticado
+    // Si se proporciona contract_id o reservation_id, verificar que pertenece al
+    // tenant autenticado y construir la glosa según el caso.
     let detalleGlosa = 'Alquiler';
-    if (dto.contract_id) {
+    if (dto.reservation_id) {
+      const belongsToTenant =
+        await this.qrPaymentPersistenceService.reservationBelongsToTenant(
+          schemaName,
+          dto.reservation_id,
+          dto.tenant_id,
+        );
+      if (!belongsToTenant) {
+        throw new ForbiddenException(
+          `La reserva #${dto.reservation_id} no pertenece a este inquilino`,
+        );
+      }
+      detalleGlosa += ` - ${nombreCompleto} - Reserva #${dto.reservation_id}`;
+    } else if (dto.contract_id) {
       const belongsToTenant =
         await this.qrPaymentPersistenceService.contractBelongsToTenant(
           schemaName,
@@ -228,14 +243,17 @@ export class QrPaymentService {
       return { codigo: '1212', mensaje: 'Error en la solicitud' };
     }
 
-    // Capa 4: Si el banco envía el monto, verificar que coincide con el registrado en BD.
-    // Diferencia máxima tolerada: 0.01 (redondeo de centavos).
+    // Capa 4: Si el banco envía el monto, verificar que coincide EXACTAMENTE
+    // (al centavo, sin tolerancia float) con el registrado en BD.
     if (dto.monto !== undefined && dto.monto !== null) {
-      const montoBD = Number(qr.monto);
-      const montoCallback = parseFloat(String(dto.monto));
-      if (Math.abs(montoBD - montoCallback) > 0.01) {
+      const montoBDCents = Money.of(String(qr.monto), 'BOB').toMinorUnits();
+      const montoCallbackCents = Money.of(
+        String(dto.monto),
+        'BOB',
+      ).toMinorUnits();
+      if (montoBDCents !== montoCallbackCents) {
         this.logger.warn(
-          `[callback] Discrepancia de monto en alias ${dto.alias}: BD=${montoBD} callback=${montoCallback}`,
+          `[callback] Discrepancia de monto en alias ${dto.alias}: BD=${qr.monto} callback=${dto.monto}`,
         );
         return { codigo: '1212', mensaje: 'Error en la solicitud' };
       }

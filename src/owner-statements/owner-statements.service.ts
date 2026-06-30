@@ -14,6 +14,7 @@ import {
   OwnerStatementResponseDto,
 } from './dto';
 import { OwnerStatementPdfService } from './owner-statement-pdf.service';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
 interface OwnerStatementRow {
   id: number;
@@ -348,12 +349,18 @@ export class OwnerStatementsService {
 
     const automaticExpenses = Number(expensesResult[0]?.total ?? 0);
 
-    // 3. Calcular comisión y monto neto
+    // 3. Calcular comisión y monto neto (decimal exacto, sin float)
     const maintenanceDeduction = automaticExpenses;
-    const managementCommission =
-      (paymentData.grossRent * paymentData.commissionPercentage) / 100;
-    const netAmount =
-      paymentData.grossRent - maintenanceDeduction - managementCommission;
+    const managementCommission = new MoneyDecimal(paymentData.grossRent)
+      .times(paymentData.commissionPercentage)
+      .div(100)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
+    const netAmount = new MoneyDecimal(paymentData.grossRent)
+      .minus(maintenanceDeduction)
+      .minus(managementCommission)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
 
     const dto: CreateOwnerStatementDto = {
       rental_owner_id: paymentData.rentalOwnerId,

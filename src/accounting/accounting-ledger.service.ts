@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { DataSource, QueryRunner } from 'typeorm';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 import {
   JournalLineInput,
   PostJournalEntryInput,
@@ -443,14 +444,19 @@ export class AccountingLedgerService {
     return value === null ? null : Number(value);
   }
 
-  private toCents(amount: number): number {
-    if (!Number.isFinite(amount) || amount < 0) {
+  /**
+   * Convierte un monto a centavos enteros de forma EXACTA (sin float). Acepta
+   * string (lo ideal, viene de NUMERIC) o number. Es el punto donde el motor
+   * pasa a aritmética entera para garantizar que el asiento cuadre al centavo.
+   */
+  private toCents(amount: number | string): number {
+    const dec = new MoneyDecimal(amount);
+    if (!dec.isFinite() || dec.isNegative()) {
       throw new BadRequestException(
         'Los montos contables deben ser positivos.',
       );
     }
-
-    return Math.round(amount * 100);
+    return dec.times(100).toDecimalPlaces(0, MONEY_ROUNDING).toNumber();
   }
 
   private createEntryNumber(): string {

@@ -10,6 +10,7 @@ import {
   isMidnightWindowInTz,
 } from './late-fee.calculator';
 import { ErrorMonitoringService } from '../common/monitoring/error-monitoring.service';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -317,13 +318,18 @@ export class BillingCronService {
       );
 
       const maintenanceDeduction = Number(expenseRows[0]?.total ?? 0);
-      const managementCommission =
-        Math.round(grossRent * (config.commission_percentage / 100) * 100) /
-        100;
-      const netAmount =
-        Math.round(
-          (grossRent - maintenanceDeduction - managementCommission) * 100,
-        ) / 100;
+      // Decimal exacto (sin float): comisión redondeada a 2 decimales; neto
+      // derivado exacto = bruto - mantenimiento - comisión.
+      const managementCommission = new MoneyDecimal(grossRent)
+        .times(config.commission_percentage)
+        .div(100)
+        .toDecimalPlaces(2, MONEY_ROUNDING)
+        .toNumber();
+      const netAmount = new MoneyDecimal(grossRent)
+        .minus(maintenanceDeduction)
+        .minus(managementCommission)
+        .toDecimalPlaces(2, MONEY_ROUNDING)
+        .toNumber();
 
       // Upsert — si ya existe el statement del mes, actualizarlo con los valores finales
       await this.dataSource.query(

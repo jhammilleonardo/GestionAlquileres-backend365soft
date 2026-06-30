@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { WebhookResult } from './processors/payment-processor.interface';
 import { TenantsService } from '../tenants/tenants.service';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { Money } from '../common/money';
 import { ReservationPaymentConfirmationService } from './reservation-payment-confirmation.service';
 
 interface WebhookEventInsertRow {
@@ -175,14 +176,21 @@ export class PaymentWebhookService {
     payment: PaymentWebhookRow,
     result: WebhookResult,
   ): void {
-    if (
-      result.amount !== undefined &&
-      (!Number.isFinite(result.amount) ||
-        Math.abs(Number(payment.amount) - result.amount) > 0.01)
-    ) {
-      throw new BadRequestException(
-        'El monto del webhook no coincide con el pago',
-      );
+    if (result.amount !== undefined) {
+      // Comparación exacta al centavo (sin tolerancia float): el monto del
+      // webhook debe coincidir con el registrado, en unidad mínima.
+      const expectedCents = Money.fromDb(
+        payment.amount,
+        payment.currency,
+      ).toMinorUnits();
+      const receivedCents = Number.isFinite(result.amount)
+        ? Money.of(String(result.amount), payment.currency).toMinorUnits()
+        : NaN;
+      if (Number.isNaN(receivedCents) || expectedCents !== receivedCents) {
+        throw new BadRequestException(
+          'El monto del webhook no coincide con el pago',
+        );
+      }
     }
 
     if (

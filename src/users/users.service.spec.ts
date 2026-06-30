@@ -118,7 +118,7 @@ describe('UsersService security rules', () => {
 
   it('allows a privileged user to reset another user password', async () => {
     dataSource.query.mockResolvedValueOnce([
-      { id: 7, password: 'stored-hash' },
+      { id: 7, password: 'stored-hash', role: 'VENDOR' },
     ]);
     jest.mocked(bcrypt.hash).mockResolvedValueOnce('new-hash' as never);
 
@@ -139,7 +139,7 @@ describe('UsersService security rules', () => {
     expect(managerQuery).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining('UPDATE public.refresh_tokens'),
-      [7, 'tenant_demo'],
+      [7, 'tenant_demo', 'VENDOR'],
     );
   });
 
@@ -152,5 +152,108 @@ describe('UsersService security rules', () => {
         role: 'ADMIN',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('UsersService rent ledger', () => {
+  let dataSource: { query: jest.Mock };
+  let service: UsersService;
+
+  beforeEach(() => {
+    dataSource = { query: jest.fn() };
+    service = new UsersService(dataSource as unknown as DataSource);
+  });
+
+  it('computes running balance and summary exactly (no cent drift)', async () => {
+    // 3 cargos pendientes de 333.33 + un pago aprobado de 100.00.
+    dataSource.query.mockResolvedValueOnce([
+      {
+        id: 1,
+        payment_date: '2026-01-05',
+        due_date: '2026-01-05',
+        payment_type: 'RENT',
+        payment_method: 'transfer',
+        status: 'APPROVED',
+        amount: '100.00',
+        currency: 'BOB',
+        reference_number: 'A-1',
+        contract_number: 'C-1',
+      },
+      {
+        id: 2,
+        payment_date: '2026-02-05',
+        due_date: '2026-02-05',
+        payment_type: 'RENT',
+        payment_method: 'transfer',
+        status: 'PENDING',
+        amount: '333.33',
+        currency: 'BOB',
+        reference_number: null,
+        contract_number: 'C-1',
+      },
+      {
+        id: 3,
+        payment_date: '2026-03-05',
+        due_date: '2026-03-05',
+        payment_type: 'RENT',
+        payment_method: 'transfer',
+        status: 'PENDING',
+        amount: '333.33',
+        currency: 'BOB',
+        reference_number: null,
+        contract_number: 'C-1',
+      },
+    ]);
+
+    const ledger = await service.getTenantLedger('tenant_demo', 42);
+
+    expect(ledger.tenant_id).toBe(42);
+    expect(ledger.currency).toBe('BOB');
+    expect(ledger.lines).toHaveLength(3);
+    // El saldo acumulado solo crece con los pendientes.
+    expect(ledger.lines[0].running_balance).toBe(0);
+    expect(ledger.lines[1].running_balance).toBe(333.33);
+    expect(ledger.lines[2].running_balance).toBe(666.66);
+    expect(ledger.summary).toEqual({
+      total_charged: 766.66,
+      total_paid: 100,
+      balance_due: 666.66,
+      pending_count: 2,
+    });
+  });
+
+  it('reverses paid totals on refunds', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      {
+        id: 1,
+        payment_date: '2026-01-05',
+        due_date: null,
+        payment_type: 'RENT',
+        payment_method: 'card',
+        status: 'APPROVED',
+        amount: '500.00',
+        currency: 'USD',
+        reference_number: null,
+        contract_number: null,
+      },
+      {
+        id: 2,
+        payment_date: '2026-01-10',
+        due_date: null,
+        payment_type: 'RENT',
+        payment_method: 'card',
+        status: 'REFUNDED',
+        amount: '200.00',
+        currency: 'USD',
+        reference_number: null,
+        contract_number: null,
+      },
+    ]);
+
+    const ledger = await service.getTenantLedger('tenant_demo', 7);
+
+    expect(ledger.currency).toBe('USD');
+    expect(ledger.summary.total_paid).toBe(300);
+    expect(ledger.summary.balance_due).toBe(-200);
   });
 });

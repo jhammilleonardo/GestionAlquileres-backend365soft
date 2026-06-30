@@ -128,6 +128,36 @@ export class AccountingOutboxProcessor {
       return this.expensePostingService.postExpense(schemaName, expenseId);
     }
 
+    if (event.event_type === 'expense.paid') {
+      const payload = this.parsePayload(event.payload);
+      const expenseId = Number(payload.expenseId);
+
+      if (!Number.isInteger(expenseId) || expenseId <= 0) {
+        throw new Error('Payload expense.paid sin expenseId valido.');
+      }
+
+      return this.expensePostingService.postExpensePayment(
+        schemaName,
+        expenseId,
+      );
+    }
+
+    if (event.event_type === 'expense.payment.created') {
+      const payload = this.parsePayload(event.payload);
+      const expensePaymentId = Number(payload.expensePaymentId);
+
+      if (!Number.isInteger(expensePaymentId) || expensePaymentId <= 0) {
+        throw new Error(
+          'Payload expense.payment.created sin expensePaymentId valido.',
+        );
+      }
+
+      return this.expensePostingService.postExpenseVendorPayment(
+        schemaName,
+        expensePaymentId,
+      );
+    }
+
     if (event.event_type === 'payment.refund.created') {
       const payload = this.parsePayload(event.payload);
       const refundId = Number(payload.refundId);
@@ -227,6 +257,7 @@ export class AccountingOutboxProcessor {
   private parsePayload(payload: AccountingOutboxRow['payload']): {
     paymentId?: unknown;
     expenseId?: unknown;
+    expensePaymentId?: unknown;
     refundId?: unknown;
     statementId?: unknown;
   } {
@@ -234,6 +265,7 @@ export class AccountingOutboxProcessor {
       return JSON.parse(payload) as {
         paymentId?: unknown;
         expenseId?: unknown;
+        expensePaymentId?: unknown;
         refundId?: unknown;
         statementId?: unknown;
       };
@@ -242,6 +274,7 @@ export class AccountingOutboxProcessor {
     return payload as {
       paymentId?: unknown;
       expenseId?: unknown;
+      expensePaymentId?: unknown;
       refundId?: unknown;
       statementId?: unknown;
     };

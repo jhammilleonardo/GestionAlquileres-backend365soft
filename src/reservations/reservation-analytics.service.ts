@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
 export interface ReservationAnalytics {
   from: string;
@@ -139,7 +140,9 @@ export class ReservationAnalyticsService {
   }
 
   private round2(value: number): number {
-    return Math.round((value + Number.EPSILON) * 100) / 100;
+    return new MoneyDecimal(value)
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toNumber();
   }
 
   private round4(value: number): number {

@@ -23,6 +23,7 @@ describe('AccountingPaymentPostingService', () => {
         {
           id: 33,
           contract_id: 5,
+          reservation_id: null,
           property_id: 20,
           amount: '100.00',
           payment_type: 'RENT',
@@ -56,6 +57,7 @@ describe('AccountingPaymentPostingService', () => {
       {
         id: 34,
         contract_id: 5,
+        reservation_id: null,
         property_id: 20,
         amount: '250.00',
         payment_type: 'DEPOSIT',
@@ -70,6 +72,44 @@ describe('AccountingPaymentPostingService', () => {
         lines: [
           expect.objectContaining({ accountCode: '1100', debit: 250 }),
           expect.objectContaining({ accountCode: '2200', credit: 250 }),
+        ],
+      }),
+    );
+  });
+
+  it('posts an approved reservation payment without forcing a contract id', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      {
+        id: 35,
+        contract_id: null,
+        reservation_id: 9,
+        property_id: 20,
+        amount: '80.00',
+        payment_type: 'RENT',
+        payment_date: '2026-07-01',
+      },
+    ]);
+
+    await service.postApprovedPayment('tenant_alpha', 35);
+
+    expect(ledger.postEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          paymentId: 35,
+          contractId: null,
+          reservationId: 9,
+        }),
+        lines: [
+          expect.objectContaining({
+            accountCode: '1100',
+            debit: 80,
+            contractId: null,
+          }),
+          expect.objectContaining({
+            accountCode: '4000',
+            credit: 80,
+            contractId: null,
+          }),
         ],
       }),
     );

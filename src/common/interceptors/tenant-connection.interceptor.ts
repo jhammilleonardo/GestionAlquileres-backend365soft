@@ -80,6 +80,14 @@ export class TenantConnectionInterceptor implements NestInterceptor {
     const store = {
       queryRunner: null as ReturnType<DataSource['createQueryRunner']> | null,
       schemaName,
+      // El interceptor corre después del middleware/guards, así que req.user ya
+      // está resuelto. Capturamos identidad y origen una sola vez para que la
+      // auditoría registre IP/dispositivo sin plomería en cada caller.
+      actor: {
+        userId: req.user?.userId ?? null,
+        ip: extractClientIp(req),
+        userAgent: req.headers?.['user-agent'] ?? null,
+      },
     };
 
     const result$ = new Observable((subscriber) => {
@@ -131,4 +139,17 @@ export class TenantConnectionInterceptor implements NestInterceptor {
       await queryRunner.release();
     }
   }
+}
+
+/**
+ * IP del cliente. Prefiere `req.ip` (respeta `trust proxy` de Express); cae al
+ * primer hop de `x-forwarded-for` y luego al socket. Trunca a 45 chars (IPv6).
+ */
+function extractClientIp(req: TenantRequest): string | null {
+  const forwarded = req.headers?.['x-forwarded-for'];
+  const forwardedIp = Array.isArray(forwarded)
+    ? forwarded[0]
+    : forwarded?.split(',')[0]?.trim();
+  const ip = req.ip ?? forwardedIp ?? req.socket?.remoteAddress ?? null;
+  return ip ? ip.slice(0, 45) : null;
 }

@@ -85,6 +85,14 @@ export class CreateInspectionDto {
   @IsInt()
   inspector_user_id?: number;
 
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'Plantilla a expandir como checklist si no se envían ítems.',
+  })
+  @IsOptional()
+  @IsInt()
+  template_id?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

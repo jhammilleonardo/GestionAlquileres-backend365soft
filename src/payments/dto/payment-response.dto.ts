@@ -52,6 +52,35 @@ export class PaymentContractReferenceDto {
   status: string;
 }
 
+export class PaymentReservationReferenceDto {
+  @ApiProperty({ example: 14 })
+  id: number;
+
+  @ApiProperty({ example: 'pending' })
+  status: string;
+
+  @ApiProperty({ example: '2026-07-01' })
+  checkin_date: string;
+
+  @ApiProperty({ example: '2026-07-05' })
+  checkout_date: string;
+
+  @ApiProperty({ example: 4 })
+  nights: number;
+
+  @ApiProperty({ example: 980 })
+  total_amount: number;
+
+  @ApiPropertyOptional({ example: 294 })
+  deposit_required?: number | null;
+
+  @ApiProperty({ example: 294 })
+  paid_amount: number;
+
+  @ApiPropertyOptional({ example: 'Unidad 2A' })
+  unit_number?: string | null;
+}
+
 export class PaymentResponseDto {
   @ApiProperty({ example: 33 })
   id: number;
@@ -59,8 +88,11 @@ export class PaymentResponseDto {
   @ApiProperty({ example: 7 })
   tenant_id: number;
 
-  @ApiProperty({ example: 22 })
-  contract_id: number;
+  @ApiPropertyOptional({ example: 22, nullable: true })
+  contract_id: number | null;
+
+  @ApiPropertyOptional({ example: 14, nullable: true })
+  reservation_id?: number | null;
 
   @ApiProperty({ example: 12 })
   property_id: number;
@@ -160,6 +192,9 @@ export class PaymentResponseDto {
 
   @ApiPropertyOptional({ type: () => PaymentContractReferenceDto })
   contract?: PaymentContractReferenceDto;
+
+  @ApiPropertyOptional({ type: () => PaymentReservationReferenceDto })
+  reservation?: PaymentReservationReferenceDto;
 }
 
 export class PaginatedPaymentsResponseDto {

@@ -19,8 +19,9 @@ import { ReservationRow } from './reservations.service';
 import { applyTenantSearchPath } from '../common/tenant/tenant-search-path';
 import { ReservationNotificationService } from './reservation-notification.service';
 import { ReservationRefundService } from './reservation-refund.service';
-import { HousekeepingService } from './housekeeping.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
 
 export interface ReservationListItem extends ReservationRow {
   property_name: string | null;
@@ -55,7 +56,7 @@ export class ReservationsAdminService {
     private readonly dataSource: DataSource,
     private readonly notificationService: ReservationNotificationService,
     private readonly refundService: ReservationRefundService,
-    private readonly housekeepingService: HousekeepingService,
+    private readonly auditLogsService: AuditLogsService,
   ) {}
 
   async findAll(filters: ListReservationsDto): Promise<PaginatedReservations> {
@@ -131,7 +132,8 @@ export class ReservationsAdminService {
     try {
       // Bloqueo de fila: evita transiciones concurrentes sobre la misma reserva.
       const current = (await queryRunner.query(
-        `SELECT id, status, property_id, unit_id, checkout_date::text AS checkout_date,
+        `SELECT id, status, property_id, unit_id, tenant_id,
+                checkout_date::text AS checkout_date,
                 total_amount, security_deposit,
                 COALESCE((
                   SELECT SUM(amount) FROM payments
@@ -144,6 +146,7 @@ export class ReservationsAdminService {
         status: ReservationStatus;
         property_id: number;
         unit_id: number;
+        tenant_id: number;
         checkout_date: string;
         total_amount: string;
         security_deposit: string;
@@ -185,13 +188,16 @@ export class ReservationsAdminService {
         adminUserId,
       );
 
-      // Al completar, se programa la limpieza para la fecha de salida.
+      // Al completar, se crea una orden de trabajo de limpieza (turnover) para la
+      // fecha de salida, asignable a un proveedor de limpieza.
       if (dto.action === ReservationAction.COMPLETE) {
-        await this.housekeepingService.createForReservation(queryRunner, {
-          id,
-          property_id: current[0].property_id,
-          unit_id: current[0].unit_id,
-          checkout_date: current[0].checkout_date,
+        await this.createTurnoverCleaningOrder(queryRunner, {
+          reservationId: id,
+          propertyId: current[0].property_id,
+          unitId: current[0].unit_id,
+          tenantId: current[0].tenant_id,
+          checkoutDate: current[0].checkout_date,
+          adminUserId,
         });
       }
 
@@ -200,6 +206,15 @@ export class ReservationsAdminService {
       this.logger.log(
         `Admin ${adminUserId} applied '${dto.action}' to reservation ${id}: ${fromStatus} → ${transition.to}`,
       );
+
+      await this.auditLogsService.log({
+        userId: adminUserId,
+        action: AuditAction.STATUS_CHANGED,
+        entityType: 'reservation',
+        entityId: id,
+        oldValues: { status: fromStatus },
+        newValues: { status: transition.to, action: dto.action },
+      });
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -264,6 +279,62 @@ export class ReservationsAdminService {
         'security_deposit_return',
       );
     }
+  }
+
+  /**
+   * Crea la orden de trabajo de limpieza (turnover) de una reserva completada,
+   * dentro de la transición. Es una solicitud de mantenimiento tipo CLEANING que
+   * el admin puede asignar a un proveedor de limpieza y que aparece en el portal
+   * del proveedor. Idempotente: no duplica si ya existe una para la reserva.
+   */
+  private async createTurnoverCleaningOrder(
+    queryRunner: QueryRunner,
+    params: {
+      reservationId: number;
+      propertyId: number;
+      unitId: number;
+      tenantId: number;
+      checkoutDate: string;
+      adminUserId: number;
+    },
+  ): Promise<void> {
+    const existing = (await queryRunner.query(
+      `SELECT id FROM maintenance_requests
+        WHERE reservation_id = $1 AND request_type = 'CLEANING' LIMIT 1`,
+      [params.reservationId],
+    )) as Array<{ id: number }>;
+    if (existing.length > 0) return;
+
+    await queryRunner.query(
+      `INSERT INTO maintenance_requests
+         (ticket_number, request_type, title, description, status, priority,
+          due_date, tenant_id, property_id, reservation_id, assigned_to)
+       VALUES ($1, 'CLEANING', $2, $3, 'NEW', 'NORMAL', $4, $5, $6, $7, $8)`,
+      [
+        this.generateCleaningTicket(),
+        'Limpieza de salida',
+        `Limpieza de turnover de la unidad tras la salida del huésped (reserva #${params.reservationId}). Asignar a un proveedor de limpieza.`,
+        params.checkoutDate,
+        params.tenantId,
+        params.propertyId,
+        params.reservationId,
+        params.adminUserId,
+      ],
+    );
+
+    this.logger.log(
+      `Orden de limpieza creada para reserva ${params.reservationId} (salida ${params.checkoutDate})`,
+    );
+  }
+
+  private generateCleaningTicket(): string {
+    const year = new Date().getFullYear();
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let random = '';
+    for (let i = 0; i < 6; i++) {
+      random += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `LMP-${year}-${random}`;
   }
 
   /** Mapea la acción admin a la notificación al huésped (confirmar/rechazar). */

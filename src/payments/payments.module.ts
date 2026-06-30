@@ -11,6 +11,7 @@ import { PaymentCreationNotificationService } from './payment-creation-notificat
 import { PaymentCreationValidationService } from './payment-creation-validation.service';
 import { ReservationPaymentService } from './reservation-payment.service';
 import { PaymentMethodsService } from './payment-methods.service';
+import { PaymentLedgerService } from './payment-ledger.service';
 import {
   AdminPaymentsController,
   TenantPaymentsController,
@@ -77,6 +78,7 @@ import { SafeHttpClientService } from '../common/http/safe-http-client.service';
     PaymentCreationValidationService,
     ReservationPaymentService,
     ReservationPaymentConfirmationService,
+    PaymentLedgerService,
     SafeHttpClientService,
     PaymentMethodsService,
     PaymentProcessorFactory,

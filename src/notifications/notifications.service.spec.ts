@@ -114,6 +114,7 @@ describe('NotificationsService realtime events', () => {
     jest.spyOn(tenantConnectionStore, 'getStore').mockReturnValue({
       queryRunner: null,
       schemaName: 'tenant_demo_schema',
+      actor: null,
     });
 
     dataSource.query

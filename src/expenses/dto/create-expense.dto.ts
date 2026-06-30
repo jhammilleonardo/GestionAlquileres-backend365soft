@@ -5,12 +5,16 @@ import {
   IsOptional,
   IsDateString,
   IsBoolean,
-  IsUrl,
   Min,
   Length,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import {
+  ExpensePaymentStatusEnum,
+  ExpenseResponsibilityEnum,
+  ExpenseScopeEnum,
+} from '../enums/expense-category.enum';
 
 export class CreateExpenseDto {
   @ApiProperty({
@@ -37,6 +41,33 @@ export class CreateExpenseDto {
   })
   @IsString()
   category: string;
+
+  @ApiPropertyOptional({
+    description: 'Ámbito del gasto',
+    enum: ExpenseScopeEnum,
+    default: ExpenseScopeEnum.GENERAL,
+  })
+  @IsEnum(ExpenseScopeEnum)
+  @IsOptional()
+  expense_scope?: ExpenseScopeEnum = ExpenseScopeEnum.GENERAL;
+
+  @ApiPropertyOptional({
+    description: 'Responsable económico del gasto',
+    enum: ExpenseResponsibilityEnum,
+    default: ExpenseResponsibilityEnum.COMPANY,
+  })
+  @IsEnum(ExpenseResponsibilityEnum)
+  @IsOptional()
+  responsibility?: ExpenseResponsibilityEnum = ExpenseResponsibilityEnum.COMPANY;
+
+  @ApiPropertyOptional({
+    description: 'Estado de pago del gasto',
+    enum: ExpensePaymentStatusEnum,
+    default: ExpensePaymentStatusEnum.PAID,
+  })
+  @IsEnum(ExpensePaymentStatusEnum)
+  @IsOptional()
+  payment_status?: ExpensePaymentStatusEnum = ExpensePaymentStatusEnum.PAID;
 
   @ApiProperty({
     description: 'Monto del gasto',
@@ -74,6 +105,22 @@ export class CreateExpenseDto {
   date: string;
 
   @ApiPropertyOptional({
+    description: 'Fecha de vencimiento si el gasto queda pendiente de pago',
+    example: '2024-04-30',
+  })
+  @IsDateString()
+  @IsOptional()
+  due_date?: string;
+
+  @ApiPropertyOptional({
+    description: 'Fecha real de pago cuando el gasto ya salió de caja/banco',
+    example: '2024-04-20',
+  })
+  @IsDateString()
+  @IsOptional()
+  paid_date?: string;
+
+  @ApiPropertyOptional({
     description: 'ID del vendedor',
     example: 1,
   })
@@ -91,12 +138,65 @@ export class CreateExpenseDto {
   vendor_name?: string;
 
   @ApiPropertyOptional({
-    description: 'URL del recibo/comprobante',
+    description: 'URL o ruta del recibo/comprobante',
     example: 'https://storage.example.com/receipts/123.pdf',
   })
-  @IsUrl()
+  @IsString()
   @IsOptional()
   receipt_url?: string;
+
+  @ApiPropertyOptional({
+    description: 'Número de factura, recibo o documento externo',
+    example: 'FAC-1234',
+  })
+  @IsString()
+  @IsOptional()
+  invoice_number?: string;
+
+  @ApiPropertyOptional({
+    description: 'ID del contrato relacionado',
+    example: 12,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  contract_id?: number;
+
+  @ApiPropertyOptional({
+    description: 'ID de la reserva relacionada',
+    example: 44,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  reservation_id?: number;
+
+  @ApiPropertyOptional({
+    description: 'ID de la solicitud de mantenimiento relacionada',
+    example: 31,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  maintenance_request_id?: number;
+
+  @ApiPropertyOptional({
+    description: 'Descontar en estado de cuenta del propietario',
+    example: true,
+    default: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  affects_owner_statement?: boolean = true;
+
+  @ApiPropertyOptional({
+    description: 'Debe recuperarse mediante reembolso/cobro',
+    example: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  is_reimbursable?: boolean = false;
 
   @ApiPropertyOptional({
     description: 'Es un gasto recurrente',

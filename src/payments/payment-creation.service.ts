@@ -7,6 +7,8 @@ import { TenantsService } from '../tenants/tenants.service';
 import { quoteIdent } from '../common/utils/sql-identifier';
 import { PaymentCreationNotificationService } from './payment-creation-notification.service';
 import { PaymentCreationValidationService } from './payment-creation-validation.service';
+import { SplitPaymentService } from '../split-payment/split-payment.service';
+import { AccountingOutboxService } from '../accounting/accounting-outbox.service';
 
 @Injectable()
 export class PaymentCreationService {
@@ -15,6 +17,8 @@ export class PaymentCreationService {
     private readonly tenantsService: TenantsService,
     private readonly paymentCreationValidationService: PaymentCreationValidationService,
     private readonly paymentCreationNotificationService: PaymentCreationNotificationService,
+    private readonly splitPaymentService: SplitPaymentService,
+    private readonly accountingOutboxService: AccountingOutboxService,
   ) {}
 
   async createPayment(
@@ -115,6 +119,7 @@ export class PaymentCreationService {
     schemaName?: string,
   ): Promise<Payment> {
     const schemaPrefix = this.schemaPrefix(schemaName);
+    const financialSchemaName = schemaName || 'public';
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -134,8 +139,9 @@ export class PaymentCreationService {
           reference_number, check_number, notes, admin_notes, payment_processor,
           is_partial_payment, parent_payment_id, is_recurring,
           recurring_schedule_id, created_by, approved_by,
-          approved_at, metadata, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW(), NOW())
+          approved_at, metadata, accounting_status, journal_entry_id,
+          created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW(), NOW())
         RETURNING *`,
         [
           dto.tenant_id,
@@ -161,12 +167,44 @@ export class PaymentCreationService {
           dto.status === PaymentStatus.APPROVED ? adminId : null,
           dto.status === PaymentStatus.APPROVED ? new Date() : null,
           Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null,
+          dto.status === PaymentStatus.APPROVED
+            ? 'pending_posting'
+            : 'not_posted',
+          null,
         ],
       )) as Payment[];
       const payment = payments[0];
 
       if (!payment) {
         throw new Error('No se pudo crear el pago');
+      }
+
+      if (dto.status === PaymentStatus.APPROVED) {
+        await this.splitPaymentService.executeSplit(
+          {
+            paymentId: payment.id,
+            totalAmount: dto.amount,
+            propertyId: dto.property_id,
+            paymentDate: new Date(dto.payment_date),
+            currency: dto.currency || 'USD',
+            schemaName: financialSchemaName,
+          },
+          queryRunner,
+        );
+
+        await this.accountingOutboxService.enqueue(
+          {
+            schemaName: financialSchemaName,
+            eventType: 'payment.approved',
+            aggregateType: 'payment',
+            aggregateId: String(payment.id),
+            payload: {
+              paymentId: payment.id,
+              approvedBy: adminId,
+            },
+          },
+          { queryRunner },
+        );
       }
 
       await queryRunner.commitTransaction();

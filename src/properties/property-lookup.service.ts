@@ -10,6 +10,7 @@ interface PropertyDetailRow {
   property_type_id: number;
   property_subtype_id: number;
   status: string;
+  rental_type: string | null;
   latitude: number | null;
   longitude: number | null;
   images: string[] | null;
@@ -59,6 +60,22 @@ interface PropertyOwnerRow {
   rental_owner_phone: string | null;
 }
 
+interface PropertyUnitRow {
+  id: number;
+  property_id: number;
+  unit_number: string;
+  rental_type: string | null;
+  status: string | null;
+  price_per_night: number | string | null;
+  cleaning_fee: number | string | null;
+  min_nights: number | string | null;
+  max_nights: number | string | null;
+  checkin_time: string | null;
+  checkout_time: string | null;
+  deposit_amount: number | string | null;
+  deposit_to_confirm_pct: number | string | null;
+}
+
 @Injectable()
 export class PropertyLookupService {
   constructor(
@@ -87,7 +104,7 @@ export class PropertyLookupService {
     }
 
     const property = properties[0];
-    const [addresses, owners] = await Promise.all([
+    const [addresses, owners, units] = await Promise.all([
       this.dataSource.query<PropertyAddressRow[]>(
         `SELECT * FROM ${schemaPrefix}property_addresses WHERE property_id = $1`,
         [id],
@@ -100,6 +117,15 @@ export class PropertyLookupService {
          WHERE po.property_id = $1`,
         [id],
       ),
+      this.dataSource.query<PropertyUnitRow[]>(
+        `SELECT id, property_id, unit_number, rental_type, status,
+                price_per_night, cleaning_fee, min_nights, max_nights,
+                checkin_time, checkout_time, deposit_amount, deposit_to_confirm_pct
+           FROM ${schemaPrefix}units
+          WHERE property_id = $1
+          ORDER BY id ASC`,
+        [id],
+      ),
     ]);
 
     return {
@@ -109,6 +135,7 @@ export class PropertyLookupService {
       property_type_id: property.property_type_id,
       property_subtype_id: property.property_subtype_id,
       status: property.status,
+      rental_type: property.rental_type,
       latitude: property.latitude,
       longitude: property.longitude,
       images: property.images || [],
@@ -165,6 +192,21 @@ export class PropertyLookupService {
           primary_email: owner.rental_owner_email,
           phone_number: owner.rental_owner_phone || '',
         },
+      })),
+      units: units.map((unit) => ({
+        id: unit.id,
+        property_id: unit.property_id,
+        unit_number: unit.unit_number,
+        rental_type: unit.rental_type,
+        status: unit.status,
+        price_per_night: unit.price_per_night,
+        cleaning_fee: unit.cleaning_fee,
+        min_nights: unit.min_nights,
+        max_nights: unit.max_nights,
+        checkin_time: unit.checkin_time,
+        checkout_time: unit.checkout_time,
+        deposit_amount: unit.deposit_amount,
+        deposit_to_confirm_pct: unit.deposit_to_confirm_pct,
       })),
     };
   }

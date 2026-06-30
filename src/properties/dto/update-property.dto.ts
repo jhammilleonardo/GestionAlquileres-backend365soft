@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsArray,
   Min,
+  Max,
   IsEnum,
 } from 'class-validator';
 import { CreatePropertyAddressDto } from './create-property.dto';
@@ -46,6 +47,20 @@ export class UpdatePropertyDto {
   @IsNumber()
   @Min(0)
   security_deposit_amount?: number;
+
+  @IsOptional()
+  @IsString()
+  checkin_time?: string;
+
+  @IsOptional()
+  @IsString()
+  checkout_time?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  deposit_to_confirm_pct?: number;
 
   @IsOptional()
   @IsString()

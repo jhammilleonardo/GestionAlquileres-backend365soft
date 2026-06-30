@@ -8,6 +8,7 @@ import { AccountingOutboxService } from '../accounting/accounting-outbox.service
 import { CreateRefundDto } from './dto';
 import { PaymentStatus } from './enums';
 import { quoteIdent } from '../common/utils/sql-identifier';
+import { MoneyDecimal, MONEY_ROUNDING } from '../common/money';
 
 interface RefundablePaymentRow {
   id: number;
@@ -131,7 +132,10 @@ export class PaymentRefundsService {
   }
 
   private toCents(value: string | number): number {
-    return Math.round(Number(value) * 100);
+    return new MoneyDecimal(value)
+      .times(100)
+      .toDecimalPlaces(0, MONEY_ROUNDING)
+      .toNumber();
   }
 
   private schemaPrefix(schemaName?: string | null): string {

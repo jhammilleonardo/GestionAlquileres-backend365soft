@@ -229,6 +229,13 @@ export class TenantProvisioningService {
           this.tenantUnitsProvisioningService.ensureReservations(schemaName),
       ],
       [
+        'ensureMaintenanceReservationSupport',
+        () =>
+          this.tenantMaintenanceProvisioningService.ensureReservationSupport(
+            schemaName,
+          ),
+      ],
+      [
         'ensureReservationOverlapGuard',
         () =>
           this.tenantUnitsProvisioningService.ensureReservationOverlapGuard(
@@ -383,6 +390,9 @@ export class TenantProvisioningService {
         tenant.schema_name,
       );
       await this.tenantUnitsProvisioningService.ensureReservations(
+        tenant.schema_name,
+      );
+      await this.tenantMaintenanceProvisioningService.ensureReservationSupport(
         tenant.schema_name,
       );
       await this.tenantUnitsProvisioningService.ensureReservationOverlapGuard(

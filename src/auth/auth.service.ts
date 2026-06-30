@@ -24,6 +24,14 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEventType } from '../notifications/dto/create-notification.dto';
 import { AuthLoginContext, AuthSecurityService } from './auth-security.service';
 import { nativeHttpClient } from '../common/http/safe-http-client.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AuditAction } from '../audit-logs/enums/audit-action.enum';
+
+/** Origen del request (IP/dispositivo) para auditar eventos de autenticación. */
+export interface AuthRequestMeta {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
 
 interface User {
   id: number;
@@ -114,6 +122,7 @@ export class AuthService {
     private notificationsService: NotificationsService,
     private readonly tenantAdminIndexService: TenantAdminIndexService,
     private readonly authSecurityService: AuthSecurityService,
+    private readonly auditLogsService: AuditLogsService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -182,6 +191,7 @@ export class AuthService {
   async loginAdmin(
     email: string,
     password: string,
+    meta: AuthRequestMeta = {},
   ): Promise<AdminLoginResponse> {
     const normalizedEmail = this.normalizeEmail(email);
     const adminLoginScope = 'admin';
@@ -213,6 +223,15 @@ export class AuthService {
         tenantSlug: adminLoginScope,
         context: AuthLoginContext.ADMIN,
         reason: 'invalid_password',
+      });
+      await this.auditLogsService.logForSchema(tenant.schema_name, {
+        userId: user.id,
+        action: AuditAction.LOGIN_FAILED,
+        entityType: 'auth',
+        entityId: user.id,
+        newValues: { email: normalizedEmail, reason: 'invalid_password' },
+        ipAddress: meta.ipAddress,
+        userAgent: meta.userAgent,
       });
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -249,6 +268,16 @@ export class AuthService {
       tenantSlug: adminLoginScope,
       context: AuthLoginContext.ADMIN,
       userId: user.id,
+    });
+
+    await this.auditLogsService.logForSchema(tenant.schema_name, {
+      userId: user.id,
+      action: AuditAction.LOGGED_IN,
+      entityType: 'auth',
+      entityId: user.id,
+      newValues: { email: normalizedEmail, role: user.role },
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
     });
 
     // Agregar tenant_slug al usuario en la respuesta
@@ -431,6 +460,31 @@ export class AuthService {
     return { resetUrl, expiresAt };
   }
 
+  /**
+   * Audita el cierre de sesión. Best-effort: si el tenant ya no existe o el
+   * token no tenía dueño, no hace nada (el logout no debe fallar por esto).
+   */
+  async recordLogout(
+    owner: { user_id: number; tenant_slug: string },
+    meta: AuthRequestMeta = {},
+  ): Promise<void> {
+    try {
+      const tenant = await this.tenantsService.findActiveBySlug(
+        owner.tenant_slug,
+      );
+      await this.auditLogsService.logForSchema(tenant.schema_name, {
+        userId: owner.user_id,
+        action: AuditAction.LOGGED_OUT,
+        entityType: 'auth',
+        entityId: owner.user_id,
+        ipAddress: meta.ipAddress,
+        userAgent: meta.userAgent,
+      });
+    } catch (error) {
+      this.logger.warn(`No se pudo auditar logout: ${String(error)}`);
+    }
+  }
+
   async resetPassword(
     token: string,
     password: string,
@@ -455,6 +509,12 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+    const roleRows = await this.dataSource.query<{ role: string }[]>(
+      `SELECT role FROM ${quoteIdent(record.tenant_schema)}."user" WHERE id = $1`,
+      [record.user_id],
+    );
+    const role = roleRows[0]?.role ?? null;
+
     await this.dataSource.transaction(async (manager) => {
       await manager.query(
         `UPDATE ${quoteIdent(record.tenant_schema)}."user"
@@ -471,20 +531,25 @@ export class AuthService {
       await manager.query(
         `UPDATE public.refresh_tokens
             SET revoked_at = NOW()
-          WHERE user_id = $1 AND tenant_slug = $2 AND revoked_at IS NULL`,
-        [record.user_id, record.tenant_slug],
+          WHERE user_id = $1
+            AND tenant_slug = $2
+            AND role = $3
+            AND revoked_at IS NULL`,
+        [record.user_id, record.tenant_slug, role],
       );
     });
 
-    // Devolver rol y tenant para que el frontend redirija al login correcto.
-    const roleRows = await this.dataSource.query<{ role: string }[]>(
-      `SELECT role FROM ${quoteIdent(record.tenant_schema)}."user" WHERE id = $1`,
-      [record.user_id],
-    );
+    await this.auditLogsService.logForSchema(record.tenant_schema, {
+      userId: record.user_id,
+      action: AuditAction.PASSWORD_CHANGED,
+      entityType: 'auth',
+      entityId: record.user_id,
+    });
 
+    // Devolver rol y tenant para que el frontend redirija al login correcto.
     return {
       message: 'Contrasena actualizada correctamente.',
-      role: roleRows[0]?.role ?? null,
+      role,
       tenantSlug: record.tenant_slug,
     };
   }

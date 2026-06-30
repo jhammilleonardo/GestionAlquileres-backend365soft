@@ -16,9 +16,16 @@ import type {
   IdRow,
   MaintenanceContractRow,
   MaintenanceRequestRow,
+  MaintenanceReservationRow,
   PropertySummaryRow,
   UserNameRow,
 } from './maintenance.types';
+
+interface MaintenanceTarget {
+  contractId: number | null;
+  reservationId: number | null;
+  propertyId: number;
+}
 
 @Injectable()
 export class MaintenanceCreationService {
@@ -36,9 +43,11 @@ export class MaintenanceCreationService {
     contractId: number | undefined,
     assignedTo: number,
   ): Promise<MaintenanceRequestRow> {
-    const contract = await this.resolveContract(contractId, tenantId);
-    const propertyId = contract.property_id;
-    const finalContractId = contract.id;
+    const target = await this.resolveMaintenanceTarget(
+      createMaintenanceDto,
+      contractId,
+      tenantId,
+    );
     const category =
       createMaintenanceDto.request_type === 'GENERAL'
         ? undefined
@@ -52,8 +61,8 @@ export class MaintenanceCreationService {
             `INSERT INTO maintenance_requests(
             ticket_number, request_type, category, title, description,
             permission_to_enter, has_pets, entry_notes,
-            tenant_id, property_id, contract_id, assigned_to
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            tenant_id, property_id, contract_id, reservation_id, assigned_to
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           RETURNING *`,
             [
               this.generateTicketNumber(),
@@ -65,8 +74,9 @@ export class MaintenanceCreationService {
               createMaintenanceDto.has_pets || false,
               createMaintenanceDto.entry_notes || null,
               tenantId,
-              propertyId,
-              finalContractId,
+              target.propertyId,
+              target.contractId,
+              target.reservationId,
               assignedTo,
             ],
           ),
@@ -107,11 +117,37 @@ export class MaintenanceCreationService {
       createMaintenanceDto,
       tenantId,
       assignedTo,
-      propertyId,
-      finalContractId,
+      target.propertyId,
+      target.contractId,
+      target.reservationId,
     );
 
     return this.maintenanceLookupService.findOne(savedRequest.id);
+  }
+
+  private async resolveMaintenanceTarget(
+    createMaintenanceDto: CreateMaintenanceDto,
+    contractId: number | undefined,
+    tenantId: number,
+  ): Promise<MaintenanceTarget> {
+    if (createMaintenanceDto.reservation_id && !contractId) {
+      const reservation = await this.resolveReservation(
+        createMaintenanceDto.reservation_id,
+        tenantId,
+      );
+      return {
+        contractId: null,
+        reservationId: reservation.id,
+        propertyId: reservation.property_id,
+      };
+    }
+
+    const contract = await this.resolveContract(contractId, tenantId);
+    return {
+      contractId: contract.id,
+      reservationId: null,
+      propertyId: contract.property_id,
+    };
   }
 
   private async resolveContract(
@@ -172,13 +208,45 @@ export class MaintenanceCreationService {
     return contract;
   }
 
+  private async resolveReservation(
+    reservationId: number,
+    tenantId: number,
+  ): Promise<MaintenanceReservationRow> {
+    const reservations = await this.dataSource.query<MaintenanceReservationRow[]>(
+      `SELECT id, tenant_id, property_id, unit_id, checkin_date, checkout_date, status
+       FROM reservations
+       WHERE id = $1`,
+      [reservationId],
+    );
+
+    if (!reservations || reservations.length === 0) {
+      throw new NotFoundException('Reserva no encontrada');
+    }
+
+    const reservation = reservations[0];
+    if (reservation.tenant_id !== tenantId) {
+      throw new ForbiddenException(
+        'No tienes permiso para crear solicitudes para esta reserva',
+      );
+    }
+
+    if (!['confirmed', 'in_progress'].includes(String(reservation.status))) {
+      throw new BadRequestException(
+        `Solo se pueden crear solicitudes para reservas confirmadas o en curso. Estado actual: ${reservation.status}`,
+      );
+    }
+
+    return reservation;
+  }
+
   private async notifyRequestCreated(
     savedRequest: MaintenanceRequestRow,
     createMaintenanceDto: CreateMaintenanceDto,
     tenantId: number,
     assignedTo: number,
     propertyId: number,
-    finalContractId: number,
+    finalContractId: number | null,
+    reservationId: number | null,
   ): Promise<void> {
     try {
       let targetUserId = assignedTo;
@@ -224,6 +292,7 @@ export class MaintenanceCreationService {
           ticket_number: savedRequest.ticket_number,
           maintenance_request_id: savedRequest.id,
           contract_id: finalContractId,
+          reservation_id: reservationId,
           property_id: propertyId,
           property_title: property?.title,
           category: savedRequest.category,

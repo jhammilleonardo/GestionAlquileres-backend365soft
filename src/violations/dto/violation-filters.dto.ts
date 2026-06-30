@@ -1,7 +1,8 @@
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBooleanString, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ViolationTypeEnum } from '../enums/violation-type.enum';
 import { ViolationStatusEnum } from '../enums/violation-status.enum';
+import { ViolationSeverityEnum } from '../enums/violation-severity.enum';
 
 export class ViolationFiltersDto {
   @IsInt()
@@ -16,6 +17,15 @@ export class ViolationFiltersDto {
   @IsEnum(ViolationTypeEnum)
   @IsOptional()
   type?: ViolationTypeEnum;
+
+  @IsEnum(ViolationSeverityEnum)
+  @IsOptional()
+  severity?: ViolationSeverityEnum;
+
+  /** 'true' filtra solo infracciones abiertas y vencidas (due_date < hoy). */
+  @IsBooleanString()
+  @IsOptional()
+  overdue?: string;
 
   @IsInt()
   @IsOptional()

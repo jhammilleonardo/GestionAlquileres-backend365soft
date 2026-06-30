@@ -30,6 +30,7 @@ import { PropertyOwner } from './entities/property-owner.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OwnerStatementsModule } from '../owner-statements/owner-statements.module';
 import { StorageModule } from '../common/storage/storage.module';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { StorageModule } from '../common/storage/storage.module';
     NotificationsModule,
     OwnerStatementsModule,
     StorageModule,
+    AuditLogsModule,
   ],
   providers: [
     PropertiesService,
